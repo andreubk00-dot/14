@@ -1,8 +1,9 @@
 import './style.css';
+import './interface.css';
 import { World, LOCATIONS } from './world.js';
 import { UI } from './ui.js';
 import { DistrictAudio } from './audio.js';
-import { SAVE_KEY, RESOURCES, RECIPES, HOME, freshState, validateSave, collect, deposit, craft, craftStatus, place, weapon, takeDamage, respawn, useSupply, catchFish, bagWeight, capacity } from './game.js';
+import { SAVE_KEY, RESOURCES, RECIPES, HOME, freshState, validateSave, collect, deposit, craft, craftStatus, place, weapon, takeDamage, respawn, useSupply, catchFish, bagWeight, capacity, deliverContract, productionInfo, harvestProduction } from './game.js';
 
 class QuietDistrict {
   constructor() {
@@ -18,6 +19,15 @@ class QuietDistrict {
       this.world = new World(document.getElementById('world'), this.state);
       this.world.setQuality(this.state.settings.quality);
       for (const item of this.state.placed) this.world.addPlaced(item);
+      if (this.world.blocked(this.state.x, this.state.z)) {
+        const candidates = [];
+        for (let dx = -5; dx <= 5; dx++) for (let dz = -5; dz <= 5; dz++) {
+          const x = this.state.x + dx, z = this.state.z + dz;
+          if (!this.world.blocked(x, z)) candidates.push({ x, z, distance: Math.hypot(dx, dz) });
+        }
+        candidates.sort((a, b) => a.distance - b.distance);
+        const position = candidates[0] || HOME; this.world.move(position.x, position.z);
+      }
       this.updateGrave(); this.bindInputs();
       this.world.loadAssets(progress => this.ui.loading(progress)).then(() => {
         this.ready = true; this.ui.ready(this.hasSave);
@@ -34,12 +44,20 @@ class QuietDistrict {
   bindInputs() {
     const canvas = this.world.renderer.domElement;
     window.addEventListener('keydown', event => {
-      if (event.target?.matches?.('input, textarea')) return;
+      if (event.target?.matches?.('input, textarea') && event.code !== 'Escape') return;
       const key = event.code;
       if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(key)) {
         if (key !== 'Tab') event.preventDefault();
       }
       if (!this.started) return;
+      if (this.ui.pendingConfirm) {
+        if (key === 'Escape') this.ui.resolveConfirm(false);
+        if (key === 'Tab') {
+          event.preventDefault(); const buttons = [...document.querySelectorAll('#confirm-overlay button')];
+          const index = buttons.indexOf(document.activeElement); buttons[(index + (event.shiftKey ? -1 : 1) + buttons.length) % buttons.length]?.focus();
+        }
+        return;
+      }
       if (key === 'Tab' && this.ui.panel) {
         const focusable = [...document.getElementById('panel').querySelectorAll('button:not(:disabled), input, [tabindex="0"]')];
         if (focusable.length) {
@@ -50,7 +68,7 @@ class QuietDistrict {
       }
       if (key === 'Escape') { this.cancelAction(); return; }
       if (event.repeat) { if (!this.ui.panel) this.keys.add(key); return; }
-      const shortcuts = { KeyC: 'craft', KeyI: 'inventory', KeyB: 'build', KeyM: 'map', KeyJ: 'journal', KeyQ: 'use-medkit', KeyH: 'home' };
+      const shortcuts = { KeyC: 'craft', KeyI: 'inventory', KeyB: 'build', KeyM: 'map', KeyJ: 'journal', KeyK: 'orders', KeyQ: 'use-medkit', KeyH: 'home' };
       if (shortcuts[key]) { this.action(shortcuts[key]); return; }
       if (key === 'KeyR' && this.build) { this.action('rotate-build'); return; }
       if (this.ui.panel) return;
@@ -112,12 +130,21 @@ class QuietDistrict {
     if (!this.started) return;
     if (action === 'panel-open') { this.path = []; this.target = null; this.job = null; this.keys.clear(); this.touchMovement = { x: 0, z: 0 }; this.ui.progress(null); this.cancelFishing(); return; }
     if (action === 'panel-close') { this.keys.clear(); return; }
-    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings'].includes(action)) {
+    if (this.ui.pendingConfirm) return;
+    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders'].includes(action)) {
       this.cancelBuild(); this.cancelFishing();
       if (this.ui.panel === action) this.ui.close(); else this.ui.open(action);
       return;
     }
     if (action === 'craft-objective') { this.ui.open('craft', 'shelter'); return; }
+    if (action === 'station-route') {
+      this.ui.close(); this.target = { type: 'station', entity: { x: -19.5, z: 13 }, x: -19.5, z: 13 }; this.navigate(-19.5, 13); return;
+    }
+    if (action === 'deliver-order') {
+      const result = deliverContract(this.state, data.id);
+      this.ui.toast(result.ok ? `${result.contract.title}: награда на домашнем складе.` : result.reason, result.ok ? 'success' : 'info');
+      if (result.ok) { this.audio.collect(); this.world.playCharacterAction('cheer'); } this.changed(); return;
+    }
     if (action === 'dismiss-tutorial') { this.state.tutorial = false; document.getElementById('tutorial').hidden = true; this.save(); return; }
     if (action === 'make') { this.make(data.id); return; }
     if (action === 'move-furniture') {
@@ -139,10 +166,10 @@ class QuietDistrict {
       const n = deposit(this.state); this.ui.toast(n ? `Добыча дома: ${n} ресурсов отправлено на склад` : 'Рюкзак уже пуст.', n ? 'success' : 'info');
       if (n) this.audio.collect(); this.changed(); return;
     }
-    if (action === 'use-medkit' || action === 'use-meal') {
-      const ok = useSupply(this.state, action === 'use-medkit' ? 'medkit' : 'meal');
+    if (['use-medkit', 'use-meal', 'use-tea'].includes(action)) {
+      const ok = useSupply(this.state, action.replace('use-', ''));
       this.ui.toast(ok ? 'Теперь гораздо лучше.' : 'Сейчас нечего использовать или восстановление не требуется.', ok ? 'success' : 'info');
-      if (ok) this.audio.collect(); this.changed(); return;
+      if (ok) { this.audio.collect(); this.world.playCharacterAction('use_item'); } this.changed(); return;
     }
     if (action === 'sound') { this.state.settings.sound = !this.state.settings.sound; this.audio.toggle(this.state.settings.sound); this.changed(); return; }
     if (action === 'quality') { this.world.setQuality(this.state.settings.quality === 'high' ? 'low' : 'high'); this.changed(); return; }
@@ -153,10 +180,10 @@ class QuietDistrict {
     }
     if (action === 'import-save' && data.file) {
       if (data.file.size > 1000000) { this.ui.toast('Файл сохранения слишком большой.'); return; }
-      data.file.text().then(text => {
+      data.file.text().then(async text => {
         let next; try { next = validateSave(JSON.parse(text)); } catch { next = null; }
         if (!next) { this.ui.toast('Это не сохранение «Тихого района».'); return; }
-        if (!confirm('Заменить текущую историю выбранным сохранением?')) return;
+        if (!await this.ui.confirm('Загрузить другую историю?', 'Текущий прогресс будет заменён выбранным сохранением.', 'Загрузить')) return;
         try {
           // Stop pagehide/autosave from overwriting the imported history with the old one.
           this.started = false; localStorage.setItem(SAVE_KEY, JSON.stringify(next)); location.reload();
@@ -164,14 +191,14 @@ class QuietDistrict {
       }).catch(() => this.ui.toast('Не удалось прочитать файл.')); return;
     }
     if (action === 'reset') {
-      if (confirm('Начать заново? Текущий прогресс будет удалён. Сначала можно скачать сохранение.')) {
+      this.ui.confirm('Начать новую историю?', 'Текущий прогресс будет удалён. Если хочешь вернуться к нему позже, сначала скачай сохранение.', 'Начать заново').then(confirmed => { if (confirmed) {
         try { localStorage.removeItem(SAVE_KEY); this.started = false; location.reload(); } catch { this.ui.toast('Не удалось удалить сохранение.'); }
-      }
+      } });
       return;
     }
     if (action === 'travel' || action === 'home') {
       const target = LOCATIONS.find(l => l.id === (action === 'home' ? 'home' : data.id));
-      const destination = target.id === 'depot' ? { x: -17, z: -20 } : target.id === 'market' ? { x: 13, z: 5 } : target.id === 'pond' ? { x: 19, z: -17 } : HOME;
+      const destination = target.id === 'depot' ? { x: -17, z: -20 } : target.id === 'market' ? { x: 13, z: 5 } : target.id === 'pond' ? { x: 19, z: -17 } : target.id === 'tower' ? { x: 30, z: -31 } : HOME;
       this.ui.close(); this.target = null; this.navigate(destination.x, destination.z); return;
     }
     if (action === 'map-point') { this.ui.close(); this.target = null; this.navigate(Number(data.x), Number(data.z)); return; }
@@ -207,6 +234,8 @@ class QuietDistrict {
     if (id === 'generator') { this.ui.toast('В убежище снова горит свет. Ты сделал это.', 'success'); this.ui.region(LOCATIONS[0], true); }
     else if (id === 'bridge') this.ui.toast('Мост восстановлен. Депо теперь доступно.', 'success');
     else if (id === 'radio') { this.ui.toast('В тишине появился голос. Первая глава завершена.', 'success'); this.ui.open('journal'); }
+    else if (id === 'pump') this.ui.toast('Чистая вода снова доступна. Грядки растут быстрее.', 'success');
+    else if (id === 'solar') this.ui.toast('Солнечные панели питают производство. Дом стал самостоятельнее.', 'success');
     else this.ui.toast(`Готово: ${recipe.name}`, 'success');
     this.changed();
   }
@@ -254,9 +283,12 @@ class QuietDistrict {
     add('storage', -13.5, 17, 'Сложить добычу', 'Запасы убежища', null, 2.2);
     add('bed', -22, 17.7, 'Отдохнуть', 'Восстановить здоровье', null, 2);
     add('fish', 19.7, -17, 'Забросить удочку', s.owned.includes('rod') ? 'Рыбалка' : 'Сначала создай удочку', null, 2.8);
+    add('orders', -14.5, 12.8, 'Заказы соседей', 'Обмен материалов на награды', null, 2.2);
+    add('water', 30, -31, 'Набрать чистую воду', s.owned.includes('pump') ? 'Водоснабжение восстановлено' : 'Нужно восстановить насос', null, 2.6);
     if (s.grave) add('grave', s.grave.x, s.grave.z, 'Вернуть оставленный рюкзак', 'Твои ресурсы', s.grave);
     for (const p of s.placed) {
-      if (p.id === 'garden') add('garden', p.x, p.z, 'Грядка с травами', s.elapsed - p.harvested >= 90 ? 'Урожай готов' : `До урожая: ${Math.ceil(90 - (s.elapsed - p.harvested))} сек.`, p);
+      const info = productionInfo(s, p);
+      if (info) add('production', p.x, p.z, RECIPES.find(r => r.id === p.id).name, info.remaining ? `До готовности: ${Math.ceil(info.remaining)} сек.` : info.name, p);
       if (p.id === 'bed') add('bed', p.x, p.z, 'Отдохнуть', 'Восстановить здоровье полностью', p);
       if (p.id === 'chest') add('storage', p.x, p.z, 'Сложить добычу', 'Запасы убежища', p);
     }
@@ -270,6 +302,7 @@ class QuietDistrict {
     if (!target) { this.ui.toast('Подойди ближе к находке или рабочей станции.'); return; }
     this.path = []; this.target = null; this.world.destination.visible = false;
     if (target.type === 'station') { this.ui.open('craft'); return; }
+    if (target.type === 'orders') { this.ui.open('orders'); return; }
     if (target.type === 'storage') { this.action('deposit'); return; }
     if (target.type === 'fish') { this.startFishing(); return; }
     if (target.type === 'bed') {
@@ -277,13 +310,17 @@ class QuietDistrict {
       if (this.state.health >= max) { this.ui.toast(target.entity ? 'Ты уже хорошо отдохнул.' : 'Для полного восстановления создай удобную кровать.'); return; }
       this.job = { type: 'rest', elapsed: 0, duration: 3, x: this.state.x, z: this.state.z, max, label: 'Тишина. Можно передохнуть…' }; return;
     }
-    if (target.type === 'garden') {
-      const garden = target.entity;
-      if (this.state.elapsed - garden.harvested < 90) { this.ui.toast('Травам нужно ещё немного времени.'); return; }
-      if (capacity(this.state) - bagWeight(this.state) < RESOURCES.herbs.weight * 3) { this.ui.toast('Освободи место для урожая: 3 травы.'); return; }
-      const result = collect(this.state, { herbs: 3 });
-      if (result.received.herbs) { garden.harvested = this.state.elapsed; this.showLoot(result.received, garden.x, garden.z); this.changed(); }
-      if (result.full) this.ui.toast('Рюкзак заполнен. Сложи ресурсы в убежище.'); return;
+    if (target.type === 'production') {
+      const result = harvestProduction(this.state, target.entity);
+      if (result.ok) { this.showLoot(result.received, target.x, target.z); this.audio.collect(); this.world.playCharacterAction('pickup'); this.changed(); }
+      else this.ui.toast(result.reason); return;
+    }
+    if (target.type === 'water') {
+      if (!this.state.owned.includes('pump')) { this.ui.toast('Наладь водоснабжение через рецепт в мастерской.'); return; }
+      if (this.state.elapsed - this.state.waterCollected < 90) { this.ui.toast('Насос наполняет резервуар. Подожди немного.'); return; }
+      if (capacity(this.state) - bagWeight(this.state) < 1.5) { this.ui.toast('Освободи место для трёх бутылок воды.'); return; }
+      collect(this.state, { water: 3 }); this.state.waterCollected = this.state.elapsed;
+      this.showLoot({ water: 3 }, target.x, target.z); this.audio.water(); this.changed(); return;
     }
     if (target.type === 'grave') {
       const result = collect(this.state, this.state.grave.loot); this.showLoot(result.received, target.x, target.z);
@@ -298,6 +335,7 @@ class QuietDistrict {
     if (bagWeight(this.state) >= capacity(this.state)) { this.ui.toast('Рюкзак полон. Вернись домой и сложи добычу.'); return; }
     this.job = { type: 'harvest', node, elapsed: 0, duration: node.type === 'tree' || node.type === 'ore' ? 1.8 : 1.1, x: this.state.x, z: this.state.z, label: node.type === 'herbs' ? 'Собираем травы…' : 'Разбираем находку…' };
     this.audio.hit();
+    this.world.playCharacterAction('pickup');
   }
   finishJob() {
     const job = this.job; this.job = null; this.ui.progress(null);
@@ -333,6 +371,7 @@ class QuietDistrict {
     target.health = Math.max(0, target.health - w.damage); this.world.floatingText(`−${w.damage}`, target.x, target.z, '#edbf87');
     if (ranged) { this.world.shot(s.x, s.z, target.x, target.z); this.audio.shoot(); }
     else { this.world.impact(target.x, 1.2, target.z); this.audio.hit(); }
+    this.world.playCharacterAction(ranged ? '1h_ranged_shoot' : '1h_melee_attack_chop');
     if (!target.health) {
       target.deadAt = s.elapsed; s.droneDeaths[target.id] = s.elapsed; s.kills++;
       const result = collect(s, { metal: 2, parts: 1 }); this.showLoot(result.received, target.x, target.z);
@@ -436,6 +475,7 @@ class QuietDistrict {
     if (length < 0.08) { this.state.stamina = Math.min(100, this.state.stamina + dt * 13); return false; }
     if (this.job) { this.job = null; this.ui.progress(null); }
     const running = sprint && this.state.stamina > 2;
+    this.world.running = running;
     const speed = 3.1 * (this.state.equipment.boots === 'boots' ? 1.18 : 1) * (running ? 1.65 : 1);
     this.state.stamina = Math.min(100, Math.max(0, this.state.stamina + dt * (running ? -16 : 8)));
     const oldX = this.state.x, oldZ = this.state.z;
@@ -471,6 +511,7 @@ class QuietDistrict {
         if (Math.hypot(target.entity.x - this.state.x, target.entity.z - this.state.z) <= range) {
           this.path = []; this.world.destination.visible = false;
           if (target.type === 'node') { this.harvest(target.entity); this.target = null; }
+          else if (target.type === 'station') { this.target = null; this.ui.open('craft'); }
           else this.attack(target.entity);
         }
       }

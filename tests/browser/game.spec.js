@@ -151,14 +151,57 @@ test('Importing a save replaces the current history without pagehide overwriting
   await expect(page.locator('[data-action="start"]')).toBeEnabled({ timeout: 60000 });
   await page.locator('[data-action="start"]').click();
   await page.locator('[data-action="settings"]').click();
-  page.once('dialog', dialog => dialog.accept());
   const navigation = page.waitForEvent('framenavigated', { predicate: frame => frame === page.mainFrame(), timeout: 60000 });
   await page.locator('#import-save').setInputFiles({
     name: 'history.json', mimeType: 'application/json',
     buffer: Buffer.from(JSON.stringify({ version: 1, stash: { wood: 123 }, bag: {}, owned: ['generator'], tutorial: false, settings: { sound: false, quality: 'low' } })),
   });
+  await expect(page.locator('#confirm-overlay')).toContainText('Загрузить другую историю');
+  await page.locator('[data-action="confirm-result"][data-result="yes"]').click();
   await navigation;
   await expect(page.locator('[data-action="start"]')).toBeEnabled({ timeout: 60000 });
   await page.waitForFunction(() => window.__quietDistrict?.state?.stash.wood === 123, undefined, { timeout: 60000 });
   expect(await page.evaluate(() => window.__quietDistrict.state.owned)).toContain('generator');
+});
+
+test('HUD preserves controls; recipe search and filters explain available crafting', async ({ page }) => {
+  await start(page, { stash: { wood: 20, metal: 20, cloth: 20, wire: 5, parts: 3 } });
+  await page.evaluate(() => { window.__questButton = document.querySelector('[data-action="craft-objective"]'); });
+  await page.waitForTimeout(800);
+  expect(await page.evaluate(() => window.__questButton === document.querySelector('[data-action="craft-objective"]'))).toBe(true);
+  expect(await page.evaluate(() => Object.keys(window.__quietDistrict.world.actions))).toContain('walking_a');
+  expect(await page.evaluate(() => window.__quietDistrict.world.weaponRoot.parent.name)).toBe('handslotr');
+  await page.keyboard.press('KeyC');
+  await page.locator('#recipe-search').fill('Удочка');
+  await expect(page.locator('.recipe-card')).toHaveCount(2);
+  await page.locator('[data-action="available-filter"]').click();
+  await expect(page.locator('.recipe-card')).toHaveCount(1);
+  await page.locator('[data-action="make"][data-id="rod"]').click();
+  expect(await page.evaluate(() => window.__quietDistrict.state.owned)).toContain('rod');
+  await page.keyboard.press('Escape'); await expect(page.locator('#panel')).toBeHidden();
+});
+
+test('Neighbour orders, water restoration and production are playable', async ({ page }) => {
+  // This scenario includes three separate UI workflows under software WebGL.
+  test.setTimeout(150000);
+  await start(page, { owned: ['generator', 'bridge', 'radio'], stash: { wood: 60, metal: 80, cloth: 20, parts: 40, wire: 30 }, elapsed: 130,
+    placed: [{ id: 'recycler', x: -18, z: 14, rotation: 0, harvested: 0 }] });
+  await page.locator('[data-action="orders"]').click();
+  await expect(page.locator('#panel')).toContainText('Заказы соседей');
+  await page.locator('[data-action="deliver-order"][data-id="timber"]').click();
+  expect(await page.evaluate(() => window.__quietDistrict.state.completedOrders)).toBe(1);
+  await expect(page.locator('[data-action="deliver-order"][data-id="timber"]')).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('KeyE');
+  expect(await page.evaluate(() => window.__quietDistrict.state.bag.parts)).toBe(2);
+  await page.keyboard.press('KeyC'); await page.locator('[data-category="shelter"]').click();
+  await page.locator('[data-action="make"][data-id="pump"]').click();
+  await expect(page.locator('#quest-card')).toContainText('Дом становится самостоятельным');
+  expect(await page.evaluate(() => window.__quietDistrict.world.towerLight.intensity)).toBeGreaterThan(0);
+  await page.locator('[data-action="make"][data-id="solar"]').click();
+  expect(await page.evaluate(() => window.__quietDistrict.world.solarRoof.visible)).toBe(true);
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => window.__quietDistrict.world.move(30, -31));
+  await page.keyboard.press('KeyE');
+  expect(await page.evaluate(() => window.__quietDistrict.state.bag.water)).toBe(3);
 });

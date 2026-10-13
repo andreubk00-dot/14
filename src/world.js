@@ -6,7 +6,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
-import { HOME } from './game.js';
+import { HOME, productionInfo } from './game.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 
@@ -25,6 +25,7 @@ export const LOCATIONS = [
   { id: 'market', name: 'Старый квартал', subtitle: 'Ткань · дерево · провод', x: 12, z: 4, color: '#a4b6ae' },
   { id: 'depot', name: 'Заброшенное депо', subtitle: 'Металл · детали · опасность', x: -18, z: -22, color: '#b8a186' },
   { id: 'pond', name: 'Затопленный причал', subtitle: 'Рыбалка · редкие находки', x: 20, z: -20, color: '#7ebbb3' },
+  { id: 'tower', name: 'Водонапорная башня', subtitle: 'Вода · технические запасы', x: 31, z: -34, color: '#8bbfc7' },
 ];
 
 export class World {
@@ -71,12 +72,12 @@ export class World {
   batchStaticGeometry() {
     this.scene.updateMatrixWorld(true);
     const batches = new Map();
-    const excluded = new Set([this.genIndicator, this.water, this.destination, this.selectionRing,
+    const excluded = new Set([this.genIndicator, this.towerIndicator, this.water, this.destination, this.selectionRing,
       this.homeLamp.glow, this.homeLamp.spill, ...this.lights.flatMap(l => [l.glow, l.spill])]);
     this.scene.traverse(mesh => {
       if (!mesh.isMesh || excluded.has(mesh) || this.pickables.includes(mesh) || mesh.material.isShaderMaterial || mesh.material.transparent) return;
       let parent = mesh;
-      while (parent) { if (parent === this.bridgeGroup) return; parent = parent.parent; }
+      while (parent) { if (parent === this.bridgeGroup || parent === this.solarRoof) return; parent = parent.parent; }
       const key = mesh.material.uuid;
       if (!batches.has(key)) batches.set(key, { material: mesh.material, meshes: [] });
       batches.get(key).meshes.push(mesh);
@@ -168,7 +169,7 @@ export class World {
     this.reflection.material.fragmentShader = this.reflection.material.fragmentShader.replace('varying vec4 vUv;', 'varying vec4 vUv; varying vec2 vLocal; uniform float time;').replace('vec4 base = texture2DProj( tDiffuse, vUv );', 'vec4 uv = vUv; uv.x += sin(vLocal.y * 14.0 + time * 0.6) * 0.0015 * uv.w; vec4 base = texture2DProj(tDiffuse, uv);').replace('gl_FragColor = vec4( blendOverlay( base.rgb, color ), 1.0 );', 'vec3 water = mix(vec3(0.08, 0.13, 0.12), base.rgb, 0.55); float edge = 1.0 - smoothstep(0.65, 1.0, length(vLocal)); gl_FragColor = vec4(water, edge * 0.8);');
     this.reflection.material.transparent = true; this.reflection.material.depthWrite = false;
     this.scene.add(this.reflection);
-    this.buildHome(); this.buildMarket(); this.buildDepot(); this.buildPond();
+    this.buildHome(); this.buildMarket(); this.buildDepot(); this.buildPond(); this.buildTower();
     // Treelines frame the district, leaving the traversable paths readable.
     for (let i = 0; i < 130; i++) {
       const x = rng() * 87 - 43.5, z = rng() * 87 - 43.5;
@@ -288,6 +289,13 @@ export class World {
     this.radio = new THREE.Group(); this.radio.position.set(-19, 1.15, 11.4); this.scene.add(this.radio);
     this.box(0, 0, 0, 0.75, 0.4, 0.35, '#63796b', this.radio); this.cylinder(0.2, 0.5, 0, 0.018, 0.8, '#a4ad92', this.radio);
     this.stationIcon = this.marker(-21, 2.4, 13, '#e5bd7b');
+    this.box(-14.5, 1.6, 12.2, 1.5, 1.4, 0.15, '#9b8763');
+    for (const xx of [-14.9, -14.2]) this.box(xx, 1.65, 12.3, 0.45, 0.65, 0.02, '#d3c8a3').rotation.z = xx < -14.5 ? 0.12 : -0.08;
+    this.solarRoof = new THREE.Group(); this.scene.add(this.solarRoof);
+    for (let i = 0; i < 3; i++) {
+      this.box(-22 + i * 3.3, 3.99, 11.5, 2.5, 0.12, 1.8, '#344b59', this.solarRoof);
+      for (let j = 0; j < 4; j++) this.box(-23 + i * 3.3 + j * 0.65, 4.057, 11.5, 0.025, 0.012, 1.7, '#879990', this.solarRoof);
+    }
   }
   buildMarket() {
     this.building(13, 4, 10, 8, 5, '#8b8974', 'ПРОДУКТЫ');
@@ -356,6 +364,20 @@ export class World {
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTexture(), color: c, transparent: true, opacity: 0.6, depthWrite: false }));
     sprite.position.set(x, y, z); sprite.scale.set(1.5, 1.5, 1); this.scene.add(sprite); return sprite;
   }
+  buildTower() {
+    const x = 31, z = -35;
+    this.box(x, 0.1, z, 6, 0.2, 6, '#7f897b');
+    for (const xx of [-1.6, 1.6]) for (const zz of [-1.6, 1.6]) this.box(x + xx, 3.1, z + zz, 0.2, 6.2, 0.2, '#667e77');
+    this.cylinder(x, 6.7, z, 2.4, 2.7, '#84988b', this.scene, 16);
+    this.cylinder(x, 8.2, z, 2.5, 0.18, '#596e62', this.scene, 16);
+    for (let y = 0.7; y < 6.2; y += 0.4) this.box(x + 1.7, y, z + 1.9, 0.6, 0.05, 0.05, '#a8ae91');
+    this.cylinder(x - 1.7, 1.3, z + 2.3, 0.12, 2.6, '#789289');
+    this.box(30, 0.7, -31, 1.2, 1.4, 0.8, '#617b6f');
+    this.towerIndicator = this.box(30, 1.1, -30.57, 0.22, 0.1, 0.04, '#8a6b53', this.scene, new THREE.MeshStandardMaterial({ color: '#a58664', emissive: '#a58664', emissiveIntensity: 0.3 }));
+    this.towerLight = new THREE.PointLight('#8bcbc7', 0, 7, 1.5); this.towerLight.position.set(30, 1.7, -31); this.scene.add(this.towerLight);
+    this.label('ВОДОНАПОРНАЯ БАШНЯ', 27, 2.2, -30, 4); this.box(27, 1, -30.1, 0.1, 2, 0.1, '#7c876d');
+    this.collider(x, z, 4.3, 4.3);
+  }
   createNodes() {
     const definitions = [
       ['scrap', 'Куча металлолома', -7, 17, { metal: 4, parts: 1 }],
@@ -384,6 +406,9 @@ export class World {
       ['herbs', 'Прибрежные травы', 11, -16, { herbs: 4 }],
       ['wood', 'Выброшенные доски', 10, -10, { wood: 5 }],
       ['crate', 'Рыбацкий ящик', 17, -13, { cloth: 3, wire: 2 }],
+      ['electronics', 'Щит у водонапорной башни', 27, -33, { wire: 4, parts: 3 }],
+      ['crate', 'Запасы насосной станции', 35, -29, { metal: 6, parts: 4 }, 'cutter'],
+      ['herbs', 'Травы у башни', 34, -24, { herbs: 4 }],
     ];
     definitions.forEach(([type, name, x, z, loot, requires], i) => {
       const group = new THREE.Group(); group.position.set(x, 0.16, z); this.scene.add(group);
@@ -456,26 +481,35 @@ export class World {
     const names = ['character', 'grass', 'grass-small', 'blaster', 'blaster-repeater', 'enemy-flying'];
     let completed = 0;
     await Promise.all(names.map(async name => {
-      const folder = ['character', 'grass', 'grass-small'].includes(name) ? 'nature/' : '';
+      const folder = name === 'character' ? 'characters/' : ['grass', 'grass-small'].includes(name) ? 'nature/' : '';
       const source = globalThis.__quietAssets?.[name] || `/assets/models/${folder}${name}.glb`;
       const asset = await loader.loadAsync(source);
       this.assets[name] = asset; onProgress?.(++completed / names.length);
     }));
     this.fallback.visible = false;
     this.character = cloneSkeleton(this.assets.character.scene);
+    const extras = []; this.character.traverse(object => { if (/^(Knife|Knife_Offhand|Throwable|1H_Crossbow|2H_Crossbow)$/.test(object.name)) extras.push(object); });
+    for (const extra of extras) extra.parent?.remove(extra);
     const bounds = new THREE.Box3().setFromObject(this.character), size = bounds.getSize(new THREE.Vector3());
-    const scale = 1.65 / size.y; this.character.scale.setScalar(scale); this.character.position.y = -bounds.min.y * scale;
+    const scale = 1.85 / size.y; this.character.scale.setScalar(scale); this.character.position.y = -bounds.min.y * scale;
     this.character.traverse(mesh => { if (mesh.isMesh) { mesh.castShadow = true; mesh.receiveShadow = true; } });
     this.playerVisual.add(this.character);
     this.limbs = ['leg-left', 'leg-right', 'arm-left', 'arm-right'].map(name => this.character.getObjectByName(name)).filter(Boolean);
     if (this.assets.character.animations.length) {
       this.playerMixer = new THREE.AnimationMixer(this.character); this.mixers.push(this.playerMixer);
       this.actions = {};
-      for (const clip of this.assets.character.animations) this.actions[clip.name.toLowerCase()] = this.playerMixer.clipAction(clip);
-      this.idleAction = Object.entries(this.actions).find(([name]) => /idle/.test(name))?.[1];
-      this.walkAction = Object.entries(this.actions).find(([name]) => /walk|run/.test(name))?.[1];
+      for (const original of this.assets.character.animations) {
+        const clip = original.clone(); clip.tracks = clip.tracks.filter(track => !/^(Knife|Knife_Offhand|Throwable|1H_Crossbow|2H_Crossbow)\./.test(track.name));
+        this.actions[clip.name.toLowerCase()] = this.playerMixer.clipAction(clip);
+      }
+      this.idleAction = this.actions.idle;
+      this.walkAction = this.actions.walking_a || this.actions.running_a;
+      this.runAction = this.actions.running_a;
       this.idleAction?.play(); this.walkAction?.play(); this.walkAction?.setEffectiveWeight(0);
+      this.runAction?.play(); this.runAction?.setEffectiveWeight(0);
     }
+    const hand = this.character.getObjectByName('handslotr');
+    if (hand) { hand.add(this.weaponRoot); this.weaponRoot.position.set(0, 0, 0); }
     for (const enemy of this.enemies) {
       enemy.group.children.slice().forEach(child => { if (child.isMesh) { const index = this.pickables.indexOf(child); if (index >= 0) this.pickables.splice(index, 1); } enemy.group.remove(child); });
       const model = this.assets['enemy-flying'].scene.clone();
@@ -509,7 +543,13 @@ export class World {
       const model = this.assets[id === 'pistol' ? 'blaster' : 'blaster-repeater'].scene.clone();
       const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3()); model.scale.setScalar(0.8 / Math.max(size.x, size.y, size.z)); this.weaponRoot.add(model);
     } else { const pipe = this.cylinder(0, 0, -0.3, id === 'spear' ? 0.04 : 0.06, id === 'spear' ? 1.8 : 0.8, '#b2b8a0', this.weaponRoot, 6); pipe.rotation.x = 0.7; }
-    this.playerLight.intensity = this.state.owned.includes('lantern') ? 11 : 0;
+    this.playerLight.intensity = this.state.owned.includes('lantern') ? 3.5 : 0;
+  }
+  playCharacterAction(name) {
+    const action = this.actions?.[name]; if (!action || action === this.idleAction || action === this.walkAction) return;
+    this.oneShot?.action.stop();
+    action.reset().setLoop(THREE.LoopOnce, 1); action.clampWhenFinished = true; action.setEffectiveWeight(1).play();
+    this.oneShot = { action, remaining: Math.min(action.getClip().duration, 1.8) };
   }
   applyProgress() {
     const powered = this.state.owned.includes('generator');
@@ -518,6 +558,9 @@ export class World {
     this.genIndicator.material.color.set(powered ? '#a9cc83' : '#b1664d'); this.genIndicator.material.emissive.set(powered ? '#a9cc83' : '#b1664d');
     this.bridgeGroup.visible = this.state.owned.includes('bridge');
     this.bridgeCollider.disabled = this.bridgeGroup.visible;
+    this.solarRoof.visible = this.state.owned.includes('solar');
+    const water = this.state.owned.includes('pump'); this.towerLight.intensity = water ? 7 : 0;
+    this.towerIndicator.material.emissive.set(water ? '#8ccac2' : '#a58664'); this.towerIndicator.material.emissiveIntensity = water ? 2.5 : 0.3;
     this.syncNodes();
   }
   syncNodes() {
@@ -610,6 +653,14 @@ export class World {
       this.box(0.4, 0.9, -0.15, 0.45, 0.45, 0.2, '#b7ac89', group);
     } else if (id === 'planter') { this.cylinder(0, 0.3, 0, 0.4, 0.6, '#ad8867', group); for (let i = 0; i < 5; i++) this.bush(Math.cos(i) * 0.25, Math.sin(i) * 0.25, 0.43, group).position.y = 0.7; }
     else if (id === 'rug') this.box(0, 0.015, 0, 2.2, 0.035, 1.6, '#aa825c', group);
+    else if (id === 'purifier') {
+      this.cylinder(-0.4, 0.7, 0, 0.4, 1.4, '#617e76', group); this.cylinder(0.5, 0.5, 0, 0.35, 1, '#8b9f8b', group);
+      this.box(0, 1.15, 0, 1, 0.12, 0.12, '#a0b9aa', group); this.box(-0.4, 0.75, 0.42, 0.2, 0.65, 0.03, '#77aaa9', group);
+    } else if (id === 'recycler') {
+      this.box(0, 0.6, 0, 1.6, 1.2, 1.2, '#667d6b', group); this.box(0, 1.3, 0, 1.2, 0.2, 1, '#9a9c7a', group);
+      this.cylinder(0.4, 0.65, 0.63, 0.3, 0.1, '#b8b49a', group, 10).rotation.x = Math.PI / 2;
+      for (let i = 0; i < 3; i++) this.box(-0.4, 0.4 + i * 0.2, 0.62, 0.35, 0.055, 0.04, '#384f45', group);
+    }
     if (ghost) group.traverse(mesh => { if (mesh.isMesh) { mesh.material = mesh.material.clone(); mesh.material.transparent = true; mesh.material.opacity = 0.5; mesh.castShadow = false; } });
     return group;
   }
@@ -645,7 +696,13 @@ export class World {
     }
     this.camera.position.copy(this.cameraCenter).add(new THREE.Vector3(27, 33, 31)); this.camera.lookAt(this.cameraCenter);
     for (const mixer of this.mixers) mixer.update(dt);
-    if (this.walkAction) { this.walkAction.setEffectiveWeight(moving ? 1 : 0); this.idleAction?.setEffectiveWeight(moving ? 0 : 1); }
+    if (this.oneShot) { this.oneShot.remaining -= dt; if (this.oneShot.remaining <= 0) { this.oneShot.action.stop(); this.oneShot = null; } }
+    if (this.walkAction) {
+      const busy = !!this.oneShot, running = moving && this.running;
+      this.walkAction.setEffectiveWeight(moving && !running ? 1 : 0); this.runAction?.setEffectiveWeight(running ? 1 : 0);
+      this.idleAction?.setEffectiveWeight(!moving && !busy ? 1 : 0);
+      if (this.oneShot) this.oneShot.action.setEffectiveWeight(moving ? 0.5 : 1);
+    }
     if (!this.walkAction && this.character) this.character.position.y = moving ? Math.sin(this.time * 12) * 0.07 : Math.sin(this.time * 2) * 0.015;
     if (!this.walkAction) for (let i = 0; i < (this.limbs?.length || 0); i++) {
       const target = moving ? Math.sin(this.time * 10 + (i % 2) * Math.PI) * (i < 2 ? 0.4 : -0.25) : 0;
@@ -660,7 +717,7 @@ export class World {
     for (const enemy of this.enemies) { enemy.group.position.set(enemy.x, 1.2 + Math.sin(this.time * 2 + enemy.seed) * 0.13, enemy.z); enemy.group.visible = enemy.health > 0; }
     this.stationIcon.material.opacity = 0.4 + Math.sin(this.time * 2) * 0.14;
     for (const { item, group } of this.placedGroups) if (item.id === 'garden') {
-      const growth = 0.4 + Math.min(1, Math.max(0, (this.state.elapsed - item.harvested) / 90)) * 0.6;
+      const growth = 0.4 + Math.min(1, Math.max(0, (this.state.elapsed - item.harvested) / productionInfo(this.state, item).interval)) * 0.6;
       group.traverse(mesh => { if (mesh.userData.gardenPlant) mesh.scale.set(1.4 * growth, 0.8 * growth, 1.1 * growth); });
     }
     this.fishingMarker.material.opacity = 0.45 + Math.sin(this.time * 1.5) * 0.15;

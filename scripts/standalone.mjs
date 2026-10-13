@@ -1,6 +1,7 @@
 import { readFile, writeFile, readdir, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { zipSync, strToU8 } from 'three/addons/libs/fflate.module.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const files = await readdir(resolve(root, 'dist/assets'));
@@ -30,7 +31,7 @@ async function embedModel(path) {
 
 const assets = {};
 for (const name of ['character', 'grass', 'grass-small', 'blaster', 'blaster-repeater', 'enemy-flying']) {
-  const folder = ['character', 'grass', 'grass-small'].includes(name) ? 'nature/' : '';
+  const folder = name === 'character' ? 'characters/' : ['grass', 'grass-small'].includes(name) ? 'nature/' : '';
   assets[name] = await embedModel(resolve(root, `public/assets/models/${folder}${name}.glb`));
 }
 const script = (await readFile(resolve(root, 'dist/assets', jsFiles[0]), 'utf8')).replace(/<\/script/gi, '<\\/script');
@@ -38,7 +39,12 @@ const css = (await Promise.all(cssFiles.map(name => readFile(resolve(root, 'dist
 const favicon = await readFile(resolve(root, 'public/favicon.svg'), 'utf8');
 const credits = await readFile(resolve(root, 'public/assets/CREDITS.md'), 'utf8');
 const license = await readFile(resolve(root, 'public/assets/KENNEY-MIT-LICENSE.txt'), 'utf8');
-const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><meta name="theme-color" content="#101b1b"><title>Тихий район</title><link rel="icon" href="data:image/svg+xml;base64,${Buffer.from(favicon).toString('base64')}"><style>${css}</style></head><body><div id="app"></div><script>globalThis.__quietAssets=${JSON.stringify(assets)};</script><script type="module">${script}</script><!--\n${credits}\n${license}\n--></body></html>`;
+const kaykitLicense = await readFile(resolve(root, 'public/assets/KAYKIT-LICENSE.txt'), 'utf8');
+const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><meta name="theme-color" content="#101b1b"><title>Тихий район</title><link rel="icon" href="data:image/svg+xml;base64,${Buffer.from(favicon).toString('base64')}"><style>${css}</style></head><body><div id="app"></div><script>globalThis.__quietAssets=${JSON.stringify(assets)};</script><script type="module">${script}</script><!--\n${credits}\n${license}\n${kaykitLicense}\n--></body></html>`;
 await mkdir(resolve(root, 'releases'), { recursive: true });
 await writeFile(resolve(root, 'releases/quiet-district.html'), html);
+const version = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')).version;
+const archive = zipSync({ 'Тихий район.html': strToU8(html) }, { level: 6 });
+await writeFile(resolve(root, 'releases/quiet-district-one-file.zip'), archive);
+await writeFile(resolve(root, `releases/quiet-district-v${version}-one-file.zip`), archive);
 console.log(`Single-file game created: releases/quiet-district.html (${Buffer.byteLength(html)} bytes). No server or dependencies required.`);

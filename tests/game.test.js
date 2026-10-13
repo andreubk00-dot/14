@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { freshState, validateSave, RECIPES, craft, craftStatus, collect, deposit, bagWeight, capacity, place, takeDamage, respawn, catchFish, useSupply, objective } from '../src/game.js';
+import { freshState, validateSave, RECIPES, craft, craftStatus, collect, deposit, bagWeight, capacity, place, takeDamage, respawn, catchFish, useSupply, objective, CONTRACTS, deliverContract, contractStatus, productionInfo, harvestProduction } from '../src/game.js';
 
 test('Crafting deducts combined stash and bag materials exactly once', () => {
   const s = freshState(); s.stash = { wood: 2, metal: 3 }; s.bag = { wood: 3, metal: 1 };
@@ -63,7 +63,41 @@ test('Recipes complete the chapter in order and unlock equipment', () => {
   craft(s, 'generator'); assert.equal(objective(s).recipe, 'bridge');
   craft(s, 'bridge'); assert.equal(objective(s).recipe, 'radio');
   assert.equal(craft(s, 'carbine').ok, true); assert.equal(s.equipment.weapon, 'carbine');
-  craft(s, 'radio'); assert.equal(s.chapterComplete, true); assert.equal(objective(s).recipe, undefined);
+  craft(s, 'radio'); assert.equal(s.chapterComplete, true); assert.equal(objective(s).recipe, 'pump');
+  craft(s, 'pump'); assert.equal(objective(s).recipe, 'solar');
+  craft(s, 'solar'); assert.equal(objective(s).recipe, undefined);
+});
+test('Orders exchange materials atomically and enforce cooldown and home delivery', () => {
+  const s = freshState(); s.stash.wood = 16;
+  const result = deliverContract(s, 'timber'); assert.equal(result.ok, true);
+  assert.equal(s.stash.wood, 8); assert.equal(s.stash.wire, 1); assert.equal(s.completedOrders, 1);
+  const before = structuredClone(s); assert.equal(deliverContract(s, 'timber').ok, false); assert.deepEqual(s, before);
+  s.elapsed = 121; assert.equal(contractStatus(s, CONTRACTS[0]).ok, true);
+  s.x = 10; assert.equal(deliverContract(s, 'timber').ok, false); assert.equal(s.stash.wood, 8);
+  s.x = -16; assert.equal(deliverContract(s, 'timber').ok, true); assert.equal(s.completedOrders, 2);
+});
+test('Production preserves inputs and cycle when the bag is full', () => {
+  const s = freshState(), machine = { id: 'recycler', harvested: 0 };
+  s.elapsed = 130; s.stash.metal = 3; s.bag.wood = 26;
+  const before = structuredClone(s);
+  assert.equal(harvestProduction(s, machine).ok, false); assert.deepEqual(s, before); assert.equal(machine.harvested, 0);
+  s.bag = {}; assert.equal(harvestProduction(s, machine).ok, true);
+  assert.equal(s.stash.metal, 0); assert.equal(s.bag.parts, 2); assert.equal(s.bag.wire, 1);
+  assert.equal(harvestProduction(s, machine).ok, false);
+});
+test('Water and solar upgrades accelerate production without resetting saved progress', () => {
+  const s = freshState(), garden = { id: 'garden', harvested: 0 };
+  s.elapsed = 60; assert.equal(productionInfo(s, garden).remaining, 30);
+  s.owned.push('pump'); assert.equal(productionInfo(s, garden).remaining, 7.5);
+  s.owned.push('solar'); assert.equal(productionInfo(s, garden).remaining, 0);
+  assert.equal(harvestProduction(s, garden).ok, true); assert.equal(s.bag.herbs, 3);
+});
+test('Legacy saves gain new fields and new progress round-trips', () => {
+  const s = freshState(); delete s.contracts; delete s.completedOrders; delete s.teas;
+  const legacy = validateSave(s); assert.deepEqual(legacy.contracts, {}); assert.equal(legacy.teas, 0);
+  legacy.owned.push('radio', 'pump', 'solar'); legacy.bag.water = 4; legacy.elapsed = 300; legacy.contracts.water = 200; legacy.completedOrders = 7;
+  const restored = validateSave(JSON.parse(JSON.stringify(legacy)));
+  assert.equal(restored.bag.water, 4); assert.equal(restored.contracts.water, 200); assert.equal(restored.completedOrders, 7); assert.ok(restored.owned.includes('solar'));
 });
 test('Save validation rejects incompatible saves and sanitizes unknown data', () => {
   assert.equal(validateSave({ version: 99 }), null);

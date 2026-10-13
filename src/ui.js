@@ -1,33 +1,17 @@
-import { RESOURCES, RECIPES, bagWeight, capacity, total, craftStatus, objective, weapon } from './game.js';
+import { RESOURCES, RECIPES, CONTRACTS, bagWeight, capacity, total, craftStatus, contractStatus, productionInfo, objective, weapon } from './game.js';
 import { LOCATIONS } from './world.js';
 
-const paths = {
-  home: '<path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-7h6v7"/>',
-  craft: '<path d="m14 4 6 6M3 21l10-10M12 3l9 9M15 7l-3 3"/><path d="m3 3 5 5-2 2-5-5zM10 12l9 9 2-2-9-9"/>',
-  bag: '<rect x="5" y="6" width="14" height="15" rx="3"/><path d="M9 6V3h6v3M5 13h14M9 17h6"/>',
-  build: '<path d="M3 21V9l9-6 9 6v12zM7 21v-8h10v8M3 9h18"/>',
-  map: '<path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2zM9 3v16M15 5v16"/>',
-  book: '<path d="M4 3h13a3 3 0 0 1 3 3v15H7a3 3 0 0 1-3-3zM4 17a3 3 0 0 1 3-3h13M8 7h8M8 10h5"/>',
-  sound: '<path d="m3 9 5 0 5-5v16l-5-5H3zM17 8a6 6 0 0 1 0 8M19 5a10 10 0 0 1 0 14"/>',
-  mute: '<path d="m3 9 5 0 5-5v16l-5-5H3zM17 9l5 6M22 9l-5 6"/>',
-  settings: '<path d="M4 7h16M4 17h16"/><circle cx="8" cy="7" r="3"/><circle cx="16" cy="17" r="3"/>',
-  close: '<path d="m6 6 12 12M18 6 6 18"/>',
-  arrow: '<path d="M4 12h16m-6-6 6 6-6 6"/>',
-  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5"/>',
-  leaf: '<path d="M20 3C7 2 1 9 6 16s17 3 14-13ZM4 21 15 10"/>',
-  heart: '<path d="M12 21 3 12C-2 5 7 1 12 7c5-6 14-2 9 5z"/>',
-  bolt: '<path d="m13 2-9 12h7l-1 8 10-12h-7z"/>',
-  shield: '<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z"/>',
-  fish: '<path d="M4 12c4-9 13-9 17 0-4 9-13 9-17 0Zm0 0L1 7v10z"/><circle cx="16" cy="11" r=".6"/>',
-};
-export const icon = (name, size = 20) => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.leaf}</svg>`;
-const costHTML = (state, cost) => Object.entries(cost).map(([id, n]) => `<span class="cost ${total(state, id) < n ? 'missing' : ''}"><span style="color:${RESOURCES[id].color}">${RESOURCES[id].icon}</span> ${total(state, id)}<small>/${n}</small></span>`).join('');
+import { icon, resourceIcon, recipeIcon, categoryIcon } from './icons.js';
+export { icon } from './icons.js';
+const costHTML = (state, cost) => Object.entries(cost).map(([id, n]) => `<span class="cost ${total(state, id) < n ? 'missing' : 'enough'}" title="${RESOURCES[id].name}: есть ${total(state, id)}, нужно ${n}"><span style="color:${RESOURCES[id].color}">${resourceIcon(id, 17)}</span><b>${total(state, id)}</b><small>/${n}</small></span>`).join('');
+const rewardHTML = reward => Object.entries(reward).map(([id, n]) => `<span class="cost reward" title="${RESOURCES[id].name}"><span style="color:${RESOURCES[id].color}">${resourceIcon(id, 16)}</span>+${n}</span>`).join('');
 const categories = { tools: 'Инструменты', weapons: 'Оружие', gear: 'Экипировка', supplies: 'Расходники', shelter: 'Убежище' };
 const escape = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 export class UI {
   constructor(root, state, actions) {
     this.state = state; this.actions = actions; this.panel = null; this.category = 'tools'; this.root = root;
+    this.cache = new Map(); this.search = ''; this.onlyAvailable = false; this.returnFocus = null; this.inventoryView = 'bag';
     root.innerHTML = `
       <div id="world" aria-label="Игровой район"></div>
       <div class="cinematic-overlay"></div>
@@ -41,17 +25,18 @@ export class UI {
         <header class="topbar"><div class="brand">${icon('home', 24)}<span>ТИХИЙ РАЙОН<small id="location-name">РЕМОНТНАЯ СТАНЦИЯ</small></span></div><div class="weather">${icon('sun', 18)}<span id="game-time">17:42</span><span class="separator"></span><span>ДЕНЬ <b id="game-day">01</b></span><span class="weather-text">Лёгкий туман</span></div><div class="header-actions"><span class="saved-indicator" id="save-indicator"><i></i>Сохранено</span><button class="icon-button" data-action="sound" aria-label="Включить или выключить звук" id="sound-button">${icon('sound')}</button><button class="icon-button" data-action="settings" aria-label="Настройки">${icon('settings')}</button></div></header>
         <aside class="quest-card glass" id="quest-card"></aside>
         <aside class="resource-peek glass" id="resource-peek"></aside>
+        <div class="quick-actions glass"><button data-action="home" title="Маршрут домой · H">${icon('home', 18)}<span>Домой</span></button><button data-action="orders" title="Заказы соседей · K">${icon('board', 18)}<span>Заказы</span></button><button data-action="use-medkit" id="quick-medkit" title="Использовать аптечку · Q">${icon('medkit', 18)}<span id="quick-medkit-count">1</span></button></div>
         <div id="region-banner" class="region-banner"><span id="region-subtitle"></span><h2 id="region-title"></h2></div>
         <div id="floating-text"></div>
         <div id="context" class="context" hidden></div>
         <div id="task-progress" class="task-progress" hidden><span></span><div><i></i></div></div>
         <div id="tutorial" class="tutorial glass" hidden><button data-action="dismiss-tutorial" aria-label="Закрыть подсказку">${icon('close', 14)}</button><strong>Твой первый вечер</strong><p>Собирай находки в районе и возвращай их домой. На станции можно создавать снаряжение и восстанавливать убежище.</p><span><kbd>W A S D</kbd> движение <i>·</i> <kbd>E</kbd> действие<br>Или нажми на землю, чтобы идти.</span></div>
         <div class="vitals glass" id="vitals"></div>
-        <nav class="toolbar glass" aria-label="Меню игры"><button data-action="craft" title="Станция рецептов · C">${icon('craft')}<span>Станция</span><kbd>C</kbd></button><button data-action="inventory" title="Рюкзак · I">${icon('bag')}<span>Рюкзак</span><kbd>I</kbd></button><button data-action="build" title="Обустройство · B">${icon('build')}<span>Обустройство</span><kbd>B</kbd></button><span class="toolbar-divider"></span><button data-action="map" title="Карта · M">${icon('map')}<span>Район</span><kbd>M</kbd></button><button data-action="journal" title="Дневник · J">${icon('book')}<span>Дневник</span><kbd>J</kbd></button></nav>
-        <aside class="minimap glass"><div><span><i></i> ТВОЙ РАЙОН</span><button data-action="map" aria-label="Открыть карту">↗</button></div><canvas id="minimap" width="190" height="132"></canvas><small id="map-caption">Там, где ты оставишь свет</small></aside>
+        <nav class="toolbar glass" aria-label="Меню игры"><button data-action="craft" title="Станция рецептов · C">${icon('craft')}<span>Станция</span><kbd>C</kbd></button><button data-action="inventory" title="Рюкзак · I">${icon('bag')}<span>Рюкзак</span><small class="toolbar-cargo" id="toolbar-bag-count">0/26</small><kbd>I</kbd></button><button data-action="build" title="Обустройство · B">${icon('build')}<span>Обустройство</span><kbd>B</kbd></button><span class="toolbar-divider"></span><button data-action="map" title="Карта · M">${icon('map')}<span>Район</span><kbd>M</kbd></button><button data-action="journal" title="Дневник · J">${icon('book')}<span>Дневник</span><kbd>J</kbd></button></nav>
+        <aside class="minimap glass"><div><span><i></i> ТВОЙ РАЙОН</span><button data-action="map" aria-label="Открыть карту">${icon('expand', 14)}</button></div><canvas id="minimap" width="190" height="132"></canvas><small id="map-caption">Там, где ты оставишь свет</small></aside>
         <div class="control-hint"><span><kbd>SHIFT</kbd> бег</span><span><kbd>ПРОБЕЛ</kbd> атака</span><span><kbd>Q</kbd> аптечка</span></div>
         <div id="build-hint" class="build-hint glass" hidden></div>
-        <div class="mobile-controls"><div id="joystick" class="joystick"><span></span></div><div class="mobile-actions"><button data-action="attack" aria-label="Атаковать">⚔</button><button data-action="interact" aria-label="Взаимодействовать">E</button></div></div>
+        <div class="mobile-controls"><div id="joystick" class="joystick"><span></span></div><div class="mobile-actions"><button data-action="attack" aria-label="Атаковать">${icon('sword', 22)}</button><button data-action="interact" aria-label="Взаимодействовать">E</button></div></div>
       </div>
       <div id="panel-backdrop" class="panel-backdrop" hidden></div><section id="panel" class="panel" role="dialog" aria-modal="true" hidden></section>
       <div id="fish-ui" class="fish-ui glass" hidden></div>
@@ -64,11 +49,24 @@ export class UI {
       event.preventDefault();
       const action = button.dataset.action;
       if (action === 'close') this.close();
-      else if (action === 'category') { this.category = button.dataset.category; this.renderPanel(); }
+      else if (action === 'category') { this.category = button.dataset.category; this.renderPanel(true); }
+      else if (action === 'inventory-tab') { this.inventoryView = button.dataset.view; this.renderPanel(true); }
+      else if (action === 'available-filter') { this.onlyAvailable = !this.onlyAvailable; this.renderPanel(true); }
+      else if (action === 'toggle-quest') { document.getElementById('quest-card').classList.toggle('collapsed'); button.setAttribute('aria-expanded', String(!document.getElementById('quest-card').classList.contains('collapsed'))); }
+      else if (action === 'confirm-result') this.resolveConfirm(button.dataset.result === 'yes');
       else this.actions(action, button.dataset);
+    });
+    root.addEventListener('input', event => {
+      if (event.target.id !== 'recipe-search') return;
+      this.search = event.target.value; const cursor = event.target.selectionStart;
+      this.renderPanel(true); const input = document.getElementById('recipe-search'); input.focus(); input.setSelectionRange(cursor, cursor);
     });
     document.getElementById('panel-backdrop').addEventListener('click', () => this.close());
     this.map = document.getElementById('minimap'); this.renderMap(this.map);
+  }
+  setHTML(id, markup) {
+    if (this.cache.get(id) === markup) return;
+    this.cache.set(id, markup); document.getElementById(id).innerHTML = markup;
   }
   loading(progress) { document.querySelector('#load-progress span').style.width = `${progress * 100}%`; }
   ready(hasSave) {
@@ -86,12 +84,18 @@ export class UI {
   }
   update() {
     const state = this.state, quest = objective(state), recipe = RECIPES.find(r => r.id === quest.recipe);
-    document.getElementById('quest-card').innerHTML = `<div class="eyebrow"><span class="quest-dot"></span> ТВОЯ ИСТОРИЯ <span class="chapter">${quest.number}</span></div><h3>${quest.title}</h3><p>${quest.desc}</p>${recipe ? `<div class="quest-costs">${costHTML(state, recipe.cost)}</div><button class="text-button" data-action="craft-objective">К рецепту ${icon('arrow', 15)}</button>` : '<span class="chapter-done">Первая глава завершена</span>'}`;
+    const missing = recipe ? Object.entries(recipe.cost).filter(([id, n]) => total(state, id) < n) : [];
+    const progress = recipe ? Object.entries(recipe.cost).reduce((n, [id, count]) => n + Math.min(1, total(state, id) / count), 0) / Object.keys(recipe.cost).length : 1;
+    this.setHTML('quest-card', `<div class="eyebrow">${icon('compass', 15)} СЛЕДУЮЩИЙ ШАГ <span class="chapter">${quest.number}</span><button class="quest-toggle" data-action="toggle-quest" aria-label="Свернуть задание" aria-expanded="true">−</button></div><h3>${quest.title}</h3><div class="quest-details"><p>${quest.desc}</p>${recipe ? `<div class="quest-progress"><i style="width:${progress * 100}%"></i></div><div class="cost-caption">${missing.length ? 'Есть / нужно для проекта' : 'Все материалы собраны'}</div><div class="quest-costs">${costHTML(state, recipe.cost)}</div><div class="quest-actions"><button class="text-button" data-action="craft-objective">${icon('craft', 14)} Открыть рецепт</button>${missing.length ? `<button class="text-button" data-action="travel" data-id="${missing[0][0] === 'metal' && state.owned.includes('bridge') ? 'depot' : 'market'}">${icon('pin', 14)} Искать ресурсы</button>` : '<button class="text-button" data-action="station-route">К станции →</button>'}</div>` : '<span class="chapter-done">Свет и вода вернулись в район</span>'}</div>`);
     const bag = bagWeight(state), cap = capacity(state);
-    document.getElementById('vitals').innerHTML = `<div class="vital-row">${icon('heart', 15)}<div class="meter health"><i style="width:${state.health}%"></i></div><span>${Math.ceil(state.health)}</span></div><div class="vital-row">${icon('bolt', 15)}<div class="meter stamina"><i style="width:${state.stamina}%"></i></div><span>${Math.ceil(state.stamina)}</span></div><div class="vital-bottom">${icon('bag', 14)}<span class="${bag >= cap ? 'missing' : ''}">${Number(bag.toFixed(1))} / ${cap}</span><span class="vital-weapon">${weapon(state).name}</span></div>`;
+    this.setHTML('vitals', `<div class="vital-row ${state.health < 30 ? 'critical' : ''}">${icon('heart', 17)}<div class="vital-detail"><div><span>Здоровье</span><b>${Math.ceil(state.health)}<small>/100</small></b></div><div class="meter health"><i style="width:${state.health}%"></i></div></div></div><div class="vital-row">${icon('bolt', 17)}<div class="vital-detail"><div><span>Выносливость</span><b>${Math.ceil(state.stamina)}<small>/100</small></b></div><div class="meter stamina"><i style="width:${state.stamina}%"></i></div></div></div><div class="vital-bottom">${recipeIcon(weapon(state).id, 16)}<span class="weapon-name">${weapon(state).name}</span>${['pistol', 'carbine'].includes(state.equipment.weapon) ? `<span class="ammo-count">${icon('ammo', 13)} ${state.ammo}</span>` : ''}</div>`);
     const resources = Object.entries(state.bag).filter(([, n]) => n > 0).slice(0, 5);
-    document.getElementById('resource-peek').innerHTML = `<div class="eyebrow">В РЮКЗАКЕ ${icon('bag', 13)}</div>${resources.length ? resources.map(([id, n]) => `<div class="resource-row"><span class="resource-symbol" style="color:${RESOURCES[id].color}">${RESOURCES[id].icon}</span><span>${RESOURCES[id].name}</span><b>${n}</b></div>`).join('') : '<p class="empty-bag">Здесь будут твои находки</p>'}<button class="text-button" data-action="inventory">Открыть рюкзак ↗</button>`;
-    document.getElementById('sound-button').innerHTML = icon(state.settings.sound ? 'sound' : 'mute');
+    this.setHTML('resource-peek', `<div class="cargo-header">${icon('bag', 19)}<div><strong>Рюкзак</strong><small>Вес добычи</small></div><b class="${bag >= cap ? 'missing' : ''}">${Number(bag.toFixed(1))}<small>/${cap}</small></b></div><div class="cargo-meter ${bag / cap > 0.85 ? 'nearly-full' : ''}"><i style="width:${bag / cap * 100}%"></i></div>${resources.length ? resources.map(([id, n]) => `<div class="resource-row"><span class="resource-symbol" style="color:${RESOURCES[id].color}">${resourceIcon(id, 18)}</span><span>${RESOURCES[id].name}</span><b>${n}</b></div>`).join('') : '<p class="empty-bag">Находки ждут в районе</p>'}<button class="text-button" data-action="inventory">Открыть рюкзак ${icon('arrow', 14)}</button>`);
+    document.getElementById('quick-medkit-count').textContent = state.medkits;
+    document.getElementById('toolbar-bag-count').textContent = `${Number(bag.toFixed(1))}/${cap}`;
+    document.getElementById('quick-medkit').disabled = !state.medkits || state.health >= 100;
+    this.root.classList.toggle('home-zone', state.x >= -27 && state.x <= -6 && state.z >= 5 && state.z <= 27);
+    this.setHTML('sound-button', icon(state.settings.sound ? 'sound' : 'mute'));
     const minutes = (17 * 60 + 42 + Math.floor(state.elapsed / 2)) % 1440;
     document.getElementById('game-time').textContent = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
     document.getElementById('game-day').textContent = String(1 + Math.floor((17 * 60 + 42 + state.elapsed / 2) / 1440)).padStart(2, '0');
@@ -108,7 +112,7 @@ export class UI {
   }
   context(target) {
     const element = document.getElementById('context'); element.hidden = !target;
-    if (target) element.innerHTML = `<kbd>E</kbd><span>${target.label}</span>${target.hint ? `<small>${target.hint}</small>` : ''}`;
+    if (target) this.setHTML('context', `<button data-action="interact"><span class="context-icon">${icon(({ node: 'bag', station: 'craft', storage: 'chest', bed: 'bed', fish: 'rod', grave: 'bag', production: target.entity?.id === 'garden' ? 'herbs' : 'parts', water: 'water', orders: 'board' })[target.type], 21)}</span><kbd>E</kbd><span>${target.label}</span>${target.hint ? `<small>${target.hint}</small>` : ''}</button>`);
   }
   progress(label, ratio) {
     const element = document.getElementById('task-progress'); element.hidden = !label;
@@ -121,25 +125,30 @@ export class UI {
     setTimeout(() => { toast.classList.add('leaving'); setTimeout(() => toast.remove(), 400); }, 4200);
   }
   open(panel, category) {
+    this.returnFocus = document.activeElement;
+    if (this.panel !== panel) { this.search = ''; this.onlyAvailable = false; }
     this.panel = panel;
     if (category) this.category = category;
     document.getElementById('panel-backdrop').hidden = false; document.getElementById('panel').hidden = false;
-    this.renderPanel(); this.actions('panel-open');
+    this.renderPanel(true); this.actions('panel-open');
     document.querySelector('#panel [data-action="close"]')?.focus();
   }
   close() {
     this.panel = null; document.getElementById('panel-backdrop').hidden = true; document.getElementById('panel').hidden = true;
     this.actions('panel-close');
+    if (this.returnFocus?.isConnected) this.returnFocus.focus({ preventScroll: true });
   }
-  renderPanel() {
+  renderPanel(resetScroll = false) {
+    const scroll = resetScroll ? 0 : document.querySelector('#panel .panel-body')?.scrollTop || 0;
     const element = document.getElementById('panel'), state = this.state;
     const headers = {
       craft: ['МАСТЕРСКАЯ', 'Станция рецептов', 'Создавай то, что поможет идти дальше.'],
       inventory: ['ТВОИ НАХОДКИ', 'Рюкзак и снаряжение', 'Снаряжение остаётся с тобой. Добычу храни дома.'],
       build: ['МЕСТО, КОТОРОЕ ТЫ СОЗДАЁШЬ', 'Обустройство', 'Выбери предмет, затем размести его в убежище.'],
-      map: ['ЧЕТЫРЕ МЕСТА. ОДНА ИСТОРИЯ.', 'Карта района', 'Выбери точку на карте — персонаж проложит путь.'],
+      map: ['ПЯТЬ МЕСТ. ОДНА ИСТОРИЯ.', 'Карта района', 'Выбери точку на карте — персонаж проложит путь.'],
       journal: ['ПЕРВАЯ ГЛАВА', 'Дневник возвращения', 'Маленькие шаги возвращают жизнь в большой мир.'],
       settings: ['ТВОЙ РИТМ', 'Настройки', 'Прогресс автоматически сохраняется в этом браузере.'],
+      orders: ['РАЙОН СТАНОВИТСЯ ЖИВЫМ', 'Заказы соседей', 'Передавай материалы дома. Награда сразу отправится на склад.'],
     };
     const [eyebrow, title, subtitle] = headers[this.panel];
     element.className = `panel ${this.panel === 'map' ? 'wide-panel' : ''}`;
@@ -150,30 +159,49 @@ export class UI {
       const nearStation = Math.hypot(state.x + 21, state.z - 13) < 4.5;
       const nearHome = state.x >= -27 && state.x <= -6 && state.z >= 5 && state.z <= 27;
       body += `<div class="station-status ${isBuild ? nearHome ? 'online' : '' : nearStation ? 'online' : ''}"><i></i>${isBuild ? nearHome ? 'Ты дома · можно строить' : 'Для строительства вернись в убежище' : nearStation ? 'Станция рядом · готова к работе' : 'Изготовление доступно рядом со станцией'}</div>`;
-      if (!isBuild) body += `<nav class="category-tabs">${Object.entries(categories).map(([id, name]) => `<button class="${id === category ? 'active' : ''}" data-action="category" data-category="${id}">${name}</button>`).join('')}</nav>`;
-      const recipes = RECIPES.filter(r => r.category === category && (!isBuild || r.placeable));
+      if (!(isBuild ? nearHome : nearStation)) body += `<button class="station-route secondary full-width" data-action="${isBuild ? 'home' : 'station-route'}">${icon('pin', 17)} ${isBuild ? 'Проложить путь домой' : 'Проложить путь к станции'} ${icon('arrow', 15)}</button>`;
+      if (!isBuild) body += `<nav class="category-tabs">${Object.entries(categories).map(([id, name]) => `<button class="${id === category ? 'active' : ''}" data-action="category" data-category="${id}">${categoryIcon(id)}<span>${name}</span></button>`).join('')}</nav>`;
+      body += `<div class="recipe-tools"><label>${icon('search', 17)}<input id="recipe-search" type="search" placeholder="${isBuild ? 'Найти постройку…' : 'Найти рецепт…'}" value="${escape(this.search)}" aria-label="Поиск рецептов"></label><button class="filter-button ${this.onlyAvailable ? 'active' : ''}" data-action="available-filter" aria-pressed="${this.onlyAvailable}" title="Показать только доступные">${icon('filter', 16)} Можно создать</button></div><div class="recipe-cost-guide">Материалы: в наличии / нужно · рюкзак и склад</div>`;
+      const recipes = RECIPES.filter(r => r.category === category && (!isBuild || r.placeable) && r.name.toLocaleLowerCase('ru').includes(this.search.toLocaleLowerCase('ru')) && (!this.onlyAvailable || craftStatus(state, r).ok));
+      if (!recipes.length) body += `<div class="panel-empty">${icon('search', 36)}<h3>Пока ничего не найдено</h3><p>Измени поиск или отключи фильтр доступных рецептов.</p></div>`;
       body += `<div class="recipe-list">${recipes.map(r => {
         const status = craftStatus(state, r), equipped = Object.values(state.equipment).includes(r.id);
         const canEquip = status.owned && r.slot && r.slot !== 'tool';
         const canAct = canEquip || (status.ok && (isBuild ? nearHome : nearStation));
-        return `<article class="recipe-card ${status.owned ? 'owned' : ''}"><div class="recipe-top"><span class="recipe-icon">${r.icon}</span><div><h3>${r.name}</h3><p>${r.desc}</p></div>${status.owned ? '<span class="owned-badge">✓</span>' : ''}</div><div class="recipe-bottom"><div class="costs">${status.owned ? `<span class="owned-text">${equipped ? 'Экипировано' : 'Изготовлено'}</span>` : costHTML(state, r.cost)}</div><button class="craft-button" data-action="${canEquip ? 'equip' : 'make'}" data-id="${r.id}" ${!canAct || equipped ? 'disabled' : ''}>${canEquip ? equipped ? 'Надето' : 'Надеть' : status.owned ? 'Готово' : r.placeable ? 'Разместить' : 'Создать'}</button></div>${!status.ok && !status.owned ? `<small class="recipe-reason">${status.reason}</small>` : ''}</article>`;
+        return `<article class="recipe-card ${status.owned ? 'owned' : ''}"><div class="recipe-top"><span class="recipe-icon">${recipeIcon(r.id, 28)}</span><div><div class="recipe-heading"><h3>${r.name}</h3><span class="availability-badge ${status.owned ? 'made' : status.ok ? 'ready' : 'locked'}">${status.owned ? icon('check', 12) : status.ok ? icon('check', 12) : icon(r.requires && !state.owned.includes(r.requires) ? 'lock' : 'bag', 12)} ${status.owned ? 'Готово' : status.ok ? 'Есть материалы' : r.requires && !state.owned.includes(r.requires) ? 'Закрыто' : 'Нужны ресурсы'}</span></div><p>${r.desc}</p></div></div><div class="recipe-bottom"><div class="costs">${status.owned ? `<span class="owned-text">${equipped ? 'Экипировано' : 'Изготовлено'}</span>` : costHTML(state, r.cost)}</div><button class="craft-button" data-action="${canEquip ? 'equip' : 'make'}" data-id="${r.id}" ${!canAct || equipped ? 'disabled' : ''}>${canEquip ? equipped ? 'Надето' : 'Надеть' : status.owned ? 'Готово' : r.placeable ? 'Разместить' : 'Создать'}</button></div>${!status.ok && !status.owned ? `<small class="recipe-reason">${icon('info', 13)} ${status.reason}</small>` : ''}</article>`;
       }).join('')}</div>`;
-      if (isBuild && state.placed.length) body += `<div class="section-title"><h3>Уже дома</h3><span>Можно переставить</span></div><div class="owned-items">${state.placed.map((p, index) => `<button data-action="move-furniture" data-index="${index}" ${!nearHome ? 'disabled' : ''}>↔ ${RECIPES.find(r => r.id === p.id).name}</button>`).join('')}</div>`;
+      if (isBuild && state.placed.length) body += `<div class="section-title"><h3>Уже дома</h3><span>Можно переставить</span></div><div class="owned-items">${state.placed.map((p, index) => `<button data-action="move-furniture" data-index="${index}" ${!nearHome ? 'disabled' : ''}>${icon('move', 15)} ${RECIPES.find(r => r.id === p.id).name}</button>`).join('')}</div>`;
+      if (isBuild) body += this.productionOverview();
     }
     if (this.panel === 'inventory') {
-      const currentWeapon = weapon(state);
-      body = `<div class="equipment-card"><div class="eyebrow">ЭКИПИРОВКА</div><h3>${currentWeapon.name}</h3><p>Урон ${currentWeapon.damage} · дальность ${currentWeapon.range} м${['pistol', 'carbine'].includes(currentWeapon.id) ? ` · зарядов ${state.ammo}` : ''}</p><div class="equipment-slots">${Object.entries({ armor: 'Защита', bag: 'Рюкзак', boots: 'Обувь' }).map(([slot, label]) => `<div><small>${label}</small><span>${RECIPES.find(r => r.id === state.equipment[slot])?.name || ({ armor: 'Обычная куртка', bag: 'Походная сумка', boots: 'Старые ботинки' }[slot])}</span></div>`).join('')}</div></div><div class="section-title"><h3>В рюкзаке</h3><span>${bagWeight(state)} / ${capacity(state)}</span></div>${this.resourceGrid(state.bag)}<button class="primary full-width" data-action="deposit" ${Math.hypot(state.x + 17, state.z - 16) > 13 ? 'disabled' : ''}>${icon('home', 16)} Сложить добычу дома</button><div class="section-title"><h3>Запасы убежища</h3><span>Без ограничения</span></div>${this.resourceGrid(state.stash)}<div class="section-title"><h3>Расходники</h3></div><div class="supplies"><button data-action="use-medkit" ${!state.medkits || state.health >= 100 ? 'disabled' : ''}>✚ Аптечка <b>${state.medkits}</b></button><button data-action="use-meal" ${!state.meals || (state.health >= 100 && state.stamina >= 100) ? 'disabled' : ''}>♨ Уха <b>${state.meals}</b></button><span>▰ Заряды <b>${state.ammo}</b></span></div><div class="section-title"><h3>Изготовленное снаряжение</h3></div><div class="owned-items">${state.owned.filter(id => RECIPES.find(r => r.id === id)?.slot).map(id => { const r = RECIPES.find(r => r.id === id); return `<button data-action="equip" data-id="${id}" ${r.slot === 'tool' ? 'disabled' : ''}>${r.icon} ${r.name}${Object.values(state.equipment).includes(id) || r.slot === 'tool' ? ' ✓' : ''}</button>`; }).join('') || '<p class="muted">Создай своё первое снаряжение на станции.</p>'}<button data-action="equip" data-id="pipe">↗ Стальная труба${state.equipment.weapon === 'pipe' ? ' ✓' : ''}</button></div>`;
+      const w = weapon(state), defense = RECIPES.find(r => r.id === state.equipment.armor)?.defense || 0;
+      body = `<nav class="category-tabs inventory-tabs">${[['bag', 'bag', 'С собой'], ['stash', 'home', 'На складе'], ['gear', 'shield', 'Снаряжение']].map(([id, glyph, name]) => `<button data-action="inventory-tab" data-view="${id}" class="${this.inventoryView === id ? 'active' : ''}">${icon(glyph, 20)}<span>${name}</span></button>`).join('')}</nav>`;
+      if (this.inventoryView === 'bag') {
+        body += `<div class="section-title"><h3>Добыча в рюкзаке</h3><span>${bagWeight(state)} / ${capacity(state)} веса</span></div>${this.resourceGrid(state.bag)}<button class="primary full-width" data-action="deposit" ${!(state.x >= -27 && state.x <= -6 && state.z >= 5 && state.z <= 27) ? 'disabled' : ''}>${icon('home', 18)} Сложить добычу дома</button><p class="panel-note">Снаряжение и расходники не занимают место в рюкзаке.</p><div class="section-title"><h3>Расходники</h3></div><div class="supplies"><button data-action="use-medkit" ${!state.medkits || state.health >= 100 ? 'disabled' : ''}>${icon('medkit', 18)} Аптечка <b>${state.medkits}</b></button><button data-action="use-meal" ${!state.meals || (state.health >= 100 && state.stamina >= 100) ? 'disabled' : ''}>${icon('meal', 18)} Уха <b>${state.meals}</b></button><button data-action="use-tea" ${!state.teas || (state.health >= 100 && state.stamina >= 100) ? 'disabled' : ''}>${icon('water', 18)} Чай <b>${state.teas}</b></button><span>${icon('ammo', 18)} Заряды <b>${state.ammo}</b></span></div>`;
+      }
+      if (this.inventoryView === 'stash') body += `<div class="section-title"><h3>Запасы убежища</h3><span>Без ограничения</span></div>${this.resourceGrid(state.stash)}<p class="panel-note">Материалы со склада автоматически используются для рецептов и заказов дома.</p>${this.productionOverview()}`;
+      if (this.inventoryView === 'gear') {
+        body += `<div class="equipment-card"><div class="eyebrow">${recipeIcon(w.id, 17)} ЭКИПИРОВАНО</div><h3>${w.name}</h3><div class="equipment-stats"><div><b>${w.damage}</b><small>Урон</small></div><div><b>${w.range} м</b><small>Дальность</small></div><div><b>${Math.round(defense * 100)}%</b><small>Защита</small></div></div></div><div class="section-title"><h3>Изготовленное снаряжение</h3></div><div class="gear-list">${[ { id: 'pipe', name: 'Стальная труба', slot: 'weapon', desc: 'Простой инструмент для ближнего боя.' }, ...RECIPES.filter(r => r.slot && state.owned.includes(r.id)) ].map(r => `<article class="gear-row"><span class="recipe-icon">${recipeIcon(r.id, 26)}</span><div><strong>${r.name}</strong><p>${r.desc}</p></div>${r.slot === 'tool' ? `<span class="passive-badge">${icon('check', 14)} В наборе</span>` : `<button class="craft-button" data-action="equip" data-id="${r.id}" ${Object.values(state.equipment).includes(r.id) ? 'disabled' : ''}>${Object.values(state.equipment).includes(r.id) ? 'Надето' : 'Надеть'}</button>`}</article>`).join('')}</div>`;
+      }
     }
-    if (this.panel === 'map') body = `<canvas id="large-map" width="560" height="420" aria-label="Карта района"></canvas><div class="location-list">${LOCATIONS.map(l => `<button data-action="travel" data-id="${l.id}"><span style="color:${l.color}">◇</span><div><strong>${l.name}</strong><small>${l.subtitle}</small></div>${icon('arrow', 15)}</button>`).join('')}</div>${state.grave ? '<p class="map-warning">✕ На карте отмечен оставленный рюкзак. Его можно вернуть.</p>' : ''}`;
+    if (this.panel === 'orders') {
+      const home = state.x >= -27 && state.x <= -6 && state.z >= 5 && state.z <= 27;
+      body = `<div class="orders-summary">${icon('board', 28)}<div><strong>${state.completedOrders} заказов выполнено</strong><p>Материалы идут соседям, награда — на твой склад.</p></div></div>${!home ? '<button class="secondary full-width" data-action="home">Вернуться домой для передачи заказа</button>' : ''}<div class="recipe-list">${CONTRACTS.map(order => {
+        const status = contractStatus(state, order);
+        return `<article class="recipe-card order-card"><div class="recipe-top"><span class="recipe-icon">${resourceIcon(Object.keys(order.cost)[0], 27)}</span><div><h3>${order.title}</h3><p>${order.desc}</p></div></div><div class="order-costs"><small>Передать</small><div class="costs">${costHTML(state, order.cost)}</div></div><div class="order-rewards"><small>Получить на склад</small><div>${rewardHTML(order.reward)}</div></div><div class="order-footer"><span>${status.ok ? `${icon('check', 14)} Материалы собраны` : `${icon(status.remaining ? 'clock' : 'info', 14)} ${status.reason}`}</span><button class="craft-button" data-action="deliver-order" data-id="${order.id}" ${!status.ok || !home ? 'disabled' : ''}>Передать</button></div></article>`;
+      }).join('')}</div><p class="panel-note">Заказы повторяются. Время ожидания идёт во время вылазок.</p>`;
+    }
+    if (this.panel === 'map') body = `<canvas id="large-map" width="560" height="420" aria-label="Карта района"></canvas><div class="location-list">${LOCATIONS.map(l => `<button data-action="travel" data-id="${l.id}"><span style="color:${l.color}">${icon('pin', 22)}</span><div><strong>${l.name}</strong><small>${l.subtitle}</small></div>${icon('arrow', 15)}</button>`).join('')}</div>${state.grave ? '<p class="map-warning">✕ На карте отмечен оставленный рюкзак. Его можно вернуть.</p>' : ''}`;
     if (this.panel === 'journal') {
       body = `<div class="journal-note"><span class="note-date">ПЕРВАЯ ЗАПИСЬ</span><p>«В мастерской пахнет мокрым деревом. Печь ещё работает. Если починить генератор, здесь можно остаться. Пока это просто комната. Но уже моя».</p></div><div class="story-steps">${[
         ['generator', 'Верни свет домой', 'Старый генератор ждёт проводов и деталей. После ремонта оживёт мастерская.'],
         ['bridge', 'Открой путь в депо', 'Восстанови мост через дренажный канал. На другой стороне сохранились технические запасы.'],
         ['radio', 'Найди голос в тишине', 'Собери радиостанцию. Возможно, в этом мире остался кто-то ещё.'],
-      ].map(([id, name, desc], i) => `<div class="story-step ${state.owned.includes(id) ? 'complete' : ''}"><span>${state.owned.includes(id) ? '✓' : `0${i + 1}`}</span><div><h3>${name}</h3><p>${desc}</p></div></div>`).join('')}</div>${state.chapterComplete ? '<div class="radio-message"><div class="eyebrow">ВХОДЯЩИЙ СИГНАЛ · 104.6</div><p>«Если кто-нибудь слышит… У нас есть семена. И свободное место за столом. Мы у водонапорной башни».</p><small>Конец первой главы. Следующий район пока не реализован.</small></div>' : ''}<div class="section-title"><h3>Твоя история в цифрах</h3></div><div class="stats-grid"><div><strong>${state.gathered}</strong><span>ресурсов найдено</span></div><div><strong>${state.trips}</strong><span>добычи сдано</span></div><div><strong>${state.placed.length}</strong><span>предметов дома</span></div><div><strong>${state.kills}</strong><span>дронов отключено</span></div></div><div class="section-title"><h3>Рыбацкая коллекция</h3><span>${state.fishCollection.length} / 4</span></div><div class="collection-list">${['Речной окунь', 'Серебряный карась', 'Лунная форель', 'Перламутровая раковина'].map(name => `<div class="${state.fishCollection.includes(name) ? 'found' : ''}">${icon('fish', 20)}<span>${state.fishCollection.includes(name) ? name : 'Неизвестная находка'}</span></div>`).join('')}</div>`;
+      ].map(([id, name, desc], i) => `<div class="story-step ${state.owned.includes(id) ? 'complete' : ''}"><span>${state.owned.includes(id) ? '✓' : `0${i + 1}`}</span><div><h3>${name}</h3><p>${desc}</p></div></div>`).join('')}</div>${state.chapterComplete ? '<div class="radio-message"><div class="eyebrow">ВХОДЯЩИЙ СИГНАЛ · 104.6</div><p>«Если кто-нибудь слышит… У нас есть семена. И свободное место за столом. Мы у водонапорной башни».</p><small>Конец первой главы. Теперь можно наладить воду и помочь соседям.</small></div>' : ''}<div class="section-title"><h3>Твоя история в цифрах</h3></div><div class="stats-grid"><div><strong>${state.gathered}</strong><span>ресурсов найдено</span></div><div><strong>${state.trips}</strong><span>добычи сдано</span></div><div><strong>${state.placed.length}</strong><span>предметов дома</span></div><div><strong>${state.kills}</strong><span>дронов отключено</span></div></div><div class="section-title"><h3>Рыбацкая коллекция</h3><span>${state.fishCollection.length} / 4</span></div><div class="collection-list">${['Речной окунь', 'Серебряный карась', 'Лунная форель', 'Перламутровая раковина'].map(name => `<div class="${state.fishCollection.includes(name) ? 'found' : ''}">${icon('fish', 20)}<span>${state.fishCollection.includes(name) ? name : 'Неизвестная находка'}</span></div>`).join('')}</div>`;
     }
-    if (this.panel === 'settings') body = `<div class="settings-row"><div><h3>Звуки района</h3><p>Ветер, шаги, инструменты и вода.</p></div><button class="toggle ${state.settings.sound ? 'on' : ''}" data-action="sound" aria-label="Переключить звук"><i></i></button></div><div class="settings-row"><div><h3>Качество графики</h3><p>Мягкие тени и свечение источников света.</p></div><button class="secondary" data-action="quality">${state.settings.quality === 'high' ? 'Высокое' : 'Экономное'}</button></div><div class="settings-row"><div><h3>Сохранение</h3><p id="save-note">Хранится только в этом браузере.</p></div><button class="secondary" data-action="save">Сохранить</button></div><button class="secondary full-width" data-action="export-save">Скачать сохранение</button><label class="import-save secondary full-width">Загрузить сохранение<input id="import-save" type="file" accept="application/json,.json"></label><div class="controls-table"><h3>Управление</h3><p><kbd>WASD / стрелки</kbd> Движение</p><p><kbd>ЛКМ по земле</kbd> Идти к точке</p><p><kbd>E</kbd> Сбор / действие / подсечка</p><p><kbd>Пробел</kbd> Атака / рыбалка</p><p><kbd>Shift</kbd> Бег</p><p><kbd>Q</kbd> Аптечка</p><p><kbd>R</kbd> Повернуть предмет при строительстве</p><p><kbd>Esc</kbd> Закрыть меню / отменить</p><p><kbd>Колесо мыши</kbd> Масштаб</p></div><div class="credits"><strong>Бесплатные 3D-модели: Kenney · CC0</strong><p>Персонаж, растительность, дроны и бластеры. Архитектура и эффекты созданы для игры.</p></div><button class="danger-button" data-action="reset">Начать новую историю…</button>`;
-    element.innerHTML = `<header class="panel-header"><div class="eyebrow">${eyebrow}</div><button class="icon-button" data-action="close" aria-label="Закрыть меню">${icon('close')}</button><h2>${title}</h2><p>${subtitle}</p></header><div class="panel-body">${body}</div><footer class="panel-footer">${icon('leaf', 13)} Здесь можно не спешить. <span>ESC — закрыть</span></footer>`;
+    if (this.panel === 'settings') body = `<div class="settings-row"><div><h3>Звуки района</h3><p>Ветер, шаги, инструменты и вода.</p></div><button class="toggle ${state.settings.sound ? 'on' : ''}" data-action="sound" aria-label="Переключить звук"><i></i></button></div><div class="settings-row"><div><h3>Качество графики</h3><p>Мягкие тени и свечение источников света.</p></div><button class="secondary" data-action="quality">${state.settings.quality === 'high' ? 'Высокое' : 'Экономное'}</button></div><div class="settings-row"><div><h3>Сохранение</h3><p id="save-note">Хранится только в этом браузере.</p></div><button class="secondary" data-action="save">Сохранить</button></div><button class="secondary full-width" data-action="export-save">Скачать сохранение</button><label class="import-save secondary full-width">Загрузить сохранение<input id="import-save" type="file" accept="application/json,.json"></label><div class="controls-table"><h3>Управление</h3><p><kbd>WASD / стрелки</kbd> Движение</p><p><kbd>ЛКМ по земле</kbd> Идти к точке</p><p><kbd>E</kbd> Сбор / действие / подсечка</p><p><kbd>Пробел</kbd> Атака / рыбалка</p><p><kbd>Shift</kbd> Бег</p><p><kbd>Q</kbd> Аптечка</p><p><kbd>R</kbd> Повернуть предмет при строительстве</p><p><kbd>Esc</kbd> Закрыть меню / отменить</p><p><kbd>Колесо мыши</kbd> Масштаб</p></div><div class="credits"><strong>Модели: KayKit / Kay Lousberg и Kenney · CC0</strong><p>Персонаж KayKit в капюшоне, растительность, дроны и бластеры. Архитектура и эффекты созданы для игры.</p></div><button class="danger-button" data-action="reset">Начать новую историю…</button>`;
+    element.innerHTML = `<header class="panel-header"><div class="eyebrow">${eyebrow}</div><button class="icon-button" data-action="close" aria-label="Закрыть меню">${icon('close')}</button><div class="panel-title"><span class="panel-title-icon">${icon(({ craft: 'craft', inventory: 'bag', build: 'build', map: 'map', journal: 'book', settings: 'settings', orders: 'board' })[this.panel], 27)}</span><h2>${title}</h2></div><p>${subtitle}</p></header><div class="panel-body">${body}</div><footer class="panel-footer">${icon('clock', 14)} Игра на паузе <span>ESC — закрыть</span></footer>`;
+    element.querySelector('.panel-body').scrollTop = scroll;
     if (this.panel === 'map') {
       const canvas = document.getElementById('large-map'); this.renderMap(canvas, true);
       canvas.addEventListener('click', event => {
@@ -185,9 +213,23 @@ export class UI {
     }
     if (this.panel === 'settings') document.getElementById('import-save').addEventListener('change', event => this.actions('import-save', { file: event.target.files[0] }));
   }
+  productionOverview() {
+    const producers = this.state.placed.map(p => ({ item: p, info: productionInfo(this.state, p) })).filter(p => p.info);
+    if (!producers.length) return '';
+    return `<div class="section-title"><h3>Производство дома</h3><span>${producers.length} станций</span></div><div class="production-list">${producers.map(({ item, info }) => `<div>${recipeIcon(item.id, 23)}<div><strong>${RECIPES.find(r => r.id === item.id).name}</strong><small>${info.remaining ? `До готовности: ${Math.ceil(info.remaining)} сек.` : 'Готово — подойди и нажми E'}</small></div><span class="${info.remaining ? '' : 'ready'}">${icon(info.remaining ? 'clock' : 'check', 18)}</span></div>`).join('')}</div>`;
+  }
+  confirm(title, message, label = 'Продолжить') {
+    return new Promise(resolve => {
+      this.pendingConfirm = resolve;
+      const overlay = document.createElement('div'); overlay.id = 'confirm-overlay'; overlay.className = 'confirm-overlay';
+      overlay.innerHTML = `<section class="confirm-card glass" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title">${icon('info', 32)}<h2 id="confirm-title">${escape(title)}</h2><p>${escape(message)}</p><div><button class="secondary" data-action="confirm-result" data-result="no">Отмена</button><button class="primary" data-action="confirm-result" data-result="yes">${escape(label)}</button></div></section>`;
+      this.root.appendChild(overlay); overlay.querySelector('[data-result="no"]').focus();
+    });
+  }
+  resolveConfirm(value) { const resolve = this.pendingConfirm; this.pendingConfirm = null; document.getElementById('confirm-overlay')?.remove(); resolve?.(value); }
   resourceGrid(resources) {
     const entries = Object.entries(RESOURCES);
-    return `<div class="resource-grid">${entries.map(([id, resource]) => `<div class="resource-tile ${(resources[id] || 0) === 0 ? 'empty' : ''}"><span style="color:${resource.color}">${resource.icon}</span><div><small>${resource.name}</small><b>${resources[id] || 0}</b></div></div>`).join('')}</div>`;
+    return `<div class="resource-grid">${entries.map(([id, resource]) => `<div class="resource-tile ${(resources[id] || 0) === 0 ? 'empty' : ''}"><span style="color:${resource.color}">${resourceIcon(id, 27)}</span><div><small>${resource.name}</small><b>${resources[id] || 0}</b></div></div>`).join('')}</div>`;
   }
   renderMap(canvas, large = false) {
     const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
@@ -223,7 +265,7 @@ export class UI {
   updateFishNeedle(value) { const needle = document.querySelector('.fish-meter i'); if (needle) needle.style.left = `${value}%`; }
   buildHint(recipe, valid, rotation) {
     const element = document.getElementById('build-hint'); element.hidden = !recipe;
-    if (recipe) element.innerHTML = `${icon('build', 20)}<div><strong>${recipe.name}</strong><span>${valid ? 'Нажми на землю, чтобы разместить' : 'Выбери свободное место в убежище'}</span></div><button data-action="rotate-build">↻ ${Math.round(rotation * 180 / Math.PI)}°</button><button data-action="cancel-build" aria-label="Отменить строительство">${icon('close', 17)}</button>`;
+    if (recipe) element.innerHTML = `${icon('build', 20)}<div><strong>${recipe.name}</strong><span>${valid ? 'Нажми на землю, чтобы разместить' : 'Выбери свободное место в убежище'}</span></div><button data-action="rotate-build">${icon('rotate', 17)} ${Math.round(rotation * 180 / Math.PI)}°</button><button data-action="cancel-build" aria-label="Отменить строительство">${icon('close', 17)}</button>`;
   }
   floating(items, world) {
     const root = document.getElementById('floating-text'); root.replaceChildren();

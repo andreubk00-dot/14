@@ -1,0 +1,248 @@
+/* Interface v0.2: consistent icons, readable hierarchy and stable controls. */
+:root { --border: #bed2bd24; --muted: #a4b6a4; }
+.ui-icon { flex-shrink: 0; }
+.glass { background: linear-gradient(135deg, #1b302bf2, #142924e8); border-color: #adc6ac29; border-radius: 9px; }
+.topbar { padding: 21px 26px; height: 82px; }
+.brand > span { letter-spacing: 2px; }
+.icon-button { width: 38px; height: 38px; border-radius: 7px; }
+.weather { font-size: 11px; }
+.quest-card { top: 102px; left: 24px; width: 280px; padding: 19px; }
+.quest-card .eyebrow { font-size: 9px; letter-spacing: 1.2px; }
+.quest-card h3 { font-size: 23px; margin: 12px 0 10px; }
+.quest-card p { font-size: 12px; line-height: 1.65; }
+.quest-toggle { background: transparent; color: #b8c7b2; width: 24px; height: 24px; padding: 0; font-size: 19px; }
+.quest-card.collapsed .quest-details { display: none; }
+.quest-card.collapsed h3 { margin-bottom: 0; font-size: 20px; }
+.quest-progress { height: 4px; border-radius: 4px; background: #9db49420; margin-top: 15px; overflow: hidden; }
+.quest-progress i { display: block; background: #b6c994; height: 100%; transition: width .3s; }
+.cost-caption { color: #9ab09a; font-size: 10px; margin-top: 12px; }
+.quest-costs { border: 0; padding-top: 0; margin-top: 9px; gap: 7px; }
+.cost { padding: 5px 7px; background: #a2b5970b; border: 1px solid #b1c9ad20; border-radius: 5px; gap: 5px; font-size: 12px; }
+.cost b { font-weight: 550; }
+.cost small { font-size: 10px; }
+.cost.missing { border-color: #cc9d7924; }
+.cost.enough { border-color: #a7c98e35; }
+.quest-actions { display: flex; justify-content: space-between; gap: 9px; border-top: 1px solid var(--border); margin-top: 14px; }
+.text-button { font-size: 11px; padding: 3px 0; }
+.quest-actions .text-button { font-size: 10px; margin-top: 10px; gap: 5px; }
+.resource-peek { right: 24px; top: 102px; width: 196px; padding: 16px; }
+.cargo-header { display: flex; align-items: center; gap: 10px; }
+.cargo-header > svg { color: #dbceac; }
+.cargo-header strong { display: block; font-size: 13px; font-weight: 500; }
+.cargo-header small { display: block; font-size: 9px; color: #92a993; margin-top: 4px; }
+.cargo-header > b { font-size: 18px; font-weight: 500; margin-left: auto; }
+.cargo-header > b small { display: inline; font-size: 11px; }
+.cargo-meter { height: 4px; background: #a7bc9820; margin: 13px 0; border-radius: 3px; overflow: hidden; }
+.cargo-meter i { height: 100%; display: block; background: #a8be92; transition: width .2s; }
+.cargo-meter.nearly-full i { background: #d9ad79; }
+.resource-row { font-size: 12px; margin: 11px 0; }
+.resource-row b { font-size: 13px; }
+.empty-bag { font-size: 11px; }
+.resource-peek .text-button { font-size: 11px; }
+.quick-actions { position: absolute; right: 24px; bottom: 260px; display: flex; padding: 5px; gap: 3px; pointer-events: auto; }
+.quick-actions button { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 7px 10px; background: transparent; border-radius: 5px; color: #c5d1b8; font-size: 11px; }
+.quick-actions button:hover { background: #b9c9a218; }
+.vitals { width: 260px; bottom: 65px; left: 24px; padding: 15px; }
+.vital-row { align-items: center; gap: 10px; margin-bottom: 12px; }
+.vital-detail { flex: 1; }
+.vital-detail > div:first-child { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.vital-detail span { font-size: 11px; color: #b9cbb1; }
+.vital-detail b { font-size: 12px; font-weight: 500; color: #e6e1c8; }
+.vital-detail small { font-size: 9px; margin-left: 2px; color: #91a68a; }
+.meter { height: 5px; }
+.critical .meter i { background: #da806b; }
+.vital-bottom { padding-top: 12px; font-size: 11px; }
+.weapon-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ammo-count { margin-left: auto; white-space: nowrap; color: #d3be91; }
+.toolbar { padding: 6px; border-radius: 10px; }
+.toolbar button { height: 62px; border-radius: 6px; width: 84px; }
+.toolbar button span { font-size: 11px; }
+.toolbar button svg { width: 22px; height: 22px; }
+.toolbar button kbd { font-size: 9px; top: 5px; }
+.tutorial { top: 385px; left: 24px; width: 280px; }
+.tutorial strong { font-size: 12px; }
+.tutorial p { font-size: 11px; }
+.tutorial > span { font-size: 10px; }
+.minimap { right: 24px; border-radius: 9px; }
+.minimap > div span { font-size: 9px; }
+.minimap small { font-size: 10px; }
+.context { padding: 7px 12px; border-radius: 8px; }
+.context button { background: none; display: flex; align-items: center; gap: 10px; padding: 3px; font-size: 13px; }
+.context small { font-size: 10px; }
+.context svg { color: #dfc692; }
+.panel { width: 540px; background: linear-gradient(135deg, #233a30fc, #132823fc); }
+.panel-header { padding: 28px 27px 21px; }
+.panel-header .eyebrow { font-size: 9px; letter-spacing: 1.5px; }
+.panel-title { display: flex; align-items: center; gap: 14px; }
+.panel-title-icon { display: grid; place-items: center; width: 45px; height: 45px; border-radius: 10px; border: 1px solid #b6c79c30; background: #b3c3940e; color: #d7c79e; }
+.panel-header h2 { font-size: 29px; margin: 0; }
+.panel-header p { font-size: 12px; margin-top: 12px; }
+.panel-body { padding: 21px 26px; }
+.panel-footer { font-size: 10px; }
+.category-tabs { gap: 5px; margin: 19px 0 15px; }
+.category-tabs button { display: flex; align-items: center; flex-direction: column; justify-content: center; gap: 7px; font-size: 11px; padding: 10px 4px; border-radius: 6px; }
+.category-tabs button.active { box-shadow: inset 0 -2px #d4bb8b; background: #b8ca9b16; }
+.station-status { font-size: 11px; padding: 12px; border-radius: 6px; }
+.recipe-tools { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.recipe-tools label { display: flex; align-items: center; gap: 8px; background: #0b211b50; border: 1px solid var(--border); border-radius: 6px; padding: 10px 11px; flex: 1; min-width: 0; color: #9fb397; }
+.recipe-tools input { border: 0; background: transparent; outline: none; color: #d3dbc5; font: inherit; font-size: 12px; width: 100%; min-width: 0; }
+.recipe-tools input::placeholder { color: #7f9c80; }
+.filter-button { display: flex; align-items: center; gap: 6px; padding: 10px; border: 1px solid var(--border); background: #94ac8310; border-radius: 6px; color: #a1b994; font-size: 10px; min-height: 38px; }
+.filter-button.active { color: #d3dcb9; background: #91b17226; border-color: #a1c07b60; }
+.recipe-cost-guide { font-size: 10px; color: #8ca88b; margin-bottom: 15px; }
+.recipe-card { padding: 17px; border-radius: 9px; background: #0d241d40; transition: border-color .2s; }
+.recipe-card:hover { border-color: #b2c69050; }
+.recipe-top { gap: 13px; }
+.recipe-top > div { flex: 1; min-width: 0; }
+.recipe-icon { width: 48px; height: 48px; border-radius: 9px; background: #b6c59c0f; }
+.recipe-heading { display: flex; gap: 7px; flex-direction: column; }
+.recipe-card h3 { font-size: 14px; margin-bottom: 0; line-height: 1.4; }
+.recipe-card p { font-size: 12px; margin-top: 8px; color: #a1b79b; }
+.availability-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 9px; color: #bcaa8e; }
+.availability-badge.ready, .availability-badge.made { color: #afca90; }
+.recipe-bottom { margin-top: 16px; }
+.craft-button { display: inline-flex; align-items: center; justify-content: center; font-size: 12px; padding: 10px 14px; border-radius: 5px; min-height: 38px; }
+.costs .cost { font-size: 11px; padding: 5px; }
+.recipe-reason { display: flex; align-items: center; gap: 6px; font-size: 10px; margin-top: 11px; }
+.section-title h3 { font-size: 14px; }
+.section-title > span { font-size: 11px; }
+.equipment-card { border-radius: 9px; padding: 19px; }
+.equipment-card > p { font-size: 12px; }
+.equipment-slots small { font-size: 10px; }
+.equipment-slots span { font-size: 11px; }
+.resource-grid { gap: 9px; }
+.resource-tile { border-radius: 7px; padding: 13px; gap: 12px; }
+.resource-tile > span { width: 28px; }
+.resource-tile small { font-size: 12px; }
+.resource-tile b { font-size: 17px; }
+.resource-tile.empty { opacity: .45; }
+.resource-tile:hover { border-color: #bccb9e45; }
+.primary, .secondary { border-radius: 6px; font-size: 12px; min-height: 42px; }
+.supplies { gap: 8px; }
+.supplies > button, .supplies > span { display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; font-size: 12px; min-height: 42px; }
+.owned-items button { display: flex; align-items: center; gap: 7px; border-radius: 6px; padding: 10px; font-size: 11px; }
+.owned-items button .ui-icon { width: 18px; height: 18px; }
+.location-list strong { font-size: 12px; }
+.location-list small { font-size: 10px; }
+.location-list button { border-radius: 7px; padding: 15px 12px; }
+.wide-panel { width: 630px; }
+.story-step h3 { font-size: 14px; }
+.story-step p { font-size: 12px; }
+.stats-grid span, .collection-list > div { font-size: 11px; }
+.settings-row h3 { font-size: 14px; }
+.settings-row p { font-size: 12px; }
+.controls-table p { font-size: 12px; }
+.credits strong { font-size: 11px; }
+.credits p { font-size: 10px; }
+.orders-summary { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; padding: 16px; border-radius: 8px; background: #9bb88710; border: 1px solid var(--border); }
+.orders-summary > svg { color: #d6bf8d; }
+.orders-summary strong { font-size: 14px; font-weight: 500; }
+.orders-summary p { font-size: 11px; margin-top: 6px; color: #9bb294; }
+.order-costs, .order-rewards { margin-top: 17px; }
+.order-costs > small, .order-rewards > small { display: block; font-size: 10px; color: #94ae8e; margin-bottom: 8px; }
+.order-rewards > div { display: flex; gap: 6px; }
+.order-footer { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 13px; display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+.order-footer > span { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #a6b48e; }
+.panel-note { font-size: 11px; color: #829c83; margin-top: 20px; }
+.panel-empty { text-align: center; padding: 40px 16px; color: #9db392; }
+.panel-empty h3 { font-size: 16px; margin: 15px 0 10px; }
+.panel-empty p { font-size: 12px; }
+.production-list > div { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 7px; margin: 9px 0; }
+.production-list strong { font-size: 12px; font-weight: 500; }
+.production-list small { display: block; font-size: 10px; margin-top: 5px; color: #9cb28e; }
+.production-list > div > span { margin-left: auto; color: #a2b787; }
+.production-list .ready { color: #c6dca4; }
+.confirm-overlay { position: fixed; inset: 0; z-index: 60; background: #071d1aca; backdrop-filter: blur(8px); display: grid; place-items: center; padding: 20px; }
+.confirm-card { width: 410px; max-width: 100%; padding: 29px; text-align: center; }
+.confirm-card > svg { color: #d2bb87; }
+.confirm-card h2 { font: 400 26px Georgia, serif; margin: 16px 0 12px; }
+.confirm-card p { color: #a8bea0; font-size: 13px; }
+.confirm-card > div { display: flex; justify-content: center; gap: 10px; margin-top: 24px; }
+.fish-ui { width: 360px; border-radius: 10px; }
+.fish-ui p { font-size: 12px; }
+.toolbar-cargo { display: none; }
+.inventory-tabs { margin-top: 0; }
+.equipment-stats { display: flex; gap: 18px; margin-top: 16px; border-top: 1px solid var(--border); padding-top: 13px; }
+.equipment-stats > div { flex: 1; }
+.equipment-stats b { display: block; font-size: 21px; font-weight: 500; color: #d9c69b; }
+.equipment-stats small { display: block; font-size: 11px; color: #92ab8b; margin-top: 4px; }
+.gear-row { display: flex; align-items: center; gap: 12px; border: 1px solid var(--border); border-radius: 7px; padding: 13px; margin: 10px 0; }
+.gear-row > div { flex: 1; min-width: 0; }
+.gear-row strong { font-size: 13px; font-weight: 500; }
+.gear-row p { font-size: 11px; color: #99b08f; margin-top: 5px; }
+.passive-badge { font-size: 9px; display: flex; align-items: center; gap: 4px; color: #a8c18b; white-space: nowrap; }
+.fish-score small { font-size: 11px; }
+.toast { border-radius: 7px; font-size: 12px; }
+@media (max-width: 1100px) {
+  .quest-card, .tutorial { width: 240px; }
+  .quest-card p { font-size: 11px; }
+  .quest-actions { flex-direction: column; gap: 0; }
+  .tutorial { top: 424px; }
+  .vitals { width: 218px; }
+  .toolbar button { width: 64px; }
+  .toolbar button span { font-size: 9px; }
+}
+@media (max-width: 760px) {
+  .topbar { padding: 13px; height: 65px; }
+  .weather { font-size: 9px; }
+  .quest-card { left: 12px; top: 77px; width: 196px; padding: 13px; }
+  .quest-card h3 { font-size: 19px; }
+  .quest-card p { font-size: 10px; }
+  .quest-card .eyebrow { font-size: 7px; gap: 5px; letter-spacing: .6px; }
+  .quest-card .eyebrow svg { width: 12px; }
+  .quest-costs { gap: 5px; }
+  .cost { font-size: 10px; padding: 4px; gap: 3px; }
+  .quest-actions .text-button { margin-top: 8px; }
+  .cost-caption { font-size: 9px; }
+  .quick-actions { right: 12px; top: 77px; bottom: auto; padding: 3px; gap: 0; }
+  .quick-actions button { min-height: 34px; padding: 7px; }
+  .quick-actions button > span:not(#quick-medkit-count) { display: none; }
+  .quick-actions #quick-medkit-count { font-size: 10px; }
+  .vitals { left: 12px; bottom: 88px; width: 180px; padding: 11px; }
+  .vital-detail span { font-size: 9px; }
+  .vital-detail b { font-size: 10px; }
+  .vital-detail small { font-size: 8px; }
+  .vital-row { margin-bottom: 10px; gap: 8px; }
+  .vital-row > svg { width: 14px; }
+  .vital-bottom { font-size: 9px; padding-top: 9px; }
+  .toolbar { bottom: 12px; padding: 4px; }
+  .toolbar button { width: auto; height: 54px; }
+  .toolbar button span { font-size: 9px; }
+  .toolbar button svg { width: 20px; }
+  .toolbar .toolbar-cargo { display: block; position: absolute; top: 3px; right: 3px; font-size: 8px; color: #b1c69e; }
+  .minimap { right: 12px; }
+  .minimap small { font-size: 8px; }
+  .tutorial { display: none; }
+  .panel { width: 100%; }
+  .panel-header { padding: 23px 18px 18px; }
+  .panel-header h2 { font-size: 25px; }
+  .panel-header p { font-size: 11px; }
+  .panel-body { padding: 18px; }
+  .panel-title-icon { width: 37px; height: 37px; border-radius: 8px; }
+  .panel-title-icon svg { width: 23px; }
+  .panel-title { gap: 10px; }
+  .category-tabs button { font-size: 9px; }
+  .category-tabs { gap: 3px; }
+  .recipe-tools { gap: 6px; }
+  .recipe-tools input { font-size: 11px; }
+  .filter-button { font-size: 9px; padding: 9px 6px; gap: 4px; }
+  .recipe-card { padding: 14px; }
+  .recipe-card h3 { font-size: 13px; }
+  .recipe-card p { font-size: 11px; }
+  .recipe-icon { width: 40px; height: 40px; }
+  .recipe-icon svg { width: 24px; }
+  .craft-button { font-size: 11px; padding: 10px; }
+  .resource-tile { padding: 11px; gap: 7px; }
+  .resource-tile small { font-size: 11px; }
+  .resource-tile b { font-size: 15px; }
+  .equipment-slots span { font-size: 10px; }
+  .context button { font-size: 11px; }
+  .context small { display: none; }
+  .fish-ui { width: 315px; }
+}
+@media (max-height: 650px) and (min-width: 761px) {
+  .quest-card { top: 76px; padding: 14px; }
+  .resource-peek { top: 76px; }
+  .quick-actions { bottom: 222px; }
+  .quest-card p { font-size: 11px; }
+}

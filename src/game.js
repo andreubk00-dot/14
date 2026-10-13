@@ -8,6 +8,7 @@ export const RESOURCES = {
   herbs: { name: 'Травы', icon: '❋', color: '#8eaf72', weight: 0.25 },
   fish: { name: 'Рыба', icon: '≈', color: '#7eb8bb', weight: 1 },
   pearl: { name: 'Перламутр', icon: '◈', color: '#e3d8b2', weight: 0.25 },
+  water: { name: 'Чистая вода', icon: 'water', color: '#84bfc7', weight: 0.5 },
 };
 export const RECIPES = [
   { id: 'axe', name: 'Походный топор', category: 'tools', desc: 'Позволяет рубить деревья. Больше дерева с каждой вылазки.', cost: { wood: 3, metal: 4 }, slot: 'tool', icon: '⚒' },
@@ -37,6 +38,18 @@ export const RECIPES = [
   { id: 'planter', name: 'Кашпо с папоротником', category: 'shelter', desc: 'Немного живой зелени в восстановленном доме.', cost: { wood: 3, herbs: 2 }, placeable: true, icon: '❧' },
   { id: 'rug', name: 'Тканый ковёр', category: 'shelter', desc: 'Тёплый акцент для жилой комнаты.', cost: { cloth: 4 }, placeable: true, icon: '▧' },
   { id: 'radio', name: 'Восстановить радиостанцию', category: 'shelter', desc: 'Поймай сигнал из соседнего района. Завершает первую главу.', cost: { metal: 8, wire: 6, parts: 6 }, requires: 'generator', fixed: true, icon: '◉' },
+  { id: 'pump', name: 'Наладить водоснабжение', category: 'shelter', desc: 'Запускает насос у водонапорной башни. Время роста грядок сокращается на 25%.', cost: { metal: 16, wire: 5, parts: 5 }, requires: 'radio', fixed: true },
+  { id: 'purifier', name: 'Станция очистки воды', category: 'shelter', desc: 'Производит 3 воды за 90 секунд. Урожай забирается дома.', cost: { metal: 8, wood: 4, cloth: 3 }, requires: 'pump', placeable: true },
+  { id: 'recycler', name: 'Переработчик лома', category: 'shelter', desc: 'Перерабатывает 3 металла в 2 детали и 1 провод за цикл.', cost: { metal: 12, parts: 4, wire: 3 }, requires: 'generator', placeable: true },
+  { id: 'solar', name: 'Солнечные панели', category: 'shelter', desc: 'Сокращает длительность производственных циклов на 25%.', cost: { metal: 18, wire: 8, parts: 8 }, requires: 'pump', fixed: true },
+  { id: 'tea', name: 'Травяной чай', category: 'supplies', desc: 'Восстанавливает 15 здоровья и 50 выносливости.', cost: { water: 1, herbs: 1 }, repeatable: true },
+];
+export const CONTRACTS = [
+  { id: 'timber', title: 'Доски для соседей', desc: 'Починим окна до следующего дождя.', cost: { wood: 8 }, reward: { metal: 3, cloth: 2, wire: 1 }, cooldown: 120 },
+  { id: 'repairs', title: 'Ремонт старой техники', desc: 'Мастер обменяет материалы на рабочие детали.', cost: { metal: 6, wire: 2 }, reward: { parts: 3, cloth: 3 }, cooldown: 150 },
+  { id: 'supper', title: 'Ужин у костра', desc: 'Рыба и свежие травы пригодятся маленькому поселению.', cost: { fish: 3, herbs: 2 }, reward: { wood: 6, metal: 4, cloth: 3 }, cooldown: 120 },
+  { id: 'water', title: 'Чистая вода для района', desc: 'Доставь воду людям у водонапорной башни.', cost: { water: 6 }, reward: { metal: 5, parts: 3, wire: 2 }, requires: 'pump', cooldown: 180 },
+  { id: 'pearl', title: 'Редкая находка с причала', desc: 'Рыбак обменяет перламутр на технические запасы.', cost: { pearl: 1 }, reward: { parts: 3, wire: 4 }, requires: 'radio', cooldown: 180 },
 ];
 export const DEFAULT_WEAPON = { id: 'pipe', name: 'Стальная труба', damage: 13, range: 2.4, cooldown: 0.7 };
 export const FISH = [
@@ -51,7 +64,7 @@ export function freshState() {
     version: 1, x: HOME.x + 1, z: HOME.z + 2, health: 100, stamina: 100,
     stash: { wood: 3, metal: 2, cloth: 2 }, bag: {}, owned: [],
     equipment: { weapon: 'pipe', armor: null, bag: null, boots: null },
-    ammo: 0, medkits: 1, meals: 0, placed: [], depleted: {}, nodeLoot: {}, droneDeaths: {}, drops: [],
+    ammo: 0, medkits: 1, meals: 0, teas: 0, placed: [], depleted: {}, nodeLoot: {}, droneDeaths: {}, drops: [], contracts: {}, completedOrders: 0, waterCollected: -120,
     elapsed: 0, fishCollection: [], kills: 0, trips: 0, gathered: 0,
     recovered: false, grave: null, settings: { sound: true, quality: 'high' },
     tutorial: true, chapterComplete: false,
@@ -71,9 +84,11 @@ export function validateSave(input) {
   for (const key of ['health', 'stamina']) {
     if (Number.isFinite(input[key])) state[key] = Math.max(key === 'health' ? 1 : 0, Math.min(100, input[key]));
   }
-  for (const key of ['elapsed', 'ammo', 'medkits', 'meals', 'kills', 'trips', 'gathered']) {
+  for (const key of ['elapsed', 'ammo', 'medkits', 'meals', 'teas', 'kills', 'trips', 'gathered', 'completedOrders']) {
     if (Number.isFinite(input[key])) state[key] = Math.max(0, Math.min(input[key], 100000000));
   }
+  for (const contract of CONTRACTS) if (Number.isFinite(input.contracts?.[contract.id])) state.contracts[contract.id] = Math.max(0, Math.min(state.elapsed, input.contracts[contract.id]));
+  if (Number.isFinite(input.waterCollected)) state.waterCollected = Math.max(-120, Math.min(state.elapsed, input.waterCollected));
   const ids = new Set(RECIPES.map(r => r.id));
   state.owned = [...new Set((Array.isArray(input.owned) ? input.owned : []).filter(id => ids.has(id)))];
   for (const slot of Object.keys(state.equipment)) {
@@ -154,6 +169,7 @@ export function craft(state, id) {
     if (id === 'ammo') state.ammo += 12;
     if (id === 'medkit') state.medkits++;
     if (id === 'meal') state.meals++;
+    if (id === 'tea') state.teas++;
   } else {
     state.owned.push(id);
     if (Object.hasOwn(state.equipment, recipe.slot)) state.equipment[recipe.slot] = id;
@@ -204,6 +220,7 @@ export function respawn(state) {
 export function useSupply(state, id) {
   if (id === 'medkit' && state.medkits > 0 && state.health < 100) { state.medkits--; state.health = Math.min(100, state.health + 45); return true; }
   if (id === 'meal' && state.meals > 0 && (state.health < 100 || state.stamina < 100)) { state.meals--; state.health = Math.min(100, state.health + 30); state.stamina = 100; return true; }
+  if (id === 'tea' && state.teas > 0 && (state.health < 100 || state.stamina < 100)) { state.teas--; state.health = Math.min(100, state.health + 15); state.stamina = Math.min(100, state.stamina + 50); return true; }
   return false;
 }
 export function catchFish(rng = Math.random, upgraded = false) {
@@ -216,5 +233,49 @@ export function objective(state) {
   if (!state.owned.includes('generator')) return { title: 'Верни свет домой', desc: 'Собери материалы и восстанови генератор на станции.', recipe: 'generator', number: '01' };
   if (!state.owned.includes('bridge')) return { title: 'Открой путь в депо', desc: 'Восстанови мост, чтобы добраться до технических запасов.', recipe: 'bridge', number: '02' };
   if (!state.owned.includes('radio')) return { title: 'Найди голос в тишине', desc: 'Восстанови радиостанцию и поймай сигнал соседнего района.', recipe: 'radio', number: '03' };
-  return { title: 'Здесь снова есть жизнь', desc: 'Сигнал найден. Обустраивай дом, исследуй район и собирай коллекцию.', number: '✓' };
+  if (!state.owned.includes('pump')) return { title: 'Вода для нового начала', desc: 'Запусти насос у башни. Обеспечь убежище чистой водой.', recipe: 'pump', number: '04' };
+  if (!state.owned.includes('solar')) return { title: 'Дом становится самостоятельным', desc: 'Собери солнечные панели и ускорь своё производство.', recipe: 'solar', number: '05' };
+  return { title: 'Район снова живёт', desc: 'Вода и свет вернулись. Развивай производство и помогай соседям.', number: '✓' };
+}
+export function contractStatus(state, contract) {
+  if (!contract) return { ok: false, reason: 'Заказ не найден' };
+  if (contract.requires && !state.owned.includes(contract.requires)) return { ok: false, reason: `Нужно: ${RECIPES.find(r => r.id === contract.requires)?.name}` };
+  const last = state.contracts[contract.id];
+  const remaining = last === undefined ? 0 : Math.max(0, contract.cooldown - (state.elapsed - last));
+  if (remaining > 0) return { ok: false, reason: `Новый заказ через ${Math.ceil(remaining)} сек.`, remaining };
+  if (Object.entries(contract.cost).some(([id, n]) => total(state, id) < n)) return { ok: false, reason: 'Собери нужные материалы' };
+  return { ok: true };
+}
+export function deliverContract(state, id) {
+  const contract = CONTRACTS.find(c => c.id === id), status = contractStatus(state, contract);
+  if (!status.ok) return status;
+  if (!(state.x >= -27 && state.x <= -6 && state.z >= 5 && state.z <= 27)) return { ok: false, reason: 'Передать заказ можно только дома' };
+  spend(state, contract.cost);
+  for (const [resource, n] of Object.entries(contract.reward)) state.stash[resource] = (state.stash[resource] || 0) + n;
+  state.contracts[id] = state.elapsed; state.completedOrders++;
+  return { ok: true, contract };
+}
+export function productionInfo(state, item) {
+  const recipes = {
+    garden: { interval: 90, loot: { herbs: 3 }, name: 'Собрать травы' },
+    purifier: { interval: 90, loot: { water: 3 }, name: 'Забрать чистую воду' },
+    recycler: { interval: 120, loot: { parts: 2, wire: 1 }, cost: { metal: 3 }, name: 'Переработать лом' },
+  };
+  const info = recipes[item.id]; if (!info) return null;
+  let interval = info.interval;
+  if (item.id === 'garden' && state.owned.includes('pump')) interval *= 0.75;
+  if (state.owned.includes('solar')) interval *= 0.75;
+  return { ...info, interval, remaining: Math.max(0, interval - (state.elapsed - item.harvested)) };
+}
+export function harvestProduction(state, item) {
+  const info = productionInfo(state, item);
+  if (!info) return { ok: false, reason: 'Нет производства' };
+  if (info.remaining > 0) return { ok: false, reason: `До готовности ${Math.ceil(info.remaining)} сек.` };
+  const weight = Object.entries(info.loot).reduce((n, [id, count]) => n + RESOURCES[id].weight * count, 0);
+  // Fees can free bag space, but readiness is atomic: nothing is spent until output fits.
+  const freed = info.cost ? Object.entries(info.cost).reduce((n, [id, count]) => n + Math.max(0, count - (state.stash[id] || 0)) * RESOURCES[id].weight, 0) : 0;
+  if (bagWeight(state) + weight - freed > capacity(state)) return { ok: false, reason: 'Освободи место в рюкзаке для результата' };
+  if (info.cost && !spend(state, info.cost)) return { ok: false, reason: 'Для переработки нужно 3 металла' };
+  const result = collect(state, info.loot); item.harvested = state.elapsed;
+  return { ok: true, received: result.received };
 }

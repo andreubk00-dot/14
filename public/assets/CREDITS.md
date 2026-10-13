@@ -16,3 +16,12 @@ Commercial use is permitted. Upstream software MIT notice is retained in KENNEY-
 
 Architecture, props, lighting, procedural textures and sound synthesis are created for this project.
 All assets are bundled locally; the game does not fetch third-party assets at runtime.
+
+## KayKit — Character Pack: Adventurers
+- Creator: Kay Lousberg, https://kaylousberg.com/
+- Source: https://github.com/KayKit-Game-Assets/KayKit-Character-Pack-Adventures-1.0
+- Commit: 672074b73ba276876a19e8816ecdc5241817ab47
+- Model: Rogue_Hooded.glb, shipped as models/characters/character.glb
+- License: CC0 1.0 Universal, full notice in KAYKIT-LICENSE.txt.
+- Changes: unused animation clips and binary data pruned; geometry, skeleton and embedded texture preserved. Ten clips retained for gameplay.
+- This model replaces the original Kenney robot. Kenney assets still provide vegetation, drones and blasters.
