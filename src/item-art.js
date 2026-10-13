@@ -12,6 +12,11 @@ const shell = path('M12 40Q0 8 32 7Q64 8 52 40L40 56H24Z','#c6a4b8')+line(18,18,
 const station = c => rect(8,23,48,33,c,4)+rect(14,10,36,15,dark)+rect(19,15,26,5,steel)+rect(14,32,20,17,dark)+circle(24,40,5,gold)+rect(39,31,11,5,steel)+rect(39,42,11,5,steel)+rect(13,56,7,4,dark)+rect(44,56,7,4,dark);
 const bed = rect(8,31,48,20,wood)+rect(10,23,44,16,'#7daa8a',4)+rect(12,20,13,16,'#eae0c2',3)+path('M29 24H53V45H29Z','#9fbd91')+rect(8,49,5,9,dark)+rect(51,49,5,9,dark);
 const art = {
+ medicine: rect(10,8,26,45,'#d7d5bf',4)+rect(14,12,18,36,'#efead7')+rect(18,16,10,13,'#bc7e71')+rect(18,34,10,10,'#94b7ad')+rect(37,27,18,28,'#89a69d',4)+rect(41,21,10,8,steel)+line(41,41,51,41,'#eee7ce',3)+line(46,36,46,46,'#eee7ce',3),
+ dressing: rect(9,18,46,35,'#cd9d80',5)+rect(15,10,20,10,dark)+rect(13,24,38,24,'#ebdcca')+rect(27,28,10,18,'#86aaa2')+rect(23,32,18,10,'#86aaa2')+rect(44,39,13,16,'#b5c1ab')+line(47,43,54,43,dark,2),
+ lure: path('M32 5Q53 25 32 43Q13 25 32 5',gold)+circle(32,24,7,steel)+line(32,43,32,52,dark,3)+path('M32 50Q48 62 48 44L44 49',steel),
+ fishmeal: rect(6,18,52,39,'#927452',5)+rect(11,24,42,27,'#d7c2a0')+path('M16 38Q30 17 48 38Q30 51 16 38','#85b2b0')+circle(43,35,2,dark)+circle(17,28,4,'#dca06a')+circle(45,46,4,green),
+ fishtrophy: rect(5,12,54,40,wood,5)+rect(9,16,46,32,'#ccb08b')+path('M17 33L10 25V40Z',steel)+path('M16 33Q36 14 54 33Q36 48 16 33','#87b7b7')+circle(45,30,2,dark)+circle(29,32,2,gold)+circle(37,34,2,gold),
   wrench: path('M14 56L7 48L35 20Q28 7 42 6L38 15L44 21L53 16Q55 29 43 29Z',steel)+line(15,47,35,27,gold,2),
   vegetables:path('M17 22L30 53L45 20Z','#d99a61')+herb(31,28)+line(27,34,35,30,'#ad6b47',2),
   flowers:line(20,56,28,22,'#89a86d',4)+line(42,56,38,30,'#89a86d',4)+circle(22,18,8,'#d69eae')+circle(34,18,8,'#d69eae')+circle(28,25,8,'#e7b9c4')+circle(28,21,4,gold)+circle(42,29,8,'#c6a0c7')+circle(42,29,3,gold),

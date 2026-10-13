@@ -398,3 +398,45 @@ test('Tools accelerate the appropriate machinery; loose scrap stays loose scrap'
  assert.equal(dismantleInfo(['cutter'],board).duration,dismantleInfo([],board).duration/2);
  assert.equal(dismantleInfo(['pick'],motor).fast,false);assert.equal(machineKind(pile),null);assert.equal(machineKind({type:'electronics',name:'Радиоприёмник'}),'radio');
 });
+
+import {openGate,consumeBait,packFurniture,unpackFurniture,updateRainCrops} from '../src/game.js';
+import {GATES,fishingProbabilities,weatherAt,gameHour} from '../src/expedition.js';
+test('Access gates need a nearby player and the right permanent tool; saves retain opened doors',()=>{
+ const s=freshState(),g=GATES[0];s.owned=['cutter'];assert.equal(openGate(s,g.id).ok,false);s.x=g.x;s.z=g.z;s.owned=[];assert.equal(openGate(s,g.id).ok,false);s.owned=['cutter'];assert.equal(openGate(s,g.id).ok,true);assert.equal(openGate(s,g.id).ok,false);assert.deepEqual(validateSave(s).openedGates,['yard']);assert.deepEqual(s.owned,['cutter']);
+});
+test('Bait uses carried stock exactly once and reusable lure never spends stock',()=>{
+ const s=freshState();s.stash.herbs=20;assert.equal(consumeBait(s,'herbs'),false);s.bag.herbs=1;assert.equal(consumeBait(s,'herbs'),true);assert.equal(consumeBait(s,'herbs'),false);assert.equal(s.stash.herbs,20);assert.equal(consumeBait(s,'lure'),false);s.owned.push('lure');assert.equal(consumeBait(s,'lure'),true);assert.equal(consumeBait(s,'none'),true);assert.equal(consumeBait(s,'bogus'),false);
+});
+test('Fishing site, night and chosen bait change normalized probabilities without removing fish',()=>{
+ const day=fishingProbabilities(false,{hour:12}),night=fishingProbabilities(false,{hour:22}),pond=fishingProbabilities(false,{spot:'pond'}),back=fishingProbabilities(false,{spot:'backwater'}),lure=fishingProbabilities(false,{hour:22,bait:'lure'});
+ assert.ok(night[2]>day[2]);assert.ok(lure[2]>night[2]);assert.ok(back[1]>pond[1]);assert.ok(back[3]<pond[3]);for(const p of [day,night,pond,back,lure]){assert.ok(Math.abs(p.reduce((a,b)=>a+b,0)-1)<1e-9);assert.ok(p.every(n=>n>0));}
+ assert.equal(gameHour(0),17.7);assert.ok(craftStatus(freshState(),RECIPES.find(r=>r.id==='fishtrophy')).reason.includes('форель'));
+});
+test('Furniture packing pauses crops, preserves fixture switches and never duplicates material or finds',()=>{
+ const s=freshState();s.elapsed=100;s.placed=[{id:'cropbed',x:-16,z:23,rotation:0,harvested:0,crop:'herbs',plantedAt:60,rainGrowth:10}];const before=productionInfo(s,s.placed[0]).remaining;
+ assert.equal(packFurniture(s,0),true);assert.equal(packFurniture(s,0),false);s.elapsed=300;const saved=validateSave(s);assert.equal(saved.packedFurniture[0].rainGrowth,10);
+ assert.equal(unpackFurniture(saved,0,-18,19.5,0,[{x:-18,z:19.5,w:2,d:1}]),false);assert.equal(saved.packedFurniture.length,1);
+ assert.equal(unpackFurniture(saved,0,-16,23,Math.PI/2),true);assert.equal(productionInfo(saved,saved.placed[0]).remaining,before);assert.equal(unpackFurniture(saved,0,-20,23,0),false);assert.equal(saved.packedFurniture.length,0);
+ const fixture={id:'foundlamp',x:-16,z:15,rotation:0,harvested:300,enabled:false};saved.placed.push(fixture);assert.equal(packFurniture(saved,1),true);assert.equal(unpackFurniture(saved,0,-16,15,0),true);assert.equal(saved.placed[1].enabled,false);assert.deepEqual(saved.finds,{});assert.deepEqual(saved.stash,s.stash);
+});
+test('Rain is deterministic, grows only exposed active crops and resets on replant',()=>{
+ const s=freshState();s.elapsed=200;s.placed=[{id:'cropbed',x:-16,z:23,rotation:0,harvested:100,crop:'herbs',plantedAt:150},{id:'cropbed',x:-16,z:12,rotation:0,harvested:100,crop:'herbs',plantedAt:150}];assert.equal(weatherAt(0).rain,0);assert.equal(weatherAt(200).rain,1);assert.equal(weatherAt(420).rain,0);assert.ok(weatherAt(166).rain>0&&weatherAt(166).rain<1);updateRainCrops(s,20,(_x,z)=>z<20);assert.equal(s.placed[0].rainGrowth,5);assert.equal(s.placed[1].rainGrowth,undefined);assert.equal(validateSave(s).placed[0].rainGrowth,5);s.elapsed=300;harvestProduction(s,s.placed[0]);assert.equal(s.placed[0].rainGrowth,undefined);
+});
+
+import {gridPath} from '../src/navigation.js';
+test('Long district routes avoid obstacles and diagonal corner cutting with bounded search',()=>{
+ const blocked=(x,z)=>Math.abs(x)>64||Math.abs(z)>64||x===0&&z<55;
+ const path=gridPath({x:51,z:-44},{x:-44,z:56},blocked,17000);assert.ok(path.length>100);assert.deepEqual(path.at(-1),{x:-44,z:56});assert.ok(path.every(p=>!blocked(p.x,p.z)));
+ let previous={x:51,z:-44};for(const p of path){if(p.x!==previous.x&&p.z!==previous.z){assert.equal(blocked(previous.x,p.z),false);assert.equal(blocked(p.x,previous.z),false);}previous=p;}
+ assert.deepEqual(gridPath({x:0,z:0},{x:2,z:2},(x,z)=>x===1||z===1,20),[]);
+});
+
+
+import {gateForPoint} from '../src/expedition.js';
+test('Room access follows shared building bounds and clinic materials craft the existing healing supply',()=>{
+ assert.equal(gateForPoint(-41,53),'yard');assert.equal(gateForPoint(53,-52),'salvage');assert.equal(gateForPoint(40.5,-50),undefined);const s=freshState();s.medkits=0;s.stash={medicine:2,cloth:1};assert.equal(craft(s,'dressing').ok,true);assert.equal(s.medkits,1);assert.equal(s.stash.medicine,1);assert.equal(craft(s,'dressing').ok,false);assert.equal(s.medkits,1);assert.equal(validateSave(s).stash.medicine,1);
+});
+
+test('Packed save sanitizer ignores malformed records and unknown bait without changing valid growth',()=>{
+ const s=freshState();s.elapsed=100;s.fishingBait='toString';s.packedFurniture=[null,0,{id:'unknown',x:-16,z:23},{id:'cropbed',x:-16,z:23,harvested:10,rotation:0,crop:'herbs',plantedAt:20,rainGrowth:4,packedAt:50}];const clean=validateSave(s);assert.equal(clean.fishingBait,'none');assert.equal(clean.packedFurniture.length,1);assert.equal(clean.packedFurniture[0].packedAt,50);assert.equal(clean.packedFurniture[0].plantedAt,20);assert.equal(clean.packedFurniture[0].rainGrowth,4);assert.equal(consumeBait(s,'toString'),false);
+});

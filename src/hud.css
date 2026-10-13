@@ -185,3 +185,5 @@
   .location-list strong, .orders-summary strong, .production-list strong, .owned-items button, .collection-list > div { font-size: 16px; }
   .collection-list { grid-template-columns: 1fr; }
 }
+
+@media(max-width:760px){.brand small{white-space:nowrap}}

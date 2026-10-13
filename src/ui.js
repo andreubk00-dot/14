@@ -1,3 +1,4 @@
+import {BAITS,FISHING_SPOTS,gameHour,weatherAt} from './expedition.js';
 import { CROPS, FINDS, MEMORIES, cropInfo } from './homelife.js';
 import { LOCATIONS, WORLD_LIMIT, ROADS, mapPoint } from './district.js';
 import { inventoryItems, EQUIPMENT_SLOTS } from './inventory.js';
@@ -131,7 +132,7 @@ export class UI {
   }
   context(target) {
     const element = document.getElementById('context'); element.hidden = !target;
-    if (target) this.setHTML('context', `<button data-action="interact"><span class="context-icon">${recipeIcon(({ node: target.entity?.find||target.entity?.requires || ({ scrap: 'metal', herbs: target.entity?.originalLoot?.seeds ? 'seeds' : 'herbs', wood: 'wood', tree: 'axe', ore: 'pick', crate: 'chest', electronics: 'wire', cloth: 'cloth' })[target.entity?.type] || 'bag', station: 'craft', storage: 'chest', bed: 'bed', fish: 'rod', grave: 'bag', production: target.entity?.id || 'parts', water: 'water', orders: 'board', helper:'herbs',garden:'cropbed',note:'book','furniture-toggle':target.entity?.id })[target.type], 21)}</span><kbd>E</kbd><span>${target.label}</span>${target.hint ? `<small>${target.hint}</small>` : ''}</button>`);
+    if (target) this.setHTML('context', `<button data-action="interact"><span class="context-icon">${recipeIcon(({ node: target.entity?.find||target.entity?.requires || ({ scrap: 'metal', herbs: target.entity?.originalLoot?.seeds ? 'seeds' : 'herbs', wood: 'wood', tree: 'axe', ore: 'pick', crate: 'chest', electronics: 'wire', cloth: 'cloth' })[target.entity?.type] || 'bag', station: 'craft', storage: 'chest', bed: 'bed', fish: 'rod', grave: 'bag', production: target.entity?.id || 'parts', water: 'water', orders: 'board', helper:'herbs',gate:target.entity?.tool,garden:'cropbed',note:'book','furniture-toggle':target.entity?.id })[target.type], 21)}</span><kbd>E</kbd><span>${target.label}</span>${target.hint ? `<small>${target.hint}</small>` : ''}</button>`);
   }
   progress(label, ratio) {
     const element = document.getElementById('task-progress'); element.hidden = !label;
@@ -166,6 +167,7 @@ export class UI {
     const headers = {
       craft: ['МАСТЕРСКАЯ', 'Станция рецептов', 'Создавай то, что поможет идти дальше.'],
       inventory: ['СНАРЯЖЕНИЕ И ДОБЫЧА', 'Инвентарь', ''],
+      fishing:['У ВОДЫ','Наживка и место','Расходуемые наживки берутся из рюкзака. Каждая тратится один раз при забросе.'],
       garden:['ПОСАДКИ','Посадочная грядка','Выбери культуру. После урожая грядка освободится для новой посадки.'],
       note:['СЛЕДЫ ПРОШЛОГО','Найденная запись',''],
       storage: ['УБЕЖИЩЕ', 'Хранилище', 'Запасы для рецептов и будущих вылазок.'],
@@ -196,7 +198,8 @@ export class UI {
         const canAct = canEquip || (status.ok && (isBuild ? nearHome : nearStation));
         return `<article class="recipe-card ${status.owned ? 'owned' : ''}"><div class="recipe-top"><span class="recipe-icon">${recipeIcon(r.id, 28)}</span><div><div class="recipe-heading"><h3>${r.name}</h3><span class="availability-badge ${status.owned ? 'made' : status.ok ? 'ready' : 'locked'}">${status.owned ? icon('check', 12) : status.ok ? icon('check', 12) : icon(r.requires && !state.owned.includes(r.requires) ? 'lock' : 'bag', 12)} ${status.owned ? 'Готово' : status.ok ? r.foundOnly?'Вещь найдена':'Есть материалы' : r.requires && !state.owned.includes(r.requires) ? 'Закрыто' : r.foundOnly?'Находка':'Нужны ресурсы'}</span></div><p>${r.desc}</p></div></div><div class="recipe-bottom"><div class="costs">${status.owned ? `<span class="owned-text">${equipped ? 'Экипировано' : 'Изготовлено'}</span>` : r.foundOnly?`<span class="owned-text">${(state.finds[r.id]||0)+(state.storedFinds[r.id]||0)} в запасе</span>`:costHTML(state,r.cost)}</div><button class="craft-button" data-action="${canEquip ? 'equip' : 'make'}" data-id="${r.id}" ${!canAct || equipped ? 'disabled' : ''}>${canEquip ? equipped ? 'Надето' : 'Надеть' : status.owned ? 'Готово' : r.placeable ? 'Разместить' : 'Создать'}</button></div>${!status.ok && !status.owned ? `<small class="recipe-reason">${icon('info', 13)} ${status.reason}</small>` : ''}</article>`;
       }).join('')}</div>`;
-      if (isBuild && state.placed.length) body += `<div class="section-title"><h3>Уже дома</h3><span>Можно переставить</span></div><div class="owned-items">${state.placed.map((p, index) => `<button data-action="move-furniture" data-index="${index}" ${!nearHome ? 'disabled' : ''}>${icon('move', 15)} ${RECIPES.find(r => r.id === p.id).name}</button>`).join('')}</div>`;
+      if (isBuild && state.placed.length) body += `<div class="section-title"><h3>Уже дома</h3><span>Можно переставить</span></div><div class="owned-items">${state.placed.map((p, index) => `<div class="furniture-row">${recipeIcon(p.id,36)}<span>${RECIPES.find(r=>r.id===p.id).name}</span><button class="secondary" data-action="move-furniture" data-index="${index}" ${!nearHome?'disabled':''}>Переставить</button><button class="text-button" data-action="pack-furniture" data-index="${index}" ${!nearHome?'disabled':''}>На склад</button></div>`).join('')}</div>`;
+      if(isBuild)body+=this.packedOverview();
       if (isBuild) body += this.productionOverview();
       if(isBuild) body+=`<div class="furniture-controls">${state.placed.map((p,index)=>['lamp','foundlamp','recordplayer'].includes(p.id)?`<button class="secondary" data-action="toggle-furniture" data-index="${index}" ${!nearHome?'disabled':''}>${recipeIcon(p.id,26)} ${p.enabled?'Выключить':'Включить'} · ${RECIPES.find(r=>r.id===p.id).name}</button>`:'').join('')}</div>`;
     }
@@ -206,9 +209,10 @@ export class UI {
       else body += this.inventoryWindow();
     }
     if (this.panel === 'storage') {
-      body = `<div class="storage-actions"><button class="primary" data-action="deposit">${icon('bag',22)} Сложить добычу</button><button class="secondary" data-action="inventory">${icon('bag',22)} Рюкзак</button></div>${this.itemGrid(inventoryItems(state,true),'storage-grid')}${this.itemDetails(true)}${this.haulSummary()}`;
+      body = `<div class="storage-actions"><button class="primary" data-action="deposit">${icon('bag',22)} Сложить добычу</button><button class="secondary" data-action="inventory">${icon('bag',22)} Рюкзак</button></div>${this.itemGrid(inventoryItems(state,true),'storage-grid')}${this.itemDetails(true)}${this.haulSummary()}${this.packedOverview()}`;
     }
     if(this.panel==='note') {const note=MEMORIES.find(n=>n.id===this.noteId);body=note?`<article class="found-note"><h3>${note.name}</h3><p>${note.text}</p><small>Запись сохранена в дневнике.</small></article>`:'<p>Запись не найдена.</p>';}
+    if(this.panel==='fishing') {const spot=FISHING_SPOTS.find(p=>Math.hypot(p.x-state.x,p.z-state.z)<3);body=`<p class="panel-note">${spot?spot.name+' · '+spot.desc:'Подойди к причалу или заводи.'} ${gameHour(state.elapsed)>=20||gameHour(state.elapsed)<6?'Ночь: форель подходит ближе к берегу.':'День: активнее обычная рыба.'}</p><div class="recipe-list">${Object.entries(BAITS).map(([id,b])=>{const available=!b.tool||state.owned.includes(b.tool),count=b.resource?state.bag[b.resource]||0:null;return `<article class="recipe-card"><div class="recipe-top">${recipeIcon(id==='none'?'rod':id,40)}<div><h3>${b.name}</h3><p>${b.desc}${count!==null?' · в рюкзаке: '+count:''}</p></div></div><button class="secondary" data-action="select-bait" data-id="${id}" ${!available||count===0?'disabled':''}>${state.fishingBait===id?'Выбрано':'Выбрать'}</button></article>`;}).join('')}</div>`;}
     if(this.panel==='garden') body=this.gardenWindow();
     if (this.panel === 'helper') {
       const recruited = state.owned.includes('helper');
@@ -232,7 +236,10 @@ export class UI {
     if (this.panel === 'settings') body = `<div class="settings-row"><div><h3>Звуки района</h3><p>Ветер, шаги, инструменты и вода.</p></div><button class="toggle ${state.settings.sound ? 'on' : ''}" data-action="sound" aria-label="Переключить звук"><i></i></button></div><div class="settings-row"><div><h3>Качество графики</h3><p>Мягкие тени и свечение источников света.</p></div><button class="secondary" data-action="quality">${state.settings.quality === 'high' ? 'Высокое' : 'Экономное'}</button></div><div class="settings-row"><div><h3>Сохранение</h3><p id="save-note">Хранится только в этом браузере.</p></div><button class="secondary" data-action="save">Сохранить</button></div><button class="secondary full-width" data-action="export-save">Скачать сохранение</button><label class="import-save secondary full-width">Загрузить сохранение<input id="import-save" type="file" accept="application/json,.json"></label><div class="controls-table"><h3>Управление</h3><p><kbd>WASD / стрелки</kbd> Движение</p><p><kbd>ЛКМ по земле</kbd> Идти к точке</p><p><kbd>E</kbd> Сбор / действие / подсечка</p><p><kbd>Пробел</kbd> Атака / рыбалка</p><p><kbd>Shift</kbd> Бег</p><p><kbd>Q</kbd> Аптечка</p><p><kbd>R</kbd> Повернуть предмет при строительстве</p><p><kbd>Esc</kbd> Закрыть меню / отменить</p><p><kbd>Колесо мыши</kbd> Масштаб</p></div><div class="credits"><strong>Модели: KayKit / Kay Lousberg и Kenney · CC0</strong><p>Персонаж KayKit в капюшоне, растительность, дроны и бластеры. Архитектура и эффекты созданы для игры.</p></div><button class="danger-button" data-action="reset">Начать новую историю…</button>`;
     if(this.panel==='journal') body=`${state.notes.length?`<div class="section-title"><h3>Найденные записи</h3><span>${state.notes.length}</span></div><div class="place-memories">${MEMORIES.filter(n=>state.notes.includes(n.id)).map(n=>`<article><h3>${n.name}</h3><p>${n.text}</p></article>`).join('')}</div>`:''}`+body;
     if(this.panel==='journal') body=`<div class="section-title"><h3>Места, которые я помню</h3><span>${state.visited.length} / ${LOCATIONS.length}</span></div><div class="place-memories">${LOCATIONS.filter(l=>state.visited.includes(l.id)).map(l=>`<article><h3>${l.name}</h3><p>${l.note}</p></article>`).join('')}</div>`+body;
-    element.innerHTML = `<header class="panel-header"><div class="eyebrow">${eyebrow}</div><button class="icon-button" data-action="close" aria-label="Закрыть меню">${icon('close')}</button><div class="panel-title"><span class="panel-title-icon">${icon(({ craft: 'craft', inventory: 'bag', storage: 'chest', build: 'build', map: 'map', journal: 'book', settings: 'settings', garden:'herbs',note:'book',orders: 'board', helper: 'herbs' })[this.panel], 27)}</span><h2>${title}</h2></div>${subtitle ? `<p>${subtitle}</p>` : ''}</header><div class="panel-body">${body}</div><footer class="panel-footer">${icon('clock', 14)} Игра на паузе <span>ESC — закрыть</span></footer>`;
+    const nearbyFish=FISHING_SPOTS.some(p=>Math.hypot(p.x-state.x,p.z-state.z)<3),selectedBait=BAITS[state.fishingBait];
+    const canCast=nearbyFish&&state.owned.includes('rod')&&(!selectedBait.tool||state.owned.includes(selectedBait.tool))&&(!selectedBait.resource||state.bag[selectedBait.resource]>0);
+    const footer=this.panel==='fishing'?`<button class="primary full-width" data-action="cast-selected" ${canCast?'':'disabled'}>Забросить удочку ${icon('arrow',18)}</button>`:`${icon('clock',14)} Игра на паузе <span>ESC — закрыть</span>`;
+    element.innerHTML = `<header class="panel-header"><div class="eyebrow">${eyebrow}</div><button class="icon-button" data-action="close" aria-label="Закрыть меню">${icon('close')}</button><div class="panel-title"><span class="panel-title-icon">${icon(({ craft: 'craft', inventory: 'bag', storage: 'chest', build: 'build', map: 'map', journal: 'book', settings: 'settings', fishing:'rod',garden:'herbs',note:'book',orders: 'board', helper: 'herbs' })[this.panel], 27)}</span><h2>${title}</h2></div>${subtitle ? `<p>${subtitle}</p>` : ''}</header><div class="panel-body">${body}</div><footer class="panel-footer">${footer}</footer>`;
     element.querySelector('.panel-body').scrollTop = scroll;
     if (this.panel === 'map') {
       const canvas = document.getElementById('large-map'); this.renderMap(canvas, true);
@@ -274,13 +281,17 @@ export class UI {
   gardenWindow() {
     const state=this.state,item=state.placed[this.gardenIndex],info=item?cropInfo(state,item):null;
     if(!item||item.id!=='cropbed') return '<p>Грядка не найдена.</p>';
-    if(info) return `<div class="crop-status">${resourceIcon(item.crop,64)}<h3>${CROPS[item.crop].name}</h3><p>${info.remaining?`До урожая: ${Math.ceil(info.remaining)} сек.`:'Урожай готов к сбору'}</p><div class="meter health"><i style="width:${info.progress*100}%"></i></div><button class="primary full-width" data-action="harvest-bed" data-index="${this.gardenIndex}" ${info.remaining?'disabled':''}>Собрать урожай</button></div>`;
+    if(info) return `<div class="crop-status">${resourceIcon(item.crop,64)}<h3>${CROPS[item.crop].name}</h3><p>${info.remaining?`До урожая: ${Math.ceil(info.remaining)} сек.`:'Урожай готов к сбору'}${weatherAt(state.elapsed).rain>.2&&item.z>19.5?' · дождь поливает грядку':''}</p><div class="meter health"><i style="width:${info.progress*100}%"></i></div><button class="primary full-width" data-action="harvest-bed" data-index="${this.gardenIndex}" ${info.remaining?'disabled':''}>Собрать урожай</button></div>`;
     return `<div class="recipe-list">${Object.entries(CROPS).map(([id,crop])=>`<article class="recipe-card"><div class="recipe-top"><span class="recipe-icon">${resourceIcon(id,48)}</span><div><h3>${crop.name}</h3><p>${crop.interval} сек. · урожай ${Object.values(crop.loot)[0]} шт.</p></div></div><div class="costs">${costHTML(state,crop.cost)}</div><button class="craft-button" data-action="plant-crop" data-id="${id}" data-index="${this.gardenIndex}" ${Object.entries(crop.cost).some(([r,n])=>total(state,r)<n)?'disabled':''}>Посадить</button></article>`).join('')}</div>`;
   }
   haulSummary() {
     const haul=Object.entries(this.state.lastHaul),finds=Object.entries(this.state.lastFindHaul);if(!haul.length&&!finds.length) return '';
     const ready=RECIPES.filter(r=>craftStatus(this.state,r).ok);
     return `<details class="haul-summary"><summary>Последняя сдача · ${haul.reduce((n,[,v])=>n+v,0)+finds.reduce((n,[,v])=>n+v,0)} материалов и находок</summary><div class="haul-items">${haul.map(([id,n])=>`<span>${resourceIcon(id,28)} ${RESOURCES[id].name} × ${n}</span>`).join('')}${finds.map(([id,n])=>`<span>${recipeIcon(id,28)} ${FINDS[id].name} × ${n}</span>`).join('')}</div><h3>Можно создать · ${ready.length}</h3><div class="haul-items">${ready.slice(0,8).map(r=>`<button class="secondary" data-action="craft-projects" data-category="${r.category}">${recipeIcon(r.id,28)} ${r.name}</button>`).join('')}</div></details>`;
+  }
+  packedOverview() {
+    if(!this.state.packedFurniture.length)return '';
+    return `<div class="section-title"><h3>Мебель на складе</h3><span>Состояние сохранено</span></div><div class="packed-furniture">${this.state.packedFurniture.map((p,index)=>`<div class="furniture-row">${recipeIcon(p.id,36)}<span>${RECIPES.find(r=>r.id===p.id).name}${p.crop?' · посадки сохранены':''}</span><button class="secondary" data-action="unpack-furniture" data-index="${index}">Разместить</button></div>`).join('')}</div>`;
   }
   productionOverview() {
     const producers = this.state.placed.map(p => ({ item: p, info: productionInfo(this.state, p) })).filter(p => p.info);
@@ -327,18 +338,19 @@ export class UI {
   fishing(fish) {
     const element = document.getElementById('fish-ui'); element.hidden = !fish;
     if (!fish) return;
-    if (fish.phase === 'wait') element.innerHTML = `<div class="eyebrow">${icon('fish', 15)} ТИХАЯ ВОДА</div><h3>Поплавок качается…</h3><p>Дождись поклёвки. Можно просто послушать воду.</p><div class="fishing-dots"><i></i><i></i><i></i></div><button class="text-button" data-action="cancel-fish">Смотать удочку</button>`;
+    if (fish.phase === 'wait') element.innerHTML = `<div class="eyebrow">${icon('fish', 15)} ТИХАЯ ВОДА</div><h3>Поплавок качается…</h3><p>Дождись поклёвки. Можно просто послушать воду.</p><p>${BAITS[fish.bait]?.name||'Без наживки'}</p><div class="fishing-dots"><i></i><i></i><i></i></div><button class="text-button" data-action="cancel-fish">Смотать удочку</button>`;
     if (fish.phase === 'bite') element.innerHTML = `<div class="eyebrow bite-label">ЕСТЬ ПОКЛЁВКА!</div><h3>Подсекай!</h3><button class="primary full-width" data-action="fish-action">Подсечь <kbd>E / ПРОБЕЛ</kbd></button>`;
     if (fish.phase === 'reel') {
       const width = fish.upgraded ? 26 : 20;
       element.innerHTML = `<div class="eyebrow">${icon('fish', 15)} ДЕРЖИ ЛЕСКУ</div><h3>Поймай момент</h3><p>Нажми, когда указатель внутри светлой зоны.</p><div class="fish-meter"><span class="fish-target" style="left:${fish.target - width / 2}%;width:${width}%"></span><i style="left:${fish.needle}%"></i></div><div class="fish-score"><span>${'●'.repeat(fish.hits)}${'○'.repeat(3 - fish.hits)}</span><small>Ошибки: ${fish.misses} / 2</small></div><button class="primary full-width" data-action="fish-action">Подтянуть <kbd>E / ПРОБЕЛ</kbd></button>`;
     }
     if (fish.phase === 'caught') element.innerHTML = `<div class="eyebrow">${fish.result.rarity.toUpperCase()}</div><h3>${recipeIcon(({ 'Речной окунь': 'fish-perch', 'Серебряный карась': 'fish-crucian', 'Лунная форель': 'fish-trout', 'Перламутровая раковина': 'shell' })[fish.result.name], 32)} ${fish.result.name}</h3><p>+${fish.result.count} ${RESOURCES[fish.result.resource].name.toLowerCase()} · находка в рюкзаке</p><button class="primary full-width" data-action="fish-again">Ещё один заброс ${icon('arrow', 16)}</button><button class="text-button" data-action="cancel-fish">На сегодня хватит</button>`;
+    element.insertAdjacentHTML('beforeend','<button class="secondary full-width" data-action="bait-menu">Выбрать наживку</button>');
   }
   updateFishNeedle(value) { const needle = document.querySelector('.fish-meter i'); if (needle) needle.style.left = `${value}%`; }
   buildHint(recipe, valid, rotation) {
     const element = document.getElementById('build-hint'); element.hidden = !recipe;
-    if (recipe) element.innerHTML = `${icon('build', 20)}<div><strong>${recipe.name}</strong><span>${recipe.id==='wallclock'?(valid?'Нажми, чтобы закрепить на стене':'Выбери стену внутри убежища'):valid?'Нажми на землю, чтобы разместить':'Выбери свободное место в убежище'}</span></div>${recipe.id==='wallclock'?'':`<button data-action="rotate-build">${icon('rotate',17)} ${Math.round(rotation*180/Math.PI)}°</button>`}<button data-action="cancel-build" aria-label="Отменить строительство">${icon('close', 17)}</button>`;
+    if (recipe) element.innerHTML = `${icon('build', 20)}<div><strong>${recipe.name}</strong><span>${['wallclock','fishtrophy'].includes(recipe.id)?(valid?'Нажми, чтобы закрепить на стене':'Выбери стену внутри убежища'):valid?'Нажми на землю, чтобы разместить':'Выбери свободное место в убежище'}</span></div>${['wallclock','fishtrophy'].includes(recipe.id)?'':`<button data-action="rotate-build">${icon('rotate',17)} ${Math.round(rotation*180/Math.PI)}°</button>`}<button data-action="cancel-build" aria-label="Отменить строительство">${icon('close', 17)}</button>`;
   }
   floating(items, world) {
     const root = document.getElementById('floating-text'); root.replaceChildren();

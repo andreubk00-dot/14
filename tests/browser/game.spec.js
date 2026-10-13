@@ -244,7 +244,7 @@ test('Expanded garden, helper assignments and smooth movement work in the playab
   });
   expect(result.distance).toBeGreaterThan(3.8); expect(result.distance).toBeLessThan(4.2);
   expect(result.stopped).toBe(0); expect(result.helper).toBe(true); expect(result.output).toBeGreaterThanOrEqual(3);
-  expect(result.nodes).toBe(5); expect(result.nursery).toBe(true); expect(result.path).toBeGreaterThan(0);
+  expect(result.nodes).toBe(6); expect(result.nursery).toBe(true); expect(result.path).toBeGreaterThan(0);
   await page.keyboard.press('KeyM');
   await expect(page.locator('#panel')).toContainText('Заброшенный сад');
 });
@@ -362,7 +362,7 @@ test('Roofs fade on entering each building and restore outside without changing 
     g.state.x=5;g.state.z=4;for(let i=0;i<60;i++)w.updateRoofs(1/60);
     return {glazing:w.buildings.find(b=>b.x===-42).roofMeshes.find(m=>m.material.userData.baseOpacity<1).material.opacity,count,geometries,transition,inside,wall,outside:b.roofMeshes[0].material.opacity,collision:before===w.blocked(8,4)};
   });
-  expect(result.glazing).toBeCloseTo(.5);expect(result.count).toBe(8); expect(result.geometries.every(n=>n===2)).toBe(true);
+  expect(result.glazing).toBeCloseTo(.5);expect(result.count).toBe(12); expect(result.geometries.every(n=>n>=2)).toBe(true);
   expect(result.transition).toBeGreaterThan(.035); expect(result.transition).toBeLessThan(1);
   expect(result.inside).toBeLessThan(.04);expect(result.wall).toBeLessThan(.14);expect(result.outside).toBeGreaterThan(.99);expect(result.collision).toBe(true);
 });
@@ -388,7 +388,7 @@ test('Mobile cell inventory supports item selection and equipment with usable to
 
 test('District audit: entrances, solid walls, repaired bridge, loot access and safe furnishing', async ({page})=>{
   test.setTimeout(180000);
-  await start(page,{x:-18,z:18,owned:['bridge','solar','generator'],placed:[]});
+  await start(page,{x:-18,z:18,owned:['bridge','solar','generator'],openedGates:['yard','salvage'],placed:[]});
   const audit=await page.evaluate(()=>{
     const g=window.__quietDistrict,w=g.world;
     g.visibilityPaused=true;
@@ -432,7 +432,7 @@ test('District audit: entrances, solid walls, repaired bridge, loot access and s
   expect(audit.solar).toBeCloseTo(-.22);expect(audit.lamp).toEqual([-18,0,10.85]);
   expect(audit.repaired).toBe(1);expect(audit.savedProduction).toBe(321);expect(audit.legal).toBe(true);
   expect(audit.noLeakedLight).toBe(true);expect(audit.outsideDepth).toBe(true);expect(audit.insideDepth).toBe(true);
-  expect(audit.nodeCount).toBe(52);expect(audit.roofCounts).toEqual([2,2,2,2,2,2,2,2]);
+  expect(audit.nodeCount).toBe(64);expect(audit.roofCounts.length).toBe(12);expect(audit.roofCounts.every(n=>n>=2)).toBe(true);
 });
 
 test('Solid containers disappear after collection and wait for the player before restoring',async({page})=>{
@@ -582,4 +582,58 @@ test('Scene notes can be read physically and remain in the journal without addin
   await jump(page,x,z);await page.keyboard.press('KeyE');await expect(page.locator('.found-note')).toBeVisible();expect(await page.evaluate(()=>window.__quietDistrict.state.notes)).toContain(id);await page.keyboard.press('Escape');
  }
  await page.keyboard.press('KeyJ');await expect(page.locator('#panel')).toContainText('Тетрадь механика');await expect(page.locator('#panel')).toContainText('Открытка у пледа');await expect(page.locator('#quest-card')).toHaveCount(0);
+});
+
+test('Expansion doors use physical tools, open playable rooms and persist across reload',async({page})=>{
+ test.setTimeout(240000);await start(page,{x:-44,z:62,owned:['cutter','wrench']});
+ expect(await page.evaluate(()=>window.__quietDistrict.world.blocked(-44,61))).toBe(true);
+ const locked=await page.evaluate(()=>{const g=window.__quietDistrict,n=g.world.nodes.find(n=>n.name==='Шкаф с инструментами');g.harvest(n);return g.job===null&&!g.state.depleted[n.id];});expect(locked).toBe(true);
+ await page.keyboard.press('KeyE');await expect.poll(()=>page.evaluate(()=>window.__quietDistrict.state.openedGates.includes('yard')),{timeout:25000}).toBe(true);
+ expect(await page.evaluate(()=>window.__quietDistrict.world.blocked(-44,61))).toBe(false);
+ await jump(page,51,-43.8);await page.keyboard.press('KeyE');await expect.poll(()=>page.evaluate(()=>window.__quietDistrict.state.openedGates.includes('salvage')),{timeout:25000}).toBe(true);
+ const result=await page.evaluate(()=>{const g=window.__quietDistrict;g.save(false);return {visible:g.world.gates.some(g=>g.group.visible),paths:[g.world.pathTo(51,-50).length,g.world.pathTo(-44,56).length],save:localStorage.getItem('quiet-district-save-v1')};});
+ expect(result.visible).toBe(false);expect(result.paths.every(n=>n>0)).toBe(true);
+ await page.context().addInitScript(s=>localStorage.setItem('quiet-district-save-v1',s),result.save);await page.reload();await expect(page.locator('[data-action="start"]')).toBeEnabled({timeout:60000});
+ expect(await page.evaluate(()=>window.__quietDistrict.world.gates.every(g=>!g.group.visible&&g.collider.disabled))).toBe(true);
+});
+test('Shelter furniture packs through UI, survives cancelled placement and restores growing crops',async({page})=>{
+ test.setTimeout(180000);await start(page,{elapsed:100,placed:[{id:'cropbed',x:-16,z:23,rotation:0,harvested:0,crop:'herbs',plantedAt:60,rainGrowth:5}]});
+ await page.keyboard.press('KeyB');const progress=await page.evaluate(()=>{const g=window.__quietDistrict;return g.state.elapsed-g.state.placed[0].plantedAt;});
+ await page.locator('[data-action="pack-furniture"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.placed.length)).toBe(0);expect(await page.evaluate(()=>window.__quietDistrict.world.placedGroups.length)).toBe(0);
+ await page.locator('[data-action="unpack-furniture"]').click();await page.keyboard.press('Escape');expect(await page.evaluate(()=>window.__quietDistrict.state.packedFurniture.length)).toBe(1);
+ await page.evaluate(()=>window.__quietDistrict.state.elapsed+=250);await page.keyboard.press('KeyB');await page.locator('[data-action="unpack-furniture"]').click();await dropAt(page,-16,23);
+ const restored=await page.evaluate(()=>{const g=window.__quietDistrict,p=g.state.placed[0];return {packed:g.state.packedFurniture.length,age:g.state.elapsed-p.plantedAt,rain:p.rainGrowth,crop:p.crop,groups:g.world.placedGroups.length};});
+ expect(restored.packed).toBe(0);expect(Math.abs(restored.age-progress)).toBeLessThan(5);expect(restored.rain).toBe(5);expect(restored.crop).toBe('herbs');expect(restored.groups).toBe(1);
+});
+test('Backwater fishing selects carried bait and reusable lure through the actual window',async({page})=>{
+ test.setTimeout(150000);await start(page,{x:28,z:55.2,owned:['rod','lure'],bag:{vegetables:2}});await page.keyboard.press('KeyE');await page.locator('[data-action="bait-menu"]').click();
+ await expect(page.locator('#panel')).toContainText('Тихая заводь');await page.locator('[data-action="select-bait"][data-id="vegetables"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.bag.vegetables)).toBe(2);
+ await page.locator('[data-action="cast-selected"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.bag.vegetables)).toBe(1);expect(await page.evaluate(()=>window.__quietDistrict.fish.spot)).toBe('backwater');
+ await page.locator('[data-action="bait-menu"]').click();await page.locator('[data-action="select-bait"][data-id="lure"]').click();await page.locator('[data-action="cast-selected"]').click();expect(await page.evaluate(()=>window.__quietDistrict.fish.bait)).toBe('lure');expect(await page.evaluate(()=>window.__quietDistrict.state.owned.includes('lure'))).toBe(true);expect(await page.evaluate(()=>window.__quietDistrict.state.bag.vegetables)).toBe(1);
+});
+test('Rain and distinct architecture preserve sheltered interiors, canopy cutaways and fishing access',async({page})=>{
+ await start(page,{elapsed:200,openedGates:['yard','salvage']});
+ const audit=await page.evaluate(()=>{
+  const g=window.__quietDistrict,w=g.world;g.visibilityPaused=true;
+  w.update(.1,false,true);const rainy=w.rain.visible&&w.rain.material.opacity>.1&&w.rainRipples.visible;
+  g.state.x=27;g.state.z=54.8;w.updateRoofs(1);const canopy=w.buildings.find(b=>b.x===27).roofMeshes.find(m=>m.userData.canopyBounds),under=canopy.material.opacity<.1&&!canopy.material.depthWrite;
+  g.state.x=34;g.state.z=53;w.updateRoofs(1);const outside=canopy.material.opacity>.98;
+  return {rainy,under,outside,shelter:w.sheltered(27,54.8),exposed:!w.sheltered(28,57),fish:!w.blocked(28,55.2),water:w.blocked(30,59),buildings:w.buildings.length,gates:w.gates.length};
+ });
+ expect(audit.rainy&&audit.under&&audit.outside&&audit.shelter&&audit.exposed&&audit.fish&&audit.water).toBe(true);expect(audit.buildings).toBe(12);expect(audit.gates).toBe(2);
+});
+
+
+test('Clinic materials make a usable medkit through the station and retain their inventory artwork',async({page})=>{
+ await start(page,{x:-19,z:14,health:50,medkits:0,stash:{medicine:1,cloth:1}});await page.keyboard.press('KeyC');await page.locator('[data-category="supplies"]').click();await page.locator('[data-action="make"][data-id="dressing"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.medkits)).toBe(1);expect(await page.evaluate(()=>window.__quietDistrict.state.stash.medicine)).toBe(0);await page.keyboard.press('Escape');await page.keyboard.press('KeyQ');expect(await page.evaluate(()=>window.__quietDistrict.state.health)).toBe(95);
+});
+
+
+test('Legacy positions in newly locked rooms recover outside without losing equipment or resources',async({page})=>{
+ await start(page,{x:51,z:-50,bag:{wood:3},owned:['axe']});const recovered=await page.evaluate(()=>{const g=window.__quietDistrict;return {x:g.state.x,z:g.state.z,blocked:g.world.blocked(g.state.x,g.state.z),wood:g.state.bag.wood,axe:g.state.owned.includes('axe'),opened:g.state.openedGates};});expect(recovered.x).toBe(51);expect(recovered.z).toBeCloseTo(-43.8);expect(recovered.blocked).toBe(false);expect(recovered.wood).toBe(3);expect(recovered.axe).toBe(true);expect(recovered.opened).toEqual([]);
+});
+
+
+test('Map routes to the accessible entrance of a discovered locked building',async({page})=>{
+ await start(page,{visited:['home','salvage']});await page.keyboard.press('KeyM');await page.locator('.location-list [data-id="salvage"]').click();const route=await page.evaluate(()=>{const g=window.__quietDistrict;return {length:g.path.length,last:g.path.at(-1),valid:g.path.every(p=>!g.world.blocked(p.x,p.z)),opened:g.state.openedGates};});expect(route.length).toBeGreaterThan(0);expect(route.last).toEqual({x:51,z:-44});expect(route.valid).toBe(true);expect(route.opened).toEqual([]);
 });

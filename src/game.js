@@ -1,8 +1,10 @@
+import { GATES, BAITS, fishingProbabilities, weatherAt } from './expedition.js';
 import { FINDS, CROPS, MEMORIES, cropInfo } from './homelife.js';
 import { footprint, overlaps, placementAllowed } from './layout.js';
 import { WORLD_LIMIT, LOCATIONS } from './district.js';
 export const SAVE_KEY = 'quiet-district-save-v1';
 export const RESOURCES = {
+  medicine:{name:'Медицинские материалы',color:'#d9c9b3',weight:.25},
   vegetables:{name:'Овощи',color:'#dda06b',weight:.5},
   flowers:{name:'Цветы',color:'#dca4b8',weight:.1},
   seeds: { name: 'Семена', icon: 'herbs', color: '#b5c68b', weight: 0.25 },
@@ -17,6 +19,10 @@ export const RESOURCES = {
   water: { name: 'Чистая вода', icon: 'water', color: '#84bfc7', weight: 0.5 },
 };
 export const RECIPES = [
+ {id:'dressing',name:'Аптечка из медицинских запасов',category:'supplies',desc:'Аптечка из уцелевших материалов клиники. Восстанавливает 45 здоровья; использование Q.',cost:{medicine:1,cloth:1},repeatable:true},
+ {id:'lure',name:'Многоразовая блесна',category:'tools',desc:'Привлекает форель. Выбирается у воды; не расходуется.',cost:{metal:3,wire:2,pearl:1},requires:'rod',slot:'tool'},
+ {id:'fishmeal',name:'Рыба, запечённая с овощами',category:'supplies',desc:'Две порции походной еды из улова и урожая.',cost:{fish:2,vegetables:2,wood:1},repeatable:true},
+ {id:'fishtrophy',name:'Панно «Лунная форель»',category:'shelter',desc:'Память о редком улове. Крепится на стену после первой пойманной форели.',cost:{wood:4,fish:3,pearl:1},placeable:true},
   ...Object.entries(FINDS).map(([id,f])=>({id,name:f.name,category:'shelter',desc:id==='wallclock'?'Крепятся на стену внутри убежища.':id==='recordplayer'?'Уцелевшая пластинка. Включается рядом с проигрывателем.':id==='foundlamp'?'Работает от уцелевшего аккумулятора. Свет можно включать и выключать.':'Удобное кресло. Найденную вещь можно поставить дома.',cost:{},placeable:true,foundOnly:true})),
   {id:'wrench',name:'Набор ключей',category:'tools',desc:'Ускоряет разбор двигателей и бытовой техники вдвое.',cost:{metal:5,parts:2},slot:'tool'},
   {id:'cropbed',name:'Посадочная грядка',category:'shelter',desc:'Травы, овощи или цветы. После ручного сбора нужна новая посадка.',cost:{wood:6,metal:2},placeable:true},
@@ -77,7 +83,7 @@ export const FISH = [
 export const HOME = { x: -16, z: 16 };
 export function freshState() {
   return {
-    visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
+    openedGates:[],packedFurniture:[],fishingBait:'none',visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
     version: 1, x: HOME.x + 1, z: HOME.z + 2, health: 100, stamina: 100,
     stash: { wood: 3, metal: 2, cloth: 2 }, bag: {}, owned: [],
     equipment: { weapon: 'pipe', armor: null, bag: null, boots: null },
@@ -88,9 +94,18 @@ export function freshState() {
     tutorial: true, chapterComplete: false,
   };
 }
+function cleanFurniture(p,elapsed) {
+ if(!p||typeof p!=='object'||!RECIPES.some(r=>r.id===p.id&&r.placeable)||!Number.isFinite(p.x)||!Number.isFinite(p.z)||p.x<-26||p.x>-6||p.z<6||p.z>26)return null;
+ const item={id:p.id,x:p.x,z:p.z,rotation:Number.isFinite(p.rotation)?p.rotation:0,harvested:Number.isFinite(p.harvested)?Math.min(elapsed,Math.max(0,p.harvested)):elapsed};
+ if(['lamp','foundlamp','recordplayer'].includes(p.id))item.enabled=p.id==='recordplayer'?p.enabled===true:p.enabled!==false;
+ if(p.id==='cropbed'){item.crop=Object.hasOwn(CROPS,p.crop)?p.crop:null;item.plantedAt=item.crop&&Number.isFinite(p.plantedAt)?Math.max(0,Math.min(elapsed,p.plantedAt)):null;if(Number.isFinite(p.rainGrowth)&&p.rainGrowth>0)item.rainGrowth=Math.min(p.rainGrowth,10000);}
+ return item;
+}
 export function validateSave(input) {
   if (!input || input.version !== 1) return null;
   const state = freshState();
+  state.openedGates=[...new Set((Array.isArray(input.openedGates)?input.openedGates:[]).filter(id=>GATES.some(g=>g.id===id)))];
+  state.fishingBait=Object.hasOwn(BAITS,input.fishingBait)?input.fishingBait:'none';
   for(const field of ['finds','storedFinds','lastFindHaul']) for(const id of Object.keys(FINDS)) if(Number.isInteger(input[field]?.[id])&&input[field][id]>0) state[field][id]=Math.min(99,input[field][id]);
   state.findClaims=[...new Set((Array.isArray(input.findClaims)?input.findClaims:[]).filter(id=>typeof id==='string'&&/^node-\d{1,3}$/.test(id)))];
   state.notes=[...new Set((Array.isArray(input.notes)?input.notes:[]).filter(id=>MEMORIES.some(n=>n.id===id)))];
@@ -120,10 +135,8 @@ export function validateSave(input) {
     else if (state.owned.includes(id) && recipe?.slot === slot) state.equipment[slot] = id;
   }
   for (const key of ['x', 'z']) if (Number.isFinite(input[key])) state[key] = Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, input[key]));
-  state.placed = (Array.isArray(input.placed) ? input.placed : []).filter(p =>
-    RECIPES.some(r => r.id === p.id && r.placeable) && Number.isFinite(p.x) && Number.isFinite(p.z)
-    && p.x >= -26 && p.x <= -6 && p.z >= 6 && p.z <= 26
-  ).slice(0, 70).map(p => ({ id: p.id, x: p.x, z: p.z, rotation: Number.isFinite(p.rotation) ? p.rotation : 0, harvested: Number.isFinite(p.harvested) ? Math.min(state.elapsed, Math.max(0, p.harvested)) : state.elapsed, ...(['lamp','foundlamp','recordplayer'].includes(p.id)?{enabled:p.id==='recordplayer'?p.enabled===true:p.enabled!==false}:{}),...(p.id==='cropbed'?{crop:CROPS[p.crop]?p.crop:null,plantedAt:CROPS[p.crop]&&Number.isFinite(p.plantedAt)?Math.min(state.elapsed,Math.max(0,p.plantedAt)):null}:{}) }));
+  state.placed=(Array.isArray(input.placed)?input.placed:[]).slice(0,500).map(p=>cleanFurniture(p,state.elapsed)).filter(Boolean).slice(0,70);
+  state.packedFurniture=(Array.isArray(input.packedFurniture)?input.packedFurniture:[]).slice(0,70).flatMap(p=>{const item=cleanFurniture(p,state.elapsed);return item?[{...item,packedAt:Number.isFinite(p.packedAt)?Math.max(0,Math.min(state.elapsed,p.packedAt)):state.elapsed}]:[];});
   if (input.depleted && typeof input.depleted === 'object') {
     for (const [id, t] of Object.entries(input.depleted).slice(0, 1000)) if (Number.isFinite(t)) state.depleted[id] = t;
   }
@@ -176,6 +189,7 @@ export function capacity(state) {
 export function total(state, id) { return (state.stash[id] || 0) + (state.bag[id] || 0); }
 export function craftStatus(state, recipe) {
   if (!recipe) return { ok: false, reason: 'Неизвестный рецепт' };
+  if(recipe.id==='fishtrophy'&&!state.fishCollection.includes('Лунная форель'))return {ok:false,reason:'Сначала поймай лунную форель'};
   if(recipe.foundOnly&&state.placed.length>=70) return {ok:false,reason:'Достигнут лимит построек'};
   if(recipe.foundOnly) return (state.finds[recipe.id]||0)+(state.storedFinds[recipe.id]||0)>0?{ok:true}:{ok:false,reason:'Эту вещь можно найти в районе'};
   if (recipe.id === 'helper' && !state.placed.some(p => p.id === 'bed')) return { ok: false, reason: 'Сначала размести удобную кровать для гостя' };
@@ -204,9 +218,10 @@ export function craft(state, id) {
   spend(state, recipe.cost);
   if (recipe.repeatable) {
     if (id === 'ammo') state.ammo += 12;
-    if (id === 'medkit') state.medkits++;
+    if (id === 'medkit'||id==='dressing') state.medkits++;
     if (id === 'meal'||id==='stew') state.meals++;
     if (id === 'tea') state.teas++;
+    if(id==='fishmeal')state.meals+=2;
   } else {
     state.owned.push(id);
     if (Object.hasOwn(state.equipment, recipe.slot)) state.equipment[recipe.slot] = id;
@@ -218,8 +233,8 @@ export function place(state, id, x, z, rotation = 0) {
   const recipe = RECIPES.find(r => r.id === id);
   if (!recipe?.placeable || !craftStatus(state, recipe).ok) return false;
   if (x < -26 || x > -6 || z < 6 || z > 26) return false;
-  if(id==='wallclock'&&!placementAllowed({id,x,z,rotation},[],state.placed)) return false;
-  if(id!=='rug'&&id!=='wallclock'&&state.placed.some(p=>p.id!=='rug'&&p.id!=='wallclock'&&overlaps(footprint({id,x,z,rotation}),footprint(p),.15))) return false;
+  if(['wallclock','fishtrophy'].includes(id)&&!placementAllowed({id,x,z,rotation},[],state.placed)) return false;
+  if(id!=='rug'&&!['wallclock','fishtrophy'].includes(id)&&state.placed.some(p=>p.id!=='rug'&&!['wallclock','fishtrophy'].includes(p.id)&&overlaps(footprint({id,x,z,rotation}),footprint(p),.15))) return false;
   if(recipe.foundOnly) {const stock=state.finds[id]>0?state.finds:state.storedFinds;stock[id]--;} else spend(state,recipe.cost);
   state.placed.push({id,x,z,rotation,harvested:state.elapsed,...(['lamp','foundlamp','recordplayer'].includes(id)?{enabled:id!=='recordplayer'}:{}),...(id==='cropbed'?{crop:null,plantedAt:null}:{})});
   return true;
@@ -264,9 +279,9 @@ export function useSupply(state, id) {
   if (id === 'tea' && state.teas > 0 && (state.health < 100 || state.stamina < 100)) { state.teas--; state.health = Math.min(100, state.health + 15); state.stamina = Math.min(100, state.stamina + 50); return true; }
   return false;
 }
-export function catchFish(rng = Math.random, upgraded = false) {
+export function catchFish(rng = Math.random, upgraded = false, conditions = {}) {
   const roll = rng();
-  const probabilities = upgraded ? [0.3, 0.3, 0.22, 0.18] : FISH.map(f => f.chance);
+  const probabilities = fishingProbabilities(upgraded,conditions);
   let cumulative = 0;
   return FISH.find((f, i) => { cumulative += probabilities[i]; return roll < cumulative; }) || FISH.at(-1);
 }
@@ -326,7 +341,7 @@ export function harvestProduction(state, item) {
   if(toStash) { for(const [id,n] of Object.entries(info.loot)) state.stash[id]=(state.stash[id]||0)+n;received={...info.loot}; }
   else received=collect(state,info.loot).received;
   item.harvested=state.elapsed;
-  if(item.id==='cropbed') {item.crop=null;item.plantedAt=null;}
+  if(item.id==='cropbed') {item.crop=null;item.plantedAt=null;delete item.rainGrowth;}
   return {ok:true,received,toStash};
 }
 
@@ -362,7 +377,7 @@ export function plantCrop(state,item,id) {
  const crop=CROPS[id];if(item?.id!=='cropbed'||!crop||!state.placed.includes(item)) return {ok:false,reason:'Грядка не найдена'};
  if(item.crop) return {ok:false,reason:'Сначала собери урожай'};
  if(!spend(state,crop.cost)) return {ok:false,reason:'Не хватает семян или воды'};
- item.crop=id;item.plantedAt=state.elapsed;return {ok:true};
+ item.crop=id;item.plantedAt=state.elapsed;delete item.rainGrowth;return {ok:true};
 }
 export function recoverFinds(state,finds) {
  for(const [id,n] of Object.entries(finds||{})) {
@@ -371,4 +386,33 @@ export function recoverFinds(state,finds) {
   if(!finds[id]) delete finds[id];
  }
  return Object.keys(finds||{}).length===0;
+}
+
+export function openGate(state,id) {
+ const gate=GATES.find(g=>g.id===id);
+ if(!gate||state.openedGates.includes(id))return {ok:false,reason:'Проход уже открыт'};
+ if(Math.hypot(state.x-gate.x,state.z-gate.z)>3)return {ok:false,reason:'Подойди к двери'};
+ if(!state.owned.includes(gate.tool))return {ok:false,reason:'Нужен подходящий инструмент'};
+ state.openedGates.push(id);return {ok:true};
+}
+export function consumeBait(state,id) {
+ const bait=Object.hasOwn(BAITS,id)?BAITS[id]:null;if(!bait||bait.tool&&!state.owned.includes(bait.tool)||bait.resource&&!(state.bag[bait.resource]>0))return false;
+ if(bait.resource)state.bag[bait.resource]--;return true;
+}
+export function packFurniture(state,index) {
+ const item=state.placed[index];
+ if(!item||!(state.x>=-27&&state.x<=-6&&state.z>=5&&state.z<=27)||state.packedFurniture.length>=70)return false;
+ if(item.id==='bed'&&state.owned.includes('helper')&&state.placed.filter(p=>p.id==='bed').length===1)return false;
+ state.packedFurniture.push({...item,packedAt:state.elapsed});state.placed.splice(index,1);return true;
+}
+export function unpackFurniture(state,index,x,z,rotation,obstacles=[]) {
+ const saved=state.packedFurniture[index];if(!(state.x>=-27&&state.x<=-6&&state.z>=5&&state.z<=27)||!saved||state.placed.length>=70||!placementAllowed({...saved,x,z,rotation},obstacles,state.placed))return false;
+ const {packedAt,...item}=saved,paused=Math.max(0,state.elapsed-packedAt);
+ item.harvested+=paused;if(Number.isFinite(item.plantedAt))item.plantedAt+=paused;
+ Object.assign(item,{x,z,rotation});state.placed.push(item);state.packedFurniture.splice(index,1);return true;
+}
+export function updateRainCrops(state,dt,isInside) {
+ const rain=weatherAt(state.elapsed).rain;if(!rain||!Number.isFinite(dt)||dt<=0)return false;
+ for(const p of state.placed)if(p.id==='cropbed'&&p.crop&&!isInside(p.x,p.z))p.rainGrowth=Math.min(10000,(p.rainGrowth||0)+dt*rain*.25);
+ return true;
 }

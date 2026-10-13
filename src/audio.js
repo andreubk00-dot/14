@@ -9,6 +9,8 @@ export class DistrictAudio {
       const buffer = this.context.createBuffer(1, this.context.sampleRate * 3, this.context.sampleRate), data = buffer.getChannelData(0);
       let last = 0;
       for (let i = 0; i < data.length; i++) { last = (last + (Math.random() * 2 - 1) * 0.025) / 1.025; data[i] = last * 2.8; }
+      const rainBuffer=this.context.createBuffer(1,this.context.sampleRate*2,this.context.sampleRate),rainData=rainBuffer.getChannelData(0);for(let i=0;i<rainData.length;i++)rainData[i]=Math.random()*2-1;
+      const rainSource=this.context.createBufferSource();rainSource.buffer=rainBuffer;rainSource.loop=true;const rainFilter=this.context.createBiquadFilter();rainFilter.type='lowpass';rainFilter.frequency.value=1800;this.rainGain=this.context.createGain();this.rainGain.gain.value=0;rainSource.connect(rainFilter).connect(this.rainGain).connect(this.master);rainSource.start();
       const noise = this.context.createBufferSource(); noise.buffer = buffer; noise.loop = true;
       const filter = this.context.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 360;
       const gain = this.context.createGain(); gain.gain.value = 0.33; noise.connect(filter).connect(gain).connect(this.master); noise.start();
@@ -34,6 +36,7 @@ export class DistrictAudio {
   tick(time) {
     if (time > this.nextBird) { this.nextBird = time + 15 + Math.random() * 25; this.tone(1500, 0.19, 0.018, 'sine', 2200); setTimeout(() => this.tone(1900, 0.16, 0.015, 'sine', 1250), 220); }
   }
+  rain(strength,sheltered) {const value=strength*(sheltered?.035:.13);if(!this.rainGain||Math.abs((this.rainLevel||0)-value)<.005)return;this.rainLevel=value;this.rainGain.gain.setTargetAtTime(value,this.context.currentTime,.4);}
   record(time,distance) {
     if(distance>=9||time<this.nextRecord||!this.enabled||this.context?.state!=='running') return;
     const melody=[261.63,329.63,392,329.63,293.66,349.23,440,349.23,261.63,392,523.25,392,246.94,293.66,392,293.66];

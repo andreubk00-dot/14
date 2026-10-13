@@ -11,6 +11,9 @@ export const CROPS={
 };
 export const SCENES=[{x:9,z:36,w:6,d:6},{x:-29,z:33,w:8,d:7},{x:54,z:21,w:7,d:6}];
 export const MEMORIES=[
+ {id:'courtyard',name:'Листок у бельевой верёвки',x:-46,z:48.5,text:'«Не забирай всё бельё: отложи чистое для перевязок. Овощи у веранды можно запечь с рыбой. Кладовую закрыла цепью — болторез оставила соседям». На полях нарисованы два дома и длинная бельевая верёвка.'},
+ {id:'salvage',name:'Журнал склада',x:40.5,z:-51,text:'«Ворота опять заклинило. Ключами снять прижимную планку, потом потянуть створку. Электрощиты хранятся справа, двигатели — слева. В коробках не лом: детали прошли проверку». Дата последней смены выцвела.'},
+ {id:'backwater',name:'Записка рыбака',x:28.8,z:54.6,text:'«В заводи карась берёт овощное тесто. На траву быстрее клюёт окунь. Форель выходит в темноте; блесну не выбрасывай после заброса. Раковины ищи у затопленного причала». Ниже — пятно от мокрой чашки.'},
  {id:'bus',name:'Запись на остановке',x:9.5,z:36.7,text:'«Если автобус всё-таки придёт, я оставлю часы у скамейки. Заводить их нужно редко. Не выбрасывайте: папа починил их сам». Последняя строка перечёркнута: «Лучше я подожду ещё немного».'},
  {id:'picnic',name:'Открытка у пледа',x:-27,z:33,text:'«В следующий раз возьмём настоящий стол и не забудем музыку». На обороте — рисунок трёх чашек. Дождь смыл адрес, но бумага уцелела под жестяной коробкой.'},
  {id:'yard',name:'Тетрадь механика',x:52,z:22,text:'«Двигатели разбирать ключами, не бить по креплениям. Исправный проигрыватель отложил отдельно: заберу домой после смены». На следующей странице только масляный след.'},
@@ -29,7 +32,7 @@ export function dismantleInfo(owned,node) {
 export function cropInfo(state,item) {
  const crop=CROPS[item.crop];if(item.id!=='cropbed'||!crop||!Number.isFinite(item.plantedAt)) return null;
  const interval=crop.interval*(state.owned.includes('pump')?.75:1)*(state.owned.includes('solar')?.75:1);
- const age=Math.max(0,state.elapsed-item.plantedAt);
+ const age=Math.max(0,state.elapsed-item.plantedAt+(item.rainGrowth||0));
  const {cost:plantingCost,...data}=crop;
  return {...data,plantingCost,interval,remaining:Math.max(0,interval-age),progress:Math.min(1,age/interval),name:`Собрать: ${crop.name.toLowerCase()}`};
 }
