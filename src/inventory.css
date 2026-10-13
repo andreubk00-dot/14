@@ -54,3 +54,9 @@
 .item-details:not(.empty-details) { position: sticky; bottom: -24px; background: #172e25fa; z-index: 5; padding: 16px 10px; box-shadow: 0 -10px 25px #091b1740; border-radius: 10px 10px 0 0; }
 @media(max-width:760px) { .item-details:not(.empty-details) { bottom: -18px; } }
 .equipment-slot small { max-width: 100%; overflow-wrap: anywhere; }
+.haul-summary { margin-top:24px; border-top:1px solid var(--border);padding-top:18px; }
+.haul-summary summary { cursor:pointer; font-size:18px; color:#d8c898; }
+.haul-items { display:flex;flex-wrap:wrap;gap:12px;margin:18px 0; }
+.haul-items span, .haul-items button { display:flex;align-items:center;gap:8px;font-size:16px; }
+.place-memories article { padding:18px 0;border-bottom:1px solid var(--border); }
+.place-memories { margin-bottom:24px; }

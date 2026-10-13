@@ -12,6 +12,8 @@ const shell = path('M12 40Q0 8 32 7Q64 8 52 40L40 56H24Z','#c6a4b8')+line(18,18,
 const station = c => rect(8,23,48,33,c,4)+rect(14,10,36,15,dark)+rect(19,15,26,5,steel)+rect(14,32,20,17,dark)+circle(24,40,5,gold)+rect(39,31,11,5,steel)+rect(39,42,11,5,steel)+rect(13,56,7,4,dark)+rect(44,56,7,4,dark);
 const bed = rect(8,31,48,20,wood)+rect(10,23,44,16,'#7daa8a',4)+rect(12,20,13,16,'#eae0c2',3)+path('M29 24H53V45H29Z','#9fbd91')+rect(8,49,5,9,dark)+rect(51,49,5,9,dark);
 const art = {
+  tooling: rect(7,36,50,9,wood)+rect(13,45,5,13,steel)+rect(46,45,5,13,steel)+rect(25,22,22,14,steel)+line(36,11,36,24,gold,4)+circle(19,29,6,gold),
+  receiver: rect(10,21,44,35,wood)+rect(15,27,34,7,steel)+rect(15,40,34,7,gold)+path('M25 6H39V16H48L32 29L16 16H25Z','#9eb9ba'),
   pipe: path('M13 51L39 12L47 17L22 57Z',steel)+path('M16 48L21 51L42 18L39 16Z','#dce8e3')+rect(9,47,14,9,dark),
   axe: line(14,55,43,11,wood,7)+path('M28 13L45 9L56 19L50 33L33 28Z',steel)+path('M48 13L56 19L50 33L45 27Z','#dce9e5'),
   pick: line(17,54,38,17,wood,7)+path('M11 14Q39 2 57 28L47 24Q30 11 12 21Z',steel),

@@ -1,3 +1,5 @@
+import { LOCATIONS, ROADS, WORLD_LIMIT, cycleLoot } from './district.js';
+export { LOCATIONS } from './district.js';
 import { circleHitsRect, footprint, solidFootprint, placementAllowed, repairFurniture } from './layout.js';
 import { isInsideBuilding, fadeOpacity } from './roofs.js';
 import * as THREE from 'three';
@@ -23,14 +25,7 @@ const mat = (c, roughness = 0.88, metalness = 0) => {
   if (!materials.has(id)) materials.set(id, new THREE.MeshStandardMaterial({ color: c, roughness, metalness }));
   return materials.get(id);
 };
-export const LOCATIONS = [
-  { id: 'garden', name: 'Заброшенный сад', subtitle: 'Семена · травы · старые запасы', x: -34, z: -5, color: '#b5c68b' },
-  { id: 'home', name: 'Ремонтная станция', subtitle: 'Твоё убежище', x: -17, z: 16, color: '#e6b779' },
-  { id: 'market', name: 'Старый квартал', subtitle: 'Ткань · дерево · провод', x: 12, z: 4, color: '#a4b6ae' },
-  { id: 'depot', name: 'Заброшенное депо', subtitle: 'Металл · детали · опасность', x: -18, z: -22, color: '#b8a186' },
-  { id: 'pond', name: 'Затопленный причал', subtitle: 'Рыбалка · редкие находки', x: 20, z: -20, color: '#7ebbb3' },
-  { id: 'tower', name: 'Водонапорная башня', subtitle: 'Вода · технические запасы', x: 31, z: -34, color: '#8bbfc7' },
-];
+
 
 export class World {
   constructor(container, state) {
@@ -81,7 +76,7 @@ export class World {
     this.scene.traverse(mesh => {
       if (mesh.userData.cutaway || !mesh.isMesh || excluded.has(mesh) || this.pickables.includes(mesh) || mesh.material.isShaderMaterial || mesh.material.transparent) return;
       let parent = mesh;
-      while (parent) { if (parent === this.bridgeGroup || parent === this.solarRoof) return; parent = parent.parent; }
+      while (parent) { if (parent === this.bridgeGroup || parent === this.solarRoof || parent === this.precisionTool || parent === this.receiverModel) return; parent = parent.parent; }
       const key = mesh.material.uuid;
       if (!batches.has(key)) batches.set(key, { material: mesh.material, meshes: [] });
       batches.get(key).meshes.push(mesh);
@@ -159,13 +154,12 @@ export class World {
     const sun = new THREE.DirectionalLight('#ffcf93', 3.0); sun.position.set(-35, 35, -12); sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048); sun.shadow.camera.left = sun.shadow.camera.bottom = -65; sun.shadow.camera.right = sun.shadow.camera.top = 65;
     sun.shadow.camera.near = 1; sun.shadow.camera.far = 120; sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.04; this.scene.add(sun); this.sun = sun;
-    const ground = this.box(0, -0.22, 0, 100, 0.4, 100, color.ground);
+    const ground = this.box(0, -0.22, 0, 140, 0.4, 140, color.ground);
     ground.material = new THREE.MeshStandardMaterial({ map: this.texture('ground'), roughness: 0.96 });
-    const road = this.box(0, 0.015, 1, 7.8, 0.04, 87, color.road);
-    road.material = new THREE.MeshStandardMaterial({ map: this.texture('road'), roughness: 0.6, metalness: 0.12 });
-    this.box(3, 0.01, 3, 67, 0.05, 6, color.road).material = road.material;
+    const roadMaterial=new THREE.MeshStandardMaterial({map:this.texture('road'),roughness:.6,metalness:.12});
+    for(const r of ROADS) this.box(r.x,.015,r.z,r.w,.04,r.d,color.road).material=roadMaterial;
     for (let z = -39; z < 41; z += 7) this.box(0, 0.048, z, 0.09, 0.008, 2.1, '#a19b7c');
-    for (const x of [-4.25, 4.25]) { this.box(x, 0.1, 0, 0.4, 0.18, 86, '#777b70'); }
+    for (const x of [-4.25, 4.25]) { this.box(x, 0.1, 0, 0.4, 0.18, 126, '#777b70'); }
     for (let z = -34; z < 35; z += 14) this.lamp(z % 3 ? -4.3 : 4.3, z, 5.2, z > -10);
     for (let i = 0; i < 19; i++) this.puddle(rng() * 7 - 3.5, rng() * 78 - 39, 0.9 + rng() * 2.5, 0.5 + rng());
     this.reflection = new Reflector(new THREE.CircleGeometry(1, 40), { clipBias: 0.003, textureWidth: 384, textureHeight: 384, color: '#68847b' });
@@ -175,18 +169,18 @@ export class World {
     this.reflection.material.fragmentShader = this.reflection.material.fragmentShader.replace('varying vec4 vUv;', 'varying vec4 vUv; varying vec2 vLocal; uniform float time;').replace('vec4 base = texture2DProj( tDiffuse, vUv );', 'vec4 uv = vUv; uv.x += sin(vLocal.y * 14.0 + time * 0.6) * 0.0015 * uv.w; vec4 base = texture2DProj(tDiffuse, uv);').replace('gl_FragColor = vec4( blendOverlay( base.rgb, color ), 1.0 );', 'vec3 water = mix(vec3(0.08, 0.13, 0.12), base.rgb, 0.55); float edge = 1.0 - smoothstep(0.65, 1.0, length(vLocal)); gl_FragColor = vec4(water, edge * 0.8);');
     this.reflection.material.transparent = true; this.reflection.material.depthWrite = false;
     this.scene.add(this.reflection);
-    this.buildHome(); this.buildMarket(); this.buildDepot(); this.furnishExpeditions(); this.buildPond(); this.buildTower();
+    this.buildHome(); this.buildMarket(); this.buildDepot(); this.furnishExpeditions(); this.buildOutskirts(); this.buildPond(); this.buildTower();
     // Treelines frame the district, leaving the traversable paths readable.
-    for (let i = 0; i < 130; i++) {
-      const x = rng() * 87 - 43.5, z = rng() * 87 - 43.5;
+    for (let i = 0; i < 180; i++) {
+      const x = rng() * 126 - 63, z = rng() * 126 - 63;
       if (Math.hypot(x + 34, z + 5) < 8) continue;
-      if (Math.abs(x) < 6 || Math.abs(z - 3) < 5 || this.blocked(x, z, 2) || this.buildings.some(b=>isInsideBuilding({...b,w:b.w+2,d:b.d+2},x,z))) continue;
+      if (this.onRoad(x,z,1.5) || this.blocked(x, z, 2) || this.buildings.some(b=>isInsideBuilding({...b,w:b.w+2,d:b.d+2},x,z))) continue;
       if (Math.hypot(x + 17, z - 16) < 13 || Math.hypot(x - 20, z + 20) < 12) continue;
       this.tree(x, z, 0.75 + rng() * 0.7);
     }
-    for (let i = 0; i < 75; i++) {
-      const x = rng() * 75 - 37.5, z = rng() * 75 - 37.5;
-      if (Math.abs(x) < 5 || Math.abs(z - 3) < 4 || this.blocked(x, z, 1) || this.buildings.some(b=>isInsideBuilding(b,x,z))) continue;
+    for (let i = 0; i < 100; i++) {
+      const x = rng() * 124 - 62, z = rng() * 124 - 62;
+      if (this.onRoad(x,z,1) || this.blocked(x, z, 1) || this.buildings.some(b=>isInsideBuilding(b,x,z))) continue;
       this.bush(x, z, 0.3 + rng() * 0.5);
     }
     this.buildGarden();
@@ -260,7 +254,7 @@ export class World {
       if(!mesh.isMesh) return;
       mesh.userData.cutaway=true;
       const key=`${list===roofMeshes?'roof':'wall'}:${mesh.material.uuid}`;
-      if(!copies.has(key)) copies.set(key,mesh.material.clone());
+      if(!copies.has(key)) {const copy=mesh.material.clone();copy.userData.baseOpacity=mesh.material.opacity;copies.set(key,copy);}
       mesh.material=copies.get(key);
       mesh.material.transparent=true; mesh.material.depthWrite=false; mesh.renderOrder=2;
       list.push(mesh);
@@ -287,8 +281,8 @@ export class World {
     }
     wallMeshes.splice(0,wallMeshes.length,...mergedWalls);
     const building={x,z,w,d,roofMeshes,wallMeshes,inside:isInsideBuilding({x,z,w,d},this.state.x,this.state.z)};
-    for(const mesh of roofMeshes) { mesh.material.opacity=building.inside?0.035:1; mesh.material.depthWrite=!building.inside; }
-    for(const mesh of wallMeshes) { mesh.material.opacity=building.inside?0.13:1; mesh.material.depthWrite=!building.inside; }
+    for(const mesh of roofMeshes) { mesh.material.opacity=building.inside?0.035:mesh.material.userData.baseOpacity; mesh.material.depthWrite=!building.inside&&mesh.material.opacity>.98; }
+    for(const mesh of wallMeshes) { mesh.material.opacity=building.inside?0.13:mesh.material.userData.baseOpacity; mesh.material.depthWrite=!building.inside&&mesh.material.opacity>.98; }
     this.buildings.push(building);
   }
   updateRoofs(dt) {
@@ -297,30 +291,40 @@ export class World {
       const updated=new Set();
       for(const [meshes,target] of [[b.roofMeshes,b.inside?0.035:1],[b.wallMeshes,b.inside?0.13:1]]) {
         for(const mesh of meshes) {
-          if(!updated.has(mesh.material)) { mesh.material.opacity=fadeOpacity(mesh.material.opacity,target,dt); mesh.material.depthWrite=mesh.material.opacity>.98; updated.add(mesh.material); }
-          mesh.castShadow=!b.inside;
+          if(!updated.has(mesh.material)) { mesh.material.opacity=fadeOpacity(mesh.material.opacity,b.inside?target:(mesh.material.userData.baseOpacity??1),dt); mesh.material.depthWrite=mesh.material.opacity>.98; updated.add(mesh.material); }
+          mesh.castShadow=!b.inside&&(mesh.material.userData.baseOpacity??1)>.8;
         }
       }
     }
   }
-  building(x, z, w, d, h, shade, sign) {
+  building(x, z, w, d, h, shade, sign, options={}) {
     const group = new THREE.Group(); group.position.set(x, 0, z); this.scene.add(group);
     this.box(0, 0.09, 0, w + 0.3, 0.2, d + 0.3, '#77786d', group);
-    this.wall(0,-d/2,w,.32,h,shade,group);
-    this.wall(-w/2,0,.32,d,h,shade,group);
-    this.wall(w/2,0,.32,d,h,shade,group);
-    this.wall(-w*.3,d/2,w*.4,.32,h,shade,group);
-    this.wall(w*.3,d/2,w*.4,.32,h,shade,group);
-    for (let xx = -w / 2 + 1.4; xx < w / 2 - 0.5; xx += 2.8) {
+    const wallHeight=options.greenhouse?.6:h;
+    this.wall(0,-d/2,w,.32,wallHeight,shade,group);
+    this.wall(-w/2,0,.32,d,wallHeight,shade,group);
+    this.wall(w/2,0,.32,d,wallHeight,shade,group);
+    this.wall(-w*.3,d/2,w*.4,.32,wallHeight,shade,group);
+    this.wall(w*.3,d/2,w*.4,.32,wallHeight,shade,group);
+    if(!options.greenhouse) for (let xx = -w / 2 + 1.4; xx < w / 2 - 0.5; xx += 2.8) {
       this.box(xx, h * 0.65, -d / 2 + 0.18, 1.2, 1.35, 0.05, '#3e5350', group);
       this.box(xx, h * 0.65, -d / 2 + 0.24, 0.07, 1.4, 0.07, '#b1ab91', group);
       this.box(xx, h * 0.65, -d / 2 + 0.24, 1.25, 0.07, 0.07, '#b1ab91', group);
     }
 
+    if(options.greenhouse) {
+      const glass=new THREE.MeshStandardMaterial({color:'#b0ccb8',roughness:.18,metalness:.12,transparent:true,opacity:.35,depthWrite:false});
+      for(const [xx,zz,ww,dd] of [[0,-d/2,w,.035],[-w/2,0,.035,d],[w/2,0,.035,d],[-w*.3,d/2,w*.4,.035],[w*.3,d/2,w*.4,.035]]) this.box(xx,(h+.6)/2,zz,ww,h-.6,dd,'#b0ccb8',group,glass);
+      for(const xx of [-w/2,-w/4,0,w/4,w/2]) this.box(xx,h/2,-d/2,.1,h,.12,'#6d8177',group);
+      for(const xx of [-w/2,-w*.1,w*.1,w/2]) this.box(xx,h/2,d/2,.1,h,.12,'#6d8177',group);
+      for(const xx of [-w/2,w/2]) {this.box(xx,h/2,0,.12,h,.1,'#6d8177',group);this.box(xx,h-.1,0,.12,.12,d,'#6d8177',group);}
+      this.box(0,h-.1,-d/2,w,.12,.12,'#6d8177',group);
+    }
     this.box(0, h - 0.2, d / 2, w + 0.3, 0.18, 0.65, '#6f7567', group);
     if (sign) this.label(sign, 0, h - 0.95, d / 2 + 0.19, w * 0.73, '#ccbe98', '#46594c', group);
     for (let i = 0; i < 8; i++) this.box(rng() * (w - 1) - w / 2 + 0.5, 0.255, rng() * (d - 1) - d / 2 + 0.5, 0.2 + rng() * 0.35, 0.13, 0.2 + rng() * 0.35, '#8b8975', group);
-    const roof = this.createRoof(x, z, w, d, h, '#566d65');
+    const roof = this.createRoof(x,z,w,d,h,options.greenhouse?'#9ab7a6':'#566d65');
+    if(options.greenhouse) roof.traverse(mesh=>{if(mesh.isMesh&&mesh.material.color.getHexString()==='9ab7a6') {mesh.material=mesh.material.clone();mesh.material.opacity=.5;mesh.material.transparent=true;}});
     this.registerBuilding(x,z,w,d,roof,[group]);
     return group;
   }
@@ -388,6 +392,8 @@ export class World {
       for (let j = 0; j < 4; j++) this.box(-4.3 + i * 3.3 + j * .65, .067, 0, .025, .012, 1.7, '#879990', this.solarRoof);
     }
     for(const [xx,zz,ww,dd] of [[-21,13,2.8,1.25],[-13.5,17,1.2,1.2],[-13.6,15.5,.8,.8],[-22,17.7,2.3,1.35],[-23.25,15.6,.6,1.2],[-23,12.3,.8,.8],[-11,11.4,1.5,1.1],[-20,19,.86,.86]]) this.collider(xx,zz,ww,dd);
+    this.precisionTool=new THREE.Group();this.precisionTool.position.set(-20.35,1.16,13);this.scene.add(this.precisionTool);this.box(0,.18,0,.6,.35,.5,'#8ba19a',this.precisionTool);this.cylinder(0,.5,0,.035,.35,'#d6c7a3',this.precisionTool);
+    this.receiverModel=new THREE.Group();this.receiverModel.position.set(-13.5,1.08,17);this.scene.add(this.receiverModel);this.box(0,.45,0,.8,.9,.65,'#7c8874',this.receiverModel);this.box(0,.95,0,.6,.1,.5,'#b7ab7d',this.receiverModel);
     this.registerBuilding(x,z,12,9,this.homeRoof,[backWall,sideWall,...frontWalls,...rightWalls,this.solarRoof]);
   }
   buildMarket() {
@@ -405,6 +411,37 @@ export class World {
     for (let i = 0; i < 12; i++) this.box(8.5 + (i % 4) * 0.5, 0.5 + Math.floor(i / 4) * 0.23, 8.18, 0.46, 0.19, 0.035, i % 2 ? '#a08d70' : '#8d846d');
     for (const x of [8.4, 17.6]) { this.box(x, 0.3, 8.8, 0.7, 0.6, 0.7, '#8d7c5e'); this.bush(x, 8.8, 0.5).position.y = 0.8; }
     this.label('СТАРЫЙ КВАРТАЛ', 6.5, 2.1, 8.2, 3.2, '#cbbd9e'); this.box(6.5, 1.0, 8.1, 0.08, 2, 0.08, '#6f7564');
+  }
+  buildOutskirts() {
+    this.building(-49,32,10,9,4.6,'#92978a','КЛИНИКА');
+    this.building(51,12,14,10,4.8,'#74857e','РЕМОНТ ТЕХНИКИ');
+    this.building(-42,-44,10,8,3.3,'#7d9a89','ОРАНЖЕРЕЯ',{greenhouse:true});
+    // Beds and washstand tell the clinic's story without map instructions.
+    for(const z of [30,34]) {
+      this.box(-50,.4,z,2.1,.5,1.2,'#6f8078');this.box(-50,.72,z,2.1,.16,1.2,'#bcb8a0');
+      this.box(-50.7,.87,z,.5,.15,1.1,'#d3cdb6');this.collider(-50,z,2.1,1.2);
+    }
+    this.box(-45.5,.7,34,1,1.4,.6,'#8d9991');this.collider(-45.5,34,1,.6);
+    this.box(-45.5,1.45,34,1.1,.12,.7,'#c0c2ad');
+    this.label('ПЕРЕВЯЗОЧНАЯ',-49,3,27.7,3.7);
+    // A covered service yard, spare tyres and work tables keep entrances clear.
+    this.box(46.5,.7,9,2,1.4,1,'#8c846c');this.collider(46.5,9,2,1);
+    this.box(54,1,15,2.2,2,1,'#667770');this.collider(54,15,2.2,1);
+    for(const z of [20,22]) {this.cylinder(57,.3,z,.45,.6,'#3b4844');this.collider(57,z,.9,.9);}
+    this.car(49,25,.12,'#8a826f');
+    this.lamp(42.5,21,4,true);this.lamp(-40,39,3.6,true);
+    // Raised beds and surviving foliage grow along the greenhouse sides.
+    for(const x of [-45.3,-38.7]) {
+      this.box(x,.45,-44,1.2,.9,3.4,'#889178');this.collider(x,-44,1.2,3.4);
+      for(const z of [-45.1,-44,-42.9]) {const plant=this.bush(x,z,.5);plant.position.y=.95;}
+    }
+    this.box(-42,.4,-47.1,2,.8,.7,'#87997b');this.collider(-42,-47.1,2,.7);
+    this.label('СЕМЕННОЙ ФОНД',-42,2.2,-47.8,3);
+    // Physical signs stand beside the paths; they do not set a destination.
+    for(const [x,z,text] of [[-39,25,'КЛИНИКА'],[40,-4,'РЕМОНТ'],[-33,-34,'ОРАНЖЕРЕЯ']]) {
+      this.box(x,1,z,.12,2,.12,'#7d8069');this.label(text,x,1.7,z+.08,2.5);this.collider(x,z,.12,.12);
+    }
+    for(const [x,z] of [[-59,29],[-58,43],[-46,45],[60,5],[61,19],[48,32],[-52,-44],[-49,-53],[-35,-53]]) this.tree(x,z,1.1);
   }
   furnishExpeditions() {
     const shelf=(x,z,w,h,d,shade) => {
@@ -547,6 +584,16 @@ export class World {
       ['crate', 'Уцелевшие продукты магазина', 14, 4, { herbs: 3, water: 2, cloth: 1 }],
       ['cloth', 'Рулоны ткани ателье', 30, 5, { cloth: 6, wire: 2 }],
       ['crate', 'Комплект деталей депо', -18, -26.5, { parts: 3, metal: 4, wire: 2 }, 'cutter'],
+      ['cloth','Шкаф перевязочной',-52,31,{cloth:7,herbs:3}],
+      ['crate','Запас клиники',-46,30,{water:3,cloth:4}],
+      ['herbs','Лекарственные растения',-54,39,{herbs:5}],
+      ['scrap','Двигатель на разборку',48,10,{metal:7,parts:3}],
+      ['electronics','Сервисный щит',55,9,{wire:5,parts:3}],
+      ['crate','Запертый инструментальный ящик',53,13,{parts:6,metal:5,wire:3},'cutter'],
+      ['wood','Доски у мастерской',46,22,{wood:7}],
+      ['herbs','Уцелевшие посадки оранжереи',-42,-43,{herbs:6,seeds:2}],
+      ['crate','Закрытый семенной фонд',-44,-46.3,{seeds:6,cloth:2},'cutter'],
+      ['crate','Ящик садовника',-40,-41.5,{water:3,seeds:2,wood:3}],
     ];
     definitions.forEach(([type, name, x, z, loot, requires], i) => {
       const group = new THREE.Group(); group.position.set(x, 0.16, z); this.scene.add(group);
@@ -564,13 +611,14 @@ export class World {
         for (let j = 0; j < 4; j++) this.box((rng() - 0.5) * 0.7, 0.2 + j * 0.12, (rng() - 0.5) * 0.6, 0.6 + rng() * 0.3, 0.25, 0.5, j % 2 ? '#7f897a' : '#626f67', group).rotation.y = rng() * 3;
       }
       const marker = this.marker(x, 1.5, z, type === 'herbs' ? '#a9c181' : '#e7c993');
-      const node = { id: `node-${i}`, type, name, x, z, loot: { ...(this.state.nodeLoot[`node-${i}`] || loot) }, originalLoot: { ...loot }, requires, group, marker, respawnTime: type === 'herbs' ? 120 : 240 };
+      const node = { id: `node-${i}`, type, name, x, z, loot: { ...(this.state.nodeLoot[`node-${i}`] || cycleLoot(`node-${i}`,loot,this.state.depleted[`node-${i}`]===undefined?0:Math.floor(this.state.elapsed/(type==='herbs'?120:240)))) }, originalLoot: { ...loot }, requires, group, marker, respawnTime: type === 'herbs' ? 120 : 240 };
       group.traverse(mesh => { mesh.userData.node = node; if (mesh.isMesh) this.pickables.push(mesh); });
+      if(this.state.depleted[node.id]!==undefined && this.state.elapsed-this.state.depleted[node.id]>=node.respawnTime && !this.state.nodeLoot[node.id]) this.state.nodeLoot[node.id]={...node.loot};
       this.nodes.push(node);
     });
   }
   createEnemies() {
-    for (const [i, [x, z]] of [[8, -4], [26, 11], [-11, -18], [-22, -24]].entries()) {
+    for (const [i, [x, z]] of [[8, -4], [26, 11], [-11, -18], [-22, -24], [50,20], [56,12]].entries()) {
       const group = new THREE.Group(); group.position.set(x, 1, z); this.scene.add(group);
       const core = this.box(0, 0, 0, 0.65, 0.35, 0.65, '#646f67', group);
       this.box(0, 0, 0.34, 0.35, 0.07, 0.05, '#e39b6b', group, new THREE.MeshStandardMaterial({ color: '#e39b6b', emissive: '#db7847', emissiveIntensity: 2 }));
@@ -588,13 +636,13 @@ export class World {
   }
   createAtmosphere() {
     const geometry = new THREE.BufferGeometry(), positions = [], phases = [];
-    for (let i = 0; i < 200; i++) { positions.push(rng() * 90 - 45, 0.5 + rng() * 6, rng() * 90 - 45); phases.push(rng() * 6.28); }
+    for (let i = 0; i < 200; i++) { positions.push(rng() * 128 - 64, 0.5 + rng() * 6, rng() * 128 - 64); phases.push(rng() * 6.28); }
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
     this.motes = new THREE.Points(geometry, new THREE.PointsMaterial({ color: '#e4cba2', size: 0.09, map: this.glowTexture(), transparent: true, opacity: 0.48, depthWrite: false, blending: THREE.AdditiveBlending }));
     this.motePhases = phases; this.moteOrigins = [...positions]; this.scene.add(this.motes);
     for (let i = 0; i < 17; i++) {
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(15 + rng() * 16, 6 + rng() * 9), new THREE.MeshBasicMaterial({ map: this.glowTexture(), color: '#b3c4b9', transparent: true, opacity: 0.07, depthWrite: false }));
-      mesh.rotation.x = -Math.PI / 2; mesh.position.set(rng() * 85 - 42.5, 0.4 + rng(), rng() * 85 - 42.5); mesh.rotation.z = rng() * 3;
+      mesh.rotation.x = -Math.PI / 2; mesh.position.set(rng() * 124 - 62, 0.4 + rng(), rng() * 124 - 62); mesh.rotation.z = rng() * 3;
       mesh.userData.originX = mesh.position.x; mesh.userData.phase = rng() * 6; this.scene.add(mesh); this.fogs.push(mesh);
     }
     // Soft shafts catch the warm dusk light between the trees.
@@ -671,12 +719,12 @@ export class World {
         if (!child.isMesh) return;
         source.updateMatrixWorld(true);
         const geometry = child.geometry.clone().applyMatrix4(child.matrixWorld);
-        const instances = new THREE.InstancedMesh(geometry, child.material, 300);
+        const instances = new THREE.InstancedMesh(geometry, child.material, 450);
         const matrix = new THREE.Matrix4(), quaternion = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
         let used = 0;
-        for (let i = 0; i < 900 && used < 300; i++) {
-          const x = rng() * 86 - 43, z = rng() * 86 - 43;
-          if (Math.abs(x) < 4.5 || Math.abs(z - 3) < 3.4 || this.blocked(x, z, 1) || this.buildings.some(b=>isInsideBuilding(b,x,z))) continue;
+        for (let i = 0; i < 1350 && used < 450; i++) {
+          const x = rng() * 126 - 63, z = rng() * 126 - 63;
+          if (this.onRoad(x,z,.5) || this.blocked(x, z, 1) || this.buildings.some(b=>isInsideBuilding(b,x,z))) continue;
           p.set(x, 0.02, z); quaternion.setFromAxisAngle(Y, rng() * 6.28); s.setScalar(0.7 + rng() * 0.6); matrix.compose(p, quaternion, s); instances.setMatrixAt(used++, matrix);
         }
         instances.count = used; instances.receiveShadow = true; this.scene.add(instances);
@@ -711,6 +759,7 @@ export class World {
     this.genIndicator.material.color.set(powered ? '#a9cc83' : '#b1664d'); this.genIndicator.material.emissive.set(powered ? '#a9cc83' : '#b1664d');
     this.bridgeGroup.visible = this.state.owned.includes('bridge');
     this.bridgeCollider.disabled = this.bridgeGroup.visible;
+    this.precisionTool.visible=this.state.owned.includes('tooling');this.receiverModel.visible=this.state.owned.includes('receiver');
     this.solarRoof.visible = this.state.owned.includes('solar');
     const water = this.state.owned.includes('pump'); this.towerLight.intensity = water ? 7 : 0;
     this.towerIndicator.material.emissive.set(water ? '#8ccac2' : '#a58664'); this.towerIndicator.material.emissiveIntensity = water ? 2.5 : 0.3;
@@ -720,12 +769,13 @@ export class World {
     for (const node of this.nodes) {
       const time = this.state.depleted[node.id];
       const visible = time === undefined || this.state.elapsed - time >= node.respawnTime;
-      if (visible && !node.group.visible) { node.loot = { ...node.originalLoot }; delete this.state.nodeLoot[node.id]; }
+      if (visible && !node.group.visible) { node.loot = cycleLoot(node.id,node.originalLoot,Math.floor(this.state.elapsed/node.respawnTime)); this.state.nodeLoot[node.id]={...node.loot}; }
       node.group.visible = visible; node.marker.visible = visible;
     }
   }
+  onRoad(x,z,margin=0) {return ROADS.some(r=>Math.abs(x-r.x)<r.w/2+margin&&Math.abs(z-r.z)<r.d/2+margin);}
   blocked(x, z, radius = 0.3) {
-    if (x < -43 || x > 43 || z < -43 || z > 43) return true;
+    if (x < -WORLD_LIMIT || x > WORLD_LIMIT || z < -WORLD_LIMIT || z > WORLD_LIMIT) return true;
     // Pond shoreline; dock remains navigable.
     if (Math.pow((x - 23) / 9, 2) + Math.pow((z + 24) / 7.4, 2) < 1 && !(x < 21.5 && z > -18.1)) return true;
     return this.colliders.some(c => !c.disabled && circleHitsRect(x,z,radius,c)) || this.state.placed.some(p=>p.id!=='rug' && circleHitsRect(x,z,radius,solidFootprint(p)));
@@ -890,7 +940,7 @@ export class World {
       group.traverse(mesh => { if (mesh.userData.gardenPlant) mesh.scale.set(1.4 * growth, 0.8 * growth, 1.1 * growth); });
     }
     this.fishingMarker.material.opacity = 0.45 + Math.sin(this.time * 1.5) * 0.15;
-    for (const node of this.nodes) if (node.marker.visible) node.marker.position.y = 1.45 + Math.sin(this.time * 1.8 + node.x) * 0.12;
+    for (const node of this.nodes) { node.marker.visible=node.group.visible&&Math.hypot(node.x-this.state.x,node.z-this.state.z)<9; if(node.marker.visible) node.marker.position.y = 1.45 + Math.sin(this.time * 1.8 + node.x) * 0.12; }
     for (const f of this.floating) { f.life -= dt; f.y += dt * 0.65; } this.floating = this.floating.filter(f => f.life > 0);
     for (const effect of this.effects || []) {
       effect.life -= dt; effect.mesh.material.opacity = Math.max(0, effect.life / effect.max);

@@ -59,7 +59,8 @@ test('Actual station UI crafts equipment, restores power and advances story', as
   expect(await page.evaluate(() => window.__quietDistrict.state.ammo)).toBe(12);
   await page.locator('[data-category="shelter"]').click();
   await page.locator('[data-action="make"][data-id="generator"]').click();
-  await expect(page.locator('#quest-card')).toContainText('Открой путь в депо');
+  expect(await page.evaluate(()=>window.__quietDistrict.state.owned.includes('generator'))).toBe(true);
+  await expect(page.locator('#quest-card')).toHaveCount(0);
   expect(await page.evaluate(() => window.__quietDistrict.world.homeLight.intensity)).toBeGreaterThan(0);
   await page.locator('[data-action="make"][data-id="bridge"]').click();
   expect(await page.evaluate(() => window.__quietDistrict.world.bridgeCollider.disabled)).toBe(true);
@@ -173,9 +174,9 @@ test('Importing a save replaces the current history without pagehide overwriting
 
 test('HUD preserves controls; recipe search and filters explain available crafting', async ({ page }) => {
   await start(page, { stash: { wood: 20, metal: 20, cloth: 20, wire: 5, parts: 3 } });
-  await page.evaluate(() => { window.__questButton = document.querySelector('[data-action="craft-objective"]'); });
+  await page.evaluate(() => { window.__menuButton = document.querySelector('[data-action="toggle-menu"]'); });
   await page.waitForTimeout(800);
-  expect(await page.evaluate(() => window.__questButton === document.querySelector('[data-action="craft-objective"]'))).toBe(true);
+  expect(await page.evaluate(() => window.__menuButton === document.querySelector('[data-action="toggle-menu"]'))).toBe(true);
   expect(await page.evaluate(() => Object.keys(window.__quietDistrict.world.actions))).toContain('walking_a');
   expect(await page.evaluate(() => window.__quietDistrict.world.weaponRoot.parent.name)).toBe('handslotr');
   await page.keyboard.press('KeyC');
@@ -203,7 +204,7 @@ test('Neighbour orders, water restoration and production are playable', async ({
   expect(await page.evaluate(() => window.__quietDistrict.state.bag.parts)).toBe(2);
   await page.keyboard.press('KeyC'); await page.locator('[data-category="shelter"]').click();
   await page.locator('[data-action="make"][data-id="pump"]').click();
-  await expect(page.locator('#quest-card')).toContainText('Дом становится самостоятельным');
+  expect(await page.evaluate(()=>window.__quietDistrict.state.owned.includes('pump'))).toBe(true);
   expect(await page.evaluate(() => window.__quietDistrict.world.towerLight.intensity)).toBeGreaterThan(0);
   await page.locator('[data-action="make"][data-id="solar"]').click();
   expect(await page.evaluate(() => window.__quietDistrict.world.solarRoof.visible)).toBe(true);
@@ -243,7 +244,7 @@ test('Expanded garden, helper assignments and smooth movement work in the playab
   });
   expect(result.distance).toBeGreaterThan(3.8); expect(result.distance).toBeLessThan(4.2);
   expect(result.stopped).toBe(0); expect(result.helper).toBe(true); expect(result.output).toBeGreaterThanOrEqual(3);
-  expect(result.nodes).toBe(2); expect(result.nursery).toBe(true); expect(result.path).toBeGreaterThan(0);
+  expect(result.nodes).toBe(5); expect(result.nursery).toBe(true); expect(result.path).toBeGreaterThan(0);
   await page.keyboard.press('KeyM');
   await expect(page.locator('#panel')).toContainText('Заброшенный сад');
 });
@@ -253,7 +254,7 @@ test('Hotbar uses keyboard supplies, equips weapons and persists inventory assig
   await start(page, { health: 50, medkits: 2, ammo: 12, owned: ['pistol', 'carbine', 'axe', 'rod', 'lantern'],
     hotbar: ['pistol', 'axe', 'rod', 'medkit', 'meal', 'lantern'] });
   await expect(page.locator('.hotbar-slot')).toHaveCount(6);
-  await expect(page.locator('#quest-card')).toHaveClass(/collapsed/);
+  await expect(page.locator('#quest-card')).toHaveCount(0);
   await expect(page.locator('.minimap')).toHaveClass(/collapsed/);
   await expect(page.locator('.toolbar')).toBeHidden();
   await page.locator('[data-action="toggle-menu"]').click();
@@ -278,8 +279,7 @@ test('Hotbar uses keyboard supplies, equips weapons and persists inventory assig
   expect(await page.evaluate(() => window.__quietDistrict.state.medkits)).toBe(1);
   await page.keyboard.press('Escape'); await page.keyboard.press('Digit1');
   expect(await page.evaluate(() => window.__quietDistrict.state.equipment.weapon)).toBe('carbine');
-  await page.locator('[data-action="toggle-quest"]').click();
-  await expect(page.locator('#quest-card')).not.toHaveClass(/collapsed/);
+  await expect(page.locator('[data-action="toggle-quest"]')).toHaveCount(0);
   await page.locator('[data-action="toggle-minimap"]').click();
   await expect(page.locator('.minimap canvas')).toBeVisible();
   expect(await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.vital-detail span')).fontSize))).toBeGreaterThanOrEqual(16);
@@ -300,9 +300,8 @@ test('Mobile hotbar and editor have readable text, usable touch targets and no o
   });
   expect(sizes.width).toBeLessThanOrEqual(sizes.viewport); expect(sizes.target).toBeGreaterThanOrEqual(44);
   expect(sizes.font).toBeGreaterThanOrEqual(16); expect(sizes.overlaps).toBe(false);
-  await page.locator('[data-action="toggle-quest"]').tap();
-  await expect(page.locator('.minimap')).toBeHidden();
-  await page.locator('[data-action="toggle-quest"]').tap();
+  await expect(page.locator('#quest-card')).toHaveCount(0);
+  await expect(page.locator('.minimap canvas')).toBeHidden();
   await page.locator('.hotbar-slot[data-index="3"]').tap();
   expect(await page.evaluate(() => window.__quietDistrict.state.health)).toBe(85);
   await page.screenshot({path:'/workspace/artifacts/screenshots/v04-mobile.png'});
@@ -361,9 +360,9 @@ test('Roofs fade on entering each building and restore outside without changing 
     for(let i=0;i<60;i++)w.updateRoofs(1/60);
     const inside=b.roofMeshes[0].material.opacity, wall=b.wallMeshes[0].material.opacity;
     g.state.x=5;g.state.z=4;for(let i=0;i<60;i++)w.updateRoofs(1/60);
-    return {count,geometries,transition,inside,wall,outside:b.roofMeshes[0].material.opacity,collision:before===w.blocked(8,4)};
+    return {glazing:w.buildings.find(b=>b.x===-42).roofMeshes.find(m=>m.material.userData.baseOpacity<1).material.opacity,count,geometries,transition,inside,wall,outside:b.roofMeshes[0].material.opacity,collision:before===w.blocked(8,4)};
   });
-  expect(result.count).toBe(5); expect(result.geometries.every(n=>n===2)).toBe(true);
+  expect(result.glazing).toBeCloseTo(.5);expect(result.count).toBe(8); expect(result.geometries.every(n=>n===2)).toBe(true);
   expect(result.transition).toBeGreaterThan(.035); expect(result.transition).toBeLessThan(1);
   expect(result.inside).toBeLessThan(.04);expect(result.wall).toBeLessThan(.14);expect(result.outside).toBeGreaterThan(.99);expect(result.collision).toBe(true);
 });
@@ -433,5 +432,68 @@ test('District audit: entrances, solid walls, repaired bridge, loot access and s
   expect(audit.solar).toBeCloseTo(-.22);expect(audit.lamp).toEqual([-18,0,10.85]);
   expect(audit.repaired).toBe(1);expect(audit.savedProduction).toBe(321);expect(audit.legal).toBe(true);
   expect(audit.noLeakedLight).toBe(true);expect(audit.outsideDepth).toBe(true);expect(audit.insideDepth).toBe(true);
-  expect(audit.nodeCount).toBe(36);expect(audit.roofCounts).toEqual([2,2,2,2,2]);
+  expect(audit.nodeCount).toBe(46);expect(audit.roofCounts).toEqual([2,2,2,2,2,2,2,2]);
+});
+
+test('Independent exploration reveals outskirts and supplies on the map and survives reload',async({page})=>{
+ test.setTimeout(180000);await start(page,{settings:{sound:false,quality:'low',questExpanded:true}});
+ await expect(page.locator('#quest-card')).toHaveCount(0);
+ await page.keyboard.press('KeyM');await expect(page.locator('.location-list [data-id="clinic"]')).toHaveCount(0);
+ await expect(page.locator('.location-list [data-id="workshop"]')).toHaveCount(0);
+ await page.keyboard.press('Escape');
+ await page.evaluate(()=>{const g=window.__quietDistrict;g.state.x=-49;g.state.z=32;g.world.move(-49,32);});
+ await expect.poll(()=>page.evaluate(()=>window.__quietDistrict.state.visited.includes('clinic'))).toBe(true);
+ await expect.poll(()=>page.evaluate(()=>window.__quietDistrict.state.foundNodes.includes('node-36'))).toBe(true);
+ await page.keyboard.press('KeyM');await expect(page.locator('.location-list [data-id="clinic"]')).toBeVisible();
+ await expect(page.locator('.location-list [data-id="workshop"]')).toHaveCount(0);
+ await page.waitForFunction(()=>getComputedStyle(document.getElementById('panel')).transform==='none');
+ const map=await page.locator('#large-map').boundingBox();
+ await page.mouse.click(map.x+(-48+66)/132*map.width,map.y+(39+66)/132*map.height);
+ const destination=await page.evaluate(()=>window.__quietDistrict.world.destination.position.toArray());
+ expect(destination[0]).toBeCloseTo(-48,0);expect(destination[2]).toBeCloseTo(39,0);
+ expect(await page.evaluate(()=>window.__quietDistrict.path.length)).toBeGreaterThan(0);
+ await page.keyboard.press('KeyJ');await expect(page.locator('.place-memories')).toContainText('Клиника на окраине');
+ const saved=await page.evaluate(()=>localStorage.getItem('quiet-district-save-v1'));
+ await page.context().addInitScript(value=>localStorage.setItem('quiet-district-save-v1',value),saved);
+ await page.reload();await expect(page.locator('[data-action="start"]')).toBeEnabled({timeout:60000});
+ expect(await page.evaluate(()=>window.__quietDistrict.state.x)).toBeLessThan(-43);
+ expect(await page.evaluate(()=>window.__quietDistrict.state.visited)).toContain('clinic');
+});
+
+test('Shelter upgrades craft through station, production goes to storage and haul recap stays optional',async({page})=>{
+ test.setTimeout(180000);await start(page,{x:-19,z:15,owned:['generator'],stash:{metal:60,parts:30,wire:20,wood:40},bag:{wood:26},elapsed:200,placed:[{id:'recycler',x:-18,z:14,rotation:0,harvested:0}]});
+ await page.keyboard.press('KeyC');await page.locator('[data-category="shelter"]').click();
+ await page.locator('[data-action="make"][data-id="tooling"]').click();
+ await page.locator('[data-action="make"][data-id="receiver"]').click();
+ const before=await page.evaluate(()=>({parts:window.__quietDistrict.state.stash.parts,wire:window.__quietDistrict.state.stash.wire}));
+ expect(await page.evaluate(()=>window.__quietDistrict.world.precisionTool.visible&&window.__quietDistrict.world.receiverModel.visible)).toBe(true);
+ await page.keyboard.press('Escape');await page.keyboard.press('KeyE');
+ expect(await page.evaluate(()=>window.__quietDistrict.state.stash.parts)).toBe(before.parts+3);
+ expect(await page.evaluate(()=>window.__quietDistrict.state.stash.wire)).toBe(before.wire+1);
+ expect(await page.evaluate(()=>window.__quietDistrict.state.bag.wood)).toBe(26);
+ await page.keyboard.press('KeyI');await page.locator('[data-action="storage"]').click();await page.locator('[data-action="deposit"]').click();
+ await expect(page.locator('.haul-summary')).not.toHaveAttribute('open','');await page.locator('.haul-summary summary').click();
+ await expect(page.locator('.haul-summary')).toContainText('Дерево × 26');await expect(page.locator('.haul-summary')).toContainText('Можно создать');
+});
+
+test('Respawned supplies and partially collected loot retain their rolled contents across saves',async({page})=>{
+ test.setTimeout(180000);await start(page,{elapsed:500,owned:['cutter']});
+ const snapshot=await page.evaluate(()=>{
+  const g=window.__quietDistrict;g.ui.open('settings');const n=g.world.nodes.find(n=>n.id==='node-41');
+  n.group.visible=false;g.state.depleted[n.id]=g.state.elapsed-241;delete g.state.nodeLoot[n.id];g.world.syncNodes();
+  const rolled={...n.loot};g.state.elapsed+=300;g.save(false);return {rolled,id:n.id,saved:localStorage.getItem('quiet-district-save-v1')};
+ });
+ await page.context().addInitScript(value=>localStorage.setItem('quiet-district-save-v1',value),snapshot.saved);
+ await page.reload();await expect(page.locator('[data-action="start"]')).toBeEnabled({timeout:60000});
+ expect(await page.evaluate(()=>window.__quietDistrict.world.nodes.find(n=>n.id==='node-41').loot)).toEqual(snapshot.rolled);
+ await page.locator('[data-action="start"]').click();
+ const partial=await page.evaluate(()=>{
+  const g=window.__quietDistrict;g.ui.open('settings');const n=g.world.nodes.find(n=>n.id==='node-41');
+  g.state.bag={wood:25};g.job={type:'harvest',node:n};g.finishJob();g.save(false);
+  return {left:n.loot,saved:localStorage.getItem('quiet-district-save-v1')};
+ });
+ expect(Object.values(partial.left).reduce((n,v)=>n+v,0)).toBeGreaterThan(0);
+ await page.context().addInitScript(value=>localStorage.setItem('quiet-district-save-v1',value),partial.saved);
+ await page.reload();await expect(page.locator('[data-action="start"]')).toBeEnabled({timeout:60000});
+ expect(await page.evaluate(()=>window.__quietDistrict.world.nodes.find(n=>n.id==='node-41').loot)).toEqual(partial.left);
 });

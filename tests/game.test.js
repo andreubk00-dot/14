@@ -107,7 +107,7 @@ test('Save validation rejects incompatible saves and sanitizes unknown data', ()
   const s = freshState(); s.owned = ['generator', 'bad', 'generator'];
   s.equipment.weapon = 'carbine'; s.x = 9999; s.stash.metal = -5; s.stash.wood = Infinity;
   const clean = validateSave(s); assert.deepEqual(clean.owned, ['generator']);
-  assert.equal(clean.equipment.weapon, 'pipe'); assert.equal(clean.x, 43);
+  assert.equal(clean.equipment.weapon, 'pipe'); assert.equal(clean.x, WORLD_LIMIT);
   assert.equal(clean.stash.metal, undefined); assert.equal(clean.stash.wood, undefined);
 });
 test('Save round trip preserves development and furniture harvest time', () => {
@@ -301,4 +301,54 @@ test('Lamp placement reserves the fixture while walking only collides with its p
   assert.equal(circleHitsRect(.5,0,.2,footprint(lamp)),true);
   assert.equal(circleHitsRect(.5,0,.2,solidFootprint(lamp)),false);
   assert.equal(circleHitsRect(0,0,.2,solidFootprint(lamp)),true);
+});
+
+import { WORLD_LIMIT, LOCATIONS, discover, cycleLoot } from '../src/district.js';
+
+test('Exploration records only places reached and nearby supplies, never sets a destination',()=>{
+ const s=freshState();s.x=0;s.z=50;assert.equal(discover(s,[{id:'node-40',x:51,z:12}]),false);
+ assert.deepEqual(s.visited,['home']);assert.deepEqual(s.foundNodes,[]);
+ s.x=-49;s.z=32;assert.equal(discover(s,[{id:'node-36',x:-52,z:31}]),true);
+ assert.ok(s.visited.includes('clinic'));assert.deepEqual(s.foundNodes,['node-36']);
+ assert.equal(discover(s,[{id:'node-36',x:-52,z:31}]),false);
+ const restored=validateSave({...s,visited:[...s.visited,'unknown'],foundNodes:[...s.foundNodes,'<bad>']});
+ assert.deepEqual(restored.visited,s.visited);assert.deepEqual(restored.foundNodes,s.foundNodes);
+});
+test('Contextual loot varies between cycles, is deterministic and keeps quantities positive',()=>{
+ const base={parts:6,metal:5,wire:3};assert.deepEqual(cycleLoot('node-41',base,0),base);
+ const rolls=Array.from({length:8},(_,i)=>cycleLoot('node-41',base,i+1));
+ assert.ok(new Set(rolls.map(JSON.stringify)).size>1);assert.deepEqual(rolls[2],cycleLoot('node-41',base,3));
+ for(const roll of rolls) for(const [id,n] of Object.entries(roll)) assert.ok(n>=Math.max(1,base[id]-1)&&n<=base[id]+1);
+ assert.deepEqual(base,{parts:6,metal:5,wire:3});
+});
+test('Precision tooling improves shared production; receiver keeps the full bag untouched and harvest atomic',()=>{
+ const s=freshState();s.owned=['generator','tooling','receiver'];s.bag={wood:26};s.stash={metal:3};s.elapsed=200;
+ const p={id:'recycler',harvested:0};assert.deepEqual(productionInfo(s,p).loot,{parts:3,wire:1});
+ const result=harvestProduction(s,p);assert.equal(result.ok,true);assert.equal(result.toStash,true);
+ assert.equal(s.bag.wood,26);assert.equal(bagWeight(s),26);assert.equal(s.stash.metal,0);assert.equal(s.stash.parts,3);assert.equal(s.stash.wire,1);
+ const before=structuredClone(s);assert.equal(harvestProduction(s,p).ok,false);assert.deepEqual(s,before);
+ s.elapsed=400;const t=p.harvested;assert.equal(harvestProduction(s,p).ok,false);assert.equal(p.harvested,t);
+ s.owned.push('helper');s.placed=[p];s.helper.assignment='recycler';s.stash.metal=3;
+ assert.equal(updateHelper(s),1);assert.equal(s.stash.parts,6);assert.equal(harvestProduction(s,p).ok,false);
+});
+test('Haul recap keeps the last positive delivery and expanded-world coordinates survive saving',()=>{
+ const s=freshState();s.bag={wood:5,parts:3};deposit(s);assert.deepEqual(s.lastHaul,{wood:5,parts:3});
+ deposit(s);assert.deepEqual(s.lastHaul,{wood:5,parts:3});
+ s.x=51;s.z=12;s.grave={x:-49,z:32,loot:{cloth:4}};s.drops=[{id:'far-drop',x:-42,z:-44,loot:{seeds:2}}];
+ const restored=validateSave(s);assert.equal(restored.x,51);assert.deepEqual(restored.lastHaul,s.lastHaul);
+ assert.deepEqual(restored.grave,s.grave);assert.deepEqual(restored.drops,s.drops);
+});
+
+import { mapPoint } from '../src/district.js';
+test('Expanded map coordinates match the drawn bounds and outskirts are not clamped to the old district',()=>{
+ assert.deepEqual(mapPoint(.5,.5),{x:0,z:0});
+ const p=mapPoint((-49+66)/132,(32+66)/132);assert.equal(p.x,-49);assert.equal(p.z,32);
+ assert.equal(validateSave({...freshState(),x:51,z:-44}).x,51);
+});
+
+test('Small furnishings commit with the same rotated overlap check used by the preview',()=>{
+ const s=freshState();s.stash={wood:10,herbs:6};
+ assert.equal(place(s,'planter',-20,23),true);assert.equal(place(s,'planter',-18.8,23),true);
+ const before=structuredClone(s.stash);assert.equal(place(s,'planter',-20.5,23),false);assert.deepEqual(s.stash,before);
+ s.bag={wood:3,metal:0};deposit(s);assert.deepEqual(s.lastHaul,{wood:3});
 });

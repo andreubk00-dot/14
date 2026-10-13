@@ -1,3 +1,4 @@
+import { discover, WORLD_LIMIT } from './district.js';
 import './style.css';
 import './interface.css';
 import './hud.css';
@@ -23,6 +24,8 @@ class QuietDistrict {
     this.ui = new UI(document.getElementById('app'), this.state, (action, data) => this.action(action, data));
     try {
       this.world = new World(document.getElementById('world'), this.state);
+      this.ui.nodes=this.world.nodes;
+      discover(this.state,this.world.nodes);
       this.world.setQuality(this.state.settings.quality);
       this.repairedFurniture = this.world.repairFurniture();
       for (const item of this.state.placed) this.world.addPlaced(item);
@@ -151,7 +154,7 @@ class QuietDistrict {
       if (assignHotbar(this.state, Number(data.index), data.id || null)) this.changed(); return;
     }
     if (action === 'hotbar-use') { this.useHotbar(Number(data.index)); return; }
-    if (action === 'craft-objective') { this.ui.open('craft', 'shelter'); return; }
+    if (action === 'craft-objective' || action==='craft-projects') { this.ui.open('craft',data.category||'shelter'); return; }
     if (action === 'station-route') {
       this.ui.close(); this.target = { type: 'station', entity: { x: -19.5, z: 13 }, x: -19.5, z: 13 }; this.navigate(-19.5, 13); return;
     }
@@ -221,7 +224,8 @@ class QuietDistrict {
     }
     if (action === 'travel' || action === 'home') {
       const target = LOCATIONS.find(l => l.id === (action === 'home' ? 'home' : data.id));
-      const destination = target.id === 'depot' ? { x: -17, z: -20 } : target.id === 'market' ? { x: 13, z: 5 } : target.id === 'pond' ? { x: 19, z: -17 } : target.id === 'tower' ? { x: 30, z: -31 } : target.id === 'garden' ? { x: -34, z: -5 } : HOME;
+      if(!target||!this.state.visited.includes(target.id)) return;
+      const destination = target.id === 'depot' ? { x: -17, z: -20 } : target.id === 'market' ? { x: 13, z: 5 } : target.id === 'pond' ? { x: 19, z: -17 } : target.id === 'tower' ? { x: 30, z: -31 } : target.id === 'garden' ? { x: -34, z: -5 } : target.id==='home'?HOME:{x:target.x,z:target.z};
       this.ui.close(); this.target = null; this.navigate(destination.x, destination.z); return;
     }
     if (action === 'map-point') { this.ui.close(); this.target = null; this.navigate(Number(data.x), Number(data.z)); return; }
@@ -259,10 +263,10 @@ class QuietDistrict {
   atHome() { return this.state.x >= -27 && this.state.x <= -6 && this.state.z >= 5 && this.state.z <= 27; }
   atStation() { return Math.hypot(this.state.x + 21, this.state.z - 13) < 4.5; }
   navigate(x, z, notify = true) {
-    if (x < -43 || x > 43 || z < -43 || z > 43) return;
+    if (x < -WORLD_LIMIT || x > WORLD_LIMIT || z < -WORLD_LIMIT || z > WORLD_LIMIT) return;
     this.path = this.world.pathTo(x, z);
     if (this.path.length) { this.world.setDestination(x, z); if (notify) this.ui.toast('Маршрут построен. WASD или стрелки — взять управление.'); }
-    else { this.world.destination.visible = false; if (notify) this.ui.toast('Путь закрыт. Попробуй другую точку или восстанови мост.'); }
+    else { this.world.destination.visible = false; if (notify) this.ui.toast('Выбранная точка недоступна.'); }
   }
   make(id) {
     const recipe = RECIPES.find(r => r.id === id);
@@ -279,7 +283,7 @@ class QuietDistrict {
     this.audio.craft(); this.world.applyProgress(); this.world.updateEquipment();
     if (recipe.slot === 'weapon') this.state.hotbarSelected = this.state.hotbar.indexOf(id);
     if (id === 'generator') { this.ui.toast('В убежище снова горит свет. Ты сделал это.', 'success'); this.ui.region(LOCATIONS.find(l => l.id === 'home'), true); }
-    else if (id === 'bridge') this.ui.toast('Мост восстановлен. Депо теперь доступно.', 'success');
+    else if (id === 'bridge') this.ui.toast('Мост восстановлен. Через канаву снова можно пройти.', 'success');
     else if (id === 'radio') { this.ui.toast('В тишине появился голос. Первая глава завершена.', 'success'); this.ui.open('journal'); }
     else if (id === 'pump') this.ui.toast('Чистая вода снова доступна. Грядки растут быстрее.', 'success');
     else if (id === 'solar') this.ui.toast('Солнечные панели питают производство. Дом стал самостоятельнее.', 'success');
@@ -359,7 +363,7 @@ class QuietDistrict {
     }
     if (target.type === 'production') {
       const result = harvestProduction(this.state, target.entity);
-      if (result.ok) { this.showLoot(result.received, target.x, target.z); this.audio.collect(); this.world.playCharacterAction('pickup'); this.changed(); }
+      if (result.ok) { this.showLoot(result.received, target.x, target.z); if(result.toStash) this.ui.toast('Продукция отправлена на склад.'); this.audio.collect(); this.world.playCharacterAction('pickup'); this.changed(); }
       else this.ui.toast(result.reason); return;
     }
     if (target.type === 'water') {
@@ -562,7 +566,7 @@ class QuietDistrict {
     if (active) {
       this.state.elapsed += dt;
       if (updateHelper(this.state)) this.ui.update(); this.attackCooldown = Math.max(0, this.attackCooldown - dt);
-      moving = this.movement(dt); this.updateEnemies(dt); this.audio.tick(this.state.elapsed);
+      moving = this.movement(dt); if(discover(this.state,this.world.nodes)) this.save(false); this.updateEnemies(dt); this.audio.tick(this.state.elapsed);
       if (this.target) {
         const target = this.target, range = target.type === 'enemy' ? weapon(this.state).range : 2;
         if (Math.hypot(target.entity.x - this.state.x, target.entity.z - this.state.z) <= range) {

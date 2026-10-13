@@ -1,7 +1,7 @@
+import { LOCATIONS, WORLD_LIMIT, ROADS, mapPoint } from './district.js';
 import { inventoryItems, EQUIPMENT_SLOTS } from './inventory.js';
 import { HOTBAR_ITEMS, hotbarItem } from './hotbar.js';
-import { RESOURCES, RECIPES, CONTRACTS, bagWeight, capacity, total, craftStatus, contractStatus, productionInfo, objective, weapon } from './game.js';
-import { LOCATIONS } from './world.js';
+import { RESOURCES, RECIPES, CONTRACTS, bagWeight, capacity, total, craftStatus, contractStatus, productionInfo, weapon } from './game.js';
 
 import { icon, resourceIcon, recipeIcon, categoryIcon } from './icons.js';
 export { icon } from './icons.js';
@@ -25,7 +25,6 @@ export class UI {
       </div>
       <div id="hud" hidden>
         <header class="topbar"><div class="brand">${icon('home', 24)}<span>ТИХИЙ РАЙОН<small id="location-name">РЕМОНТНАЯ СТАНЦИЯ</small></span></div><div class="weather">${icon('sun', 18)}<span id="game-time">17:42</span><span class="separator"></span><span>ДЕНЬ <b id="game-day">01</b></span><span class="weather-text">Лёгкий туман</span></div><div class="header-actions"><span class="saved-indicator" id="save-indicator"><i></i>Сохранено</span><button class="icon-button hud-secondary" data-action="sound" aria-label="Включить или выключить звук" id="sound-button">${icon('sound')}</button><button class="icon-button" data-action="settings" aria-label="Настройки">${icon('settings', 24)}</button><button class="menu-toggle" data-action="toggle-menu" aria-expanded="false">${icon('book', 23)} Меню</button></div></header>
-        <aside class="quest-card glass collapsed" id="quest-card"></aside>
         <div id="resource-peek" hidden></div>
 
         <div id="region-banner" class="region-banner"><span id="region-subtitle"></span><h2 id="region-title"></h2></div>
@@ -56,7 +55,6 @@ export class UI {
       else if (action === 'select-item') { this.selectedItem = button.dataset.id; this.renderPanel(); }
       else if (action === 'inventory-tab') { this.inventoryView = button.dataset.view; this.selectedItem=null; this.renderPanel(true); }
       else if (action === 'available-filter') { this.onlyAvailable = !this.onlyAvailable; this.renderPanel(true); }
-      else if (action === 'toggle-quest') { this.state.settings.questExpanded = !this.state.settings.questExpanded; this.update(); this.actions('hud-change'); }
       else if (action === 'toggle-minimap') { this.state.settings.minimapExpanded = !this.state.settings.minimapExpanded; this.update(); this.actions('hud-change'); }
       else if (action === 'toggle-menu') { const nav = document.querySelector('.toolbar'); nav.hidden = !nav.hidden; button.setAttribute('aria-expanded', String(!nav.hidden)); }
       else if (action === 'hotbar-edit-slot') { this.hotbarEditSlot = Number(button.dataset.index); this.renderPanel(); }
@@ -91,13 +89,9 @@ export class UI {
     this.update();
   }
   update() {
-    const state = this.state, quest = objective(state), recipe = RECIPES.find(r => r.id === quest.recipe);
-    const missing = recipe ? Object.entries(recipe.cost).filter(([id, n]) => total(state, id) < n) : [];
-    const progress = recipe ? Object.entries(recipe.cost).reduce((n, [id, count]) => n + Math.min(1, total(state, id) / count), 0) / Object.keys(recipe.cost).length : 1;
-    this.setHTML('quest-card', `<div class="eyebrow">${icon('compass', 15)} СЛЕДУЮЩИЙ ШАГ <span class="chapter">${quest.number}</span><button class="quest-toggle" data-action="toggle-quest" aria-label="Показать или свернуть задание" aria-expanded="${!!state.settings.questExpanded}">${state.settings.questExpanded ? '−' : '+'}</button></div><h3>${quest.title}</h3><div class="quest-details"><p>${quest.desc}</p>${recipe ? `<div class="quest-progress"><i style="width:${progress * 100}%"></i></div><div class="cost-caption">${missing.length ? 'Есть / нужно для проекта' : 'Все материалы собраны'}</div><div class="quest-costs">${costHTML(state, recipe.cost)}</div><div class="quest-actions"><button class="text-button" data-action="craft-objective">${icon('craft', 14)} Открыть рецепт</button>${missing.length ? `<button class="text-button" data-action="travel" data-id="${({ water: 'tower', fish: 'pond', pearl: 'pond', seeds: 'garden' })[missing[0][0]] || (missing[0][0] === 'metal' && state.owned.includes('bridge') ? 'depot' : 'market')}">${icon('pin', 14)} Искать ресурсы</button>` : '<button class="text-button" data-action="station-route">К станции →</button>'}</div>` : '<span class="chapter-done">Свет и вода вернулись в район</span>'}</div>`);
+    const state=this.state;
     const bag = bagWeight(state), cap = capacity(state);
     this.setHTML('vitals', `<div class="vital-row ${state.health < 30 ? 'critical' : ''}">${icon('heart', 17)}<div class="vital-detail"><div><span>Здоровье</span><b>${Math.ceil(state.health)}<small>/100</small></b></div><div class="meter health"><i style="width:${state.health}%"></i></div></div></div><div class="vital-row">${icon('bolt', 17)}<div class="vital-detail"><div><span>Выносливость</span><b>${Math.ceil(state.stamina)}<small>/100</small></b></div><div class="meter stamina"><i style="width:${state.stamina}%"></i></div></div></div>`);
-    document.getElementById('quest-card').classList.toggle('collapsed', !state.settings.questExpanded);
     const minimap = document.querySelector('.minimap'); minimap.classList.toggle('collapsed', !state.settings.minimapExpanded);
     minimap.querySelector('[data-action="toggle-minimap"]').setAttribute('aria-expanded', String(!!state.settings.minimapExpanded));
     document.getElementById('toolbar-bag-count').textContent = `${Number(bag.toFixed(1))}/${cap}`;
@@ -173,7 +167,7 @@ export class UI {
       inventory: ['СНАРЯЖЕНИЕ И ДОБЫЧА', 'Инвентарь', ''],
       storage: ['УБЕЖИЩЕ', 'Хранилище', 'Запасы для рецептов и будущих вылазок.'],
       build: ['МЕСТО, КОТОРОЕ ТЫ СОЗДАЁШЬ', 'Обустройство', 'Выбери предмет, затем размести его в убежище.'],
-      map: ['ШЕСТЬ МЕСТ. ОДНА ИСТОРИЯ.', 'Карта района', 'Выбери точку на карте — персонаж проложит путь.'],
+      map: ['ЗНАКОМЫЕ ТРОПЫ. НОВЫЕ ОТКРЫТИЯ.', 'Карта района', 'Выбери точку на карте — персонаж проложит путь.'],
       journal: ['ПЕРВАЯ ГЛАВА', 'Дневник возвращения', 'Маленькие шаги возвращают жизнь в большой мир.'],
       settings: ['ТВОЙ РИТМ', 'Настройки', 'Прогресс автоматически сохраняется в этом браузере.'],
       helper: ['ТЕПЕРЬ ТЫ НЕ ОДИН', 'Лада · садовница', 'Выбери работу. Готовая продукция отправится на склад, пока ты исследуешь район.'],
@@ -208,7 +202,7 @@ export class UI {
       else body += this.inventoryWindow();
     }
     if (this.panel === 'storage') {
-      body = `<div class="storage-actions"><button class="primary" data-action="deposit">${icon('bag',22)} Сложить добычу</button><button class="secondary" data-action="inventory">${icon('bag',22)} Рюкзак</button></div>${this.itemGrid(inventoryItems(state,true),'storage-grid')}${this.itemDetails(true)}`;
+      body = `<div class="storage-actions"><button class="primary" data-action="deposit">${icon('bag',22)} Сложить добычу</button><button class="secondary" data-action="inventory">${icon('bag',22)} Рюкзак</button></div>${this.itemGrid(inventoryItems(state,true),'storage-grid')}${this.itemDetails(true)}${this.haulSummary()}`;
     }
     if (this.panel === 'helper') {
       const recruited = state.owned.includes('helper');
@@ -221,7 +215,7 @@ export class UI {
         return `<article class="recipe-card order-card"><div class="recipe-top"><span class="recipe-icon">${resourceIcon(Object.keys(order.cost)[0], 27)}</span><div><h3>${order.title}</h3><p>${order.desc}</p></div></div><div class="order-costs"><small>Передать</small><div class="costs">${costHTML(state, order.cost)}</div></div><div class="order-rewards"><small>Получить на склад</small><div>${rewardHTML(order.reward)}</div></div><div class="order-footer"><span>${status.ok ? `${icon('check', 14)} Материалы собраны` : `${icon(status.remaining ? 'clock' : 'info', 14)} ${status.reason}`}</span><button class="craft-button" data-action="deliver-order" data-id="${order.id}" ${!status.ok || !home ? 'disabled' : ''}>Передать</button></div></article>`;
       }).join('')}</div><p class="panel-note">Заказы повторяются. Время ожидания идёт во время вылазок.</p>`;
     }
-    if (this.panel === 'map') body = `<canvas id="large-map" width="560" height="420" aria-label="Карта района"></canvas><div class="location-list">${LOCATIONS.map(l => `<button data-action="travel" data-id="${l.id}"><span style="color:${l.color}">${icon('pin', 22)}</span><div><strong>${l.name}</strong><small>${l.subtitle}</small></div>${icon('arrow', 15)}</button>`).join('')}</div>${state.grave ? '<p class="map-warning">✕ На карте отмечен оставленный рюкзак. Его можно вернуть.</p>' : ''}`;
+    if (this.panel === 'map') body = `<canvas id="large-map" width="560" height="420" aria-label="Карта района"></canvas><p class="panel-note">На карте остаются места, где ты побывал. Светлые точки — замеченные запасы, серые — разобранные.</p><div class="location-list">${LOCATIONS.filter(l=>state.visited.includes(l.id)).map(l => `<button data-action="travel" data-id="${l.id}"><span style="color:${l.color}">${icon('pin', 22)}</span><div><strong>${l.name}</strong><small>${l.subtitle}</small></div>${icon('arrow', 15)}</button>`).join('')}</div>${state.grave ? '<p class="map-warning">✕ На карте отмечен оставленный рюкзак. Его можно вернуть.</p>' : ''}`;
     if (this.panel === 'journal') {
       body = `<div class="journal-note"><span class="note-date">ПЕРВАЯ ЗАПИСЬ</span><p>«В мастерской пахнет мокрым деревом. Печь ещё работает. Если починить генератор, здесь можно остаться. Пока это просто комната. Но уже моя».</p></div><div class="story-steps">${[
         ['generator', 'Верни свет домой', 'Старый генератор ждёт проводов и деталей. После ремонта оживёт мастерская.'],
@@ -230,14 +224,14 @@ export class UI {
       ].map(([id, name, desc], i) => `<div class="story-step ${state.owned.includes(id) ? 'complete' : ''}"><span>${state.owned.includes(id) ? '✓' : `0${i + 1}`}</span><div><h3>${name}</h3><p>${desc}</p></div></div>`).join('')}</div>${state.chapterComplete ? '<div class="radio-message"><div class="eyebrow">ВХОДЯЩИЙ СИГНАЛ · 104.6</div><p>«Если кто-нибудь слышит… У нас есть семена. И свободное место за столом. Мы у водонапорной башни».</p><small>Конец первой главы. Теперь можно наладить воду и помочь соседям.</small></div>' : ''}<div class="section-title"><h3>Твоя история в цифрах</h3></div><div class="stats-grid"><div><strong>${state.gathered}</strong><span>ресурсов найдено</span></div><div><strong>${state.trips}</strong><span>добычи сдано</span></div><div><strong>${state.placed.length}</strong><span>предметов дома</span></div><div><strong>${state.kills}</strong><span>дронов отключено</span></div></div><div class="section-title"><h3>Рыбацкая коллекция</h3><span>${state.fishCollection.length} / 4</span></div><div class="collection-list">${['Речной окунь', 'Серебряный карась', 'Лунная форель', 'Перламутровая раковина'].map(name => `<div class="${state.fishCollection.includes(name) ? 'found' : ''}">${recipeIcon(({ 'Речной окунь': 'fish-perch', 'Серебряный карась': 'fish-crucian', 'Лунная форель': 'fish-trout', 'Перламутровая раковина': 'shell' })[name], 24)}<span>${state.fishCollection.includes(name) ? name : 'Неизвестная находка'}</span></div>`).join('')}</div>`;
     }
     if (this.panel === 'settings') body = `<div class="settings-row"><div><h3>Звуки района</h3><p>Ветер, шаги, инструменты и вода.</p></div><button class="toggle ${state.settings.sound ? 'on' : ''}" data-action="sound" aria-label="Переключить звук"><i></i></button></div><div class="settings-row"><div><h3>Качество графики</h3><p>Мягкие тени и свечение источников света.</p></div><button class="secondary" data-action="quality">${state.settings.quality === 'high' ? 'Высокое' : 'Экономное'}</button></div><div class="settings-row"><div><h3>Сохранение</h3><p id="save-note">Хранится только в этом браузере.</p></div><button class="secondary" data-action="save">Сохранить</button></div><button class="secondary full-width" data-action="export-save">Скачать сохранение</button><label class="import-save secondary full-width">Загрузить сохранение<input id="import-save" type="file" accept="application/json,.json"></label><div class="controls-table"><h3>Управление</h3><p><kbd>WASD / стрелки</kbd> Движение</p><p><kbd>ЛКМ по земле</kbd> Идти к точке</p><p><kbd>E</kbd> Сбор / действие / подсечка</p><p><kbd>Пробел</kbd> Атака / рыбалка</p><p><kbd>Shift</kbd> Бег</p><p><kbd>Q</kbd> Аптечка</p><p><kbd>R</kbd> Повернуть предмет при строительстве</p><p><kbd>Esc</kbd> Закрыть меню / отменить</p><p><kbd>Колесо мыши</kbd> Масштаб</p></div><div class="credits"><strong>Модели: KayKit / Kay Lousberg и Kenney · CC0</strong><p>Персонаж KayKit в капюшоне, растительность, дроны и бластеры. Архитектура и эффекты созданы для игры.</p></div><button class="danger-button" data-action="reset">Начать новую историю…</button>`;
+    if(this.panel==='journal') body=`<div class="section-title"><h3>Места, которые я помню</h3><span>${state.visited.length} / ${LOCATIONS.length}</span></div><div class="place-memories">${LOCATIONS.filter(l=>state.visited.includes(l.id)).map(l=>`<article><h3>${l.name}</h3><p>${l.note}</p></article>`).join('')}</div>`+body;
     element.innerHTML = `<header class="panel-header"><div class="eyebrow">${eyebrow}</div><button class="icon-button" data-action="close" aria-label="Закрыть меню">${icon('close')}</button><div class="panel-title"><span class="panel-title-icon">${icon(({ craft: 'craft', inventory: 'bag', storage: 'chest', build: 'build', map: 'map', journal: 'book', settings: 'settings', orders: 'board', helper: 'herbs' })[this.panel], 27)}</span><h2>${title}</h2></div>${subtitle ? `<p>${subtitle}</p>` : ''}</header><div class="panel-body">${body}</div><footer class="panel-footer">${icon('clock', 14)} Игра на паузе <span>ESC — закрыть</span></footer>`;
     element.querySelector('.panel-body').scrollTop = scroll;
     if (this.panel === 'map') {
       const canvas = document.getElementById('large-map'); this.renderMap(canvas, true);
       canvas.addEventListener('click', event => {
         const rect = canvas.getBoundingClientRect();
-        const x = (event.clientX - rect.left) / rect.width * 90 - 45;
-        const z = (event.clientY - rect.top) / rect.height * 90 - 45;
+        const {x,z}=mapPoint((event.clientX-rect.left)/rect.width,(event.clientY-rect.top)/rect.height);
         this.actions('map-point', { x, z });
       });
     }
@@ -268,6 +262,11 @@ export class UI {
     else if(['medkit','meal','tea'].includes(item.id)) actions=`<button class="primary" data-action="use-${item.id}">Использовать</button>`;
     return `<section class="item-details"><div class="item-portrait">${recipeIcon(item.id,72)}</div><div><h3>${item.name}</h3><p>${item.desc||'Материал для создания и развития убежища.'}</p>${item.id==='pipe'?'<small>13 урона · 2.4 м</small>':''}<div class="item-actions">${actions}</div></div></section>`;
   }
+  haulSummary() {
+    const haul=Object.entries(this.state.lastHaul);if(!haul.length) return '';
+    const ready=RECIPES.filter(r=>craftStatus(this.state,r).ok);
+    return `<details class="haul-summary"><summary>Последняя сдача · ${haul.reduce((n,[,v])=>n+v,0)} ресурсов</summary><div class="haul-items">${haul.map(([id,n])=>`<span>${resourceIcon(id,28)} ${RESOURCES[id].name} × ${n}</span>`).join('')}</div><h3>Можно создать · ${ready.length}</h3><div class="haul-items">${ready.slice(0,8).map(r=>`<button class="secondary" data-action="craft-projects" data-category="${r.category}">${recipeIcon(r.id,28)} ${r.name}</button>`).join('')}</div></details>`;
+  }
   productionOverview() {
     const producers = this.state.placed.map(p => ({ item: p, info: productionInfo(this.state, p) })).filter(p => p.info);
     if (!producers.length) return '';
@@ -289,18 +288,21 @@ export class UI {
   renderMap(canvas, large = false) {
     const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
     const labelSize = Math.ceil((large ? 16 : 12) / Math.min(1, canvas.clientWidth / w || 1));
-    const p = (x, z) => [(x + 45) / 90 * w, (z + 45) / 90 * h];
+    const span=(WORLD_LIMIT+2)*2;const p=(x,z)=>[(x+WORLD_LIMIT+2)/span*w,(z+WORLD_LIMIT+2)/span*h];
     ctx.clearRect(0, 0, w, h); ctx.fillStyle = '#263a34'; ctx.fillRect(0, 0, w, h);
     ctx.strokeStyle = '#65796c18'; ctx.lineWidth = 1;
     for (let i = 0; i <= 10; i++) { ctx.beginPath(); ctx.moveTo(i / 10 * w, 0); ctx.lineTo(i / 10 * w, h); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, i / 10 * h); ctx.lineTo(w, i / 10 * h); ctx.stroke(); }
-    ctx.fillStyle = '#60716945'; ctx.fillRect(...p(-4, -43), 8 / 90 * w, 86 / 90 * h); ctx.fillRect(...p(-35, 0), 70 / 90 * w, 6 / 90 * h);
-    ctx.fillStyle = '#557a764f'; ctx.beginPath(); ctx.ellipse(...p(23, -24), 10 / 90 * w, 8 / 90 * h, 0, 0, Math.PI * 2); ctx.fill();
-    for (const [x, z, bw, bh] of [[-24, 11, 12, 9], [8, 0, 10, 8], [9.5, 15, 11, 8], [24.5, 0.5, 9, 11], [-27, -31, 16, 12]]) {
-      ctx.fillStyle = '#87927b40'; ctx.strokeStyle = '#87927b50'; ctx.fillRect(...p(x, z), bw / 90 * w, bh / 90 * h); ctx.strokeRect(...p(x, z), bw / 90 * w, bh / 90 * h);
+    ctx.fillStyle='#60716945';for(const r of ROADS) ctx.fillRect(...p(r.x-r.w/2,r.z-r.d/2),r.w/span*w,r.d/span*h);
+    ctx.fillStyle='#557a764f';ctx.beginPath();ctx.ellipse(...p(23,-24),10/span*w,8/span*h,0,0,Math.PI*2);ctx.fill();
+    for(const l of LOCATIONS.filter(l=>this.state.visited.includes(l.id))) {
+      ctx.fillStyle='#87927b40';ctx.fillRect(...p(l.x-4,l.z-3),8/span*w,6/span*h);
     }
-    for (const l of LOCATIONS) {
+    if(large) for(const n of this.nodes||[]) if(this.state.foundNodes.includes(n.id)) {
+      const [nx,ny]=p(n.x,n.z);ctx.fillStyle=n.group.visible?'#c6cb9a':'#778779';ctx.fillRect(nx-2,ny-2,4,4);
+    }
+    for (const l of LOCATIONS.filter(l=>this.state.visited.includes(l.id))) {
       const [x, y] = p(l.x, l.z); ctx.fillStyle = l.color; ctx.beginPath(); ctx.arc(x, y, large ? 4 : 2.4, 0, Math.PI * 2); ctx.fill();
-      if (large) { ctx.fillStyle = '#d7d7bd'; ctx.font = `${labelSize}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText(({ home: 'Убежище', market: 'Квартал', depot: 'Депо', pond: 'Причал', tower: 'Башня', garden: 'Сад' })[l.id], x, y + labelSize + 8); }
+      if (large) { ctx.fillStyle = '#d7d7bd'; ctx.font = `${labelSize}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText(l.label, x, y + labelSize + 8); }
     }
     if (this.state.grave) { const [x, y] = p(this.state.grave.x, this.state.grave.z); ctx.fillStyle = '#e3a281'; ctx.font = '16px sans-serif'; ctx.fillText('×', x - 4, y + 4); }
     const [x, y] = p(this.state.x, this.state.z); ctx.fillStyle = '#f3dda5'; ctx.shadowBlur = 8; ctx.shadowColor = '#edc98b'; ctx.beginPath(); ctx.arc(x, y, large ? 5 : 3.5, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
