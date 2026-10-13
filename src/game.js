@@ -1,7 +1,10 @@
-import { footprint, overlaps } from './layout.js';
+import { FINDS, CROPS, MEMORIES, cropInfo } from './homelife.js';
+import { footprint, overlaps, placementAllowed } from './layout.js';
 import { WORLD_LIMIT, LOCATIONS } from './district.js';
 export const SAVE_KEY = 'quiet-district-save-v1';
 export const RESOURCES = {
+  vegetables:{name:'Овощи',color:'#dda06b',weight:.5},
+  flowers:{name:'Цветы',color:'#dca4b8',weight:.1},
   seeds: { name: 'Семена', icon: 'herbs', color: '#b5c68b', weight: 0.25 },
   wood: { name: 'Дерево', icon: '▥', color: '#b89368', weight: 1 },
   metal: { name: 'Металл', icon: '⬡', color: '#a3b8bb', weight: 1 },
@@ -14,6 +17,11 @@ export const RESOURCES = {
   water: { name: 'Чистая вода', icon: 'water', color: '#84bfc7', weight: 0.5 },
 };
 export const RECIPES = [
+  ...Object.entries(FINDS).map(([id,f])=>({id,name:f.name,category:'shelter',desc:id==='wallclock'?'Крепятся на стену внутри убежища.':id==='recordplayer'?'Уцелевшая пластинка. Включается рядом с проигрывателем.':id==='foundlamp'?'Работает от уцелевшего аккумулятора. Свет можно включать и выключать.':'Удобное кресло. Найденную вещь можно поставить дома.',cost:{},placeable:true,foundOnly:true})),
+  {id:'wrench',name:'Набор ключей',category:'tools',desc:'Ускоряет разбор двигателей и бытовой техники вдвое.',cost:{metal:5,parts:2},slot:'tool'},
+  {id:'cropbed',name:'Посадочная грядка',category:'shelter',desc:'Травы, овощи или цветы. После ручного сбора нужна новая посадка.',cost:{wood:6,metal:2},placeable:true},
+  {id:'stew',name:'Овощной паёк',category:'supplies',desc:'Готовит порцию походной еды: 30 здоровья и всю выносливость.',cost:{vegetables:2,water:1,herbs:1},repeatable:true},
+  {id:'bouquet',name:'Букет в деревянной вазе',category:'shelter',desc:'Свежие цветы из своего огорода. Можно поставить дома.',cost:{flowers:3,wood:1},placeable:true},
   {id:'tooling',name:'Точная оснастка',category:'shelter',desc:'Переработчик даёт 3 детали и 1 провод вместо 2 деталей. Установлена на верстаке.',cost:{metal:14,parts:6,wood:8},requires:'generator',fixed:true},
   {id:'receiver',name:'Складской приёмник',category:'shelter',desc:'При ручном сборе продукция отправляется прямо на склад, оставляя рюкзак свободным.',cost:{wood:12,metal:8,wire:4,parts:3},requires:'generator',fixed:true},
   { id: 'helper', name: 'Пригласить садовницу Ладу', category: 'shelter', desc: 'Нужны радиостанция и удобная кровать. Лада собирает готовую продукцию выбранного типа на склад.', cost: { cloth: 6, fish: 3, water: 3 }, requires: 'radio', fixed: true },
@@ -33,7 +41,7 @@ export const RECIPES = [
   { id: 'boots', name: 'Походные ботинки', category: 'gear', desc: 'Скорость движения +18%.', cost: { cloth: 5, metal: 2 }, slot: 'boots', icon: '⌑' },
   { id: 'lantern', name: 'Походный фонарь', category: 'gear', desc: 'Тёплый свет сопровождает тебя в тумане.', cost: { metal: 4, wire: 2, parts: 1 }, slot: 'tool', icon: '☼' },
   { id: 'medkit', name: 'Полевая аптечка', category: 'supplies', desc: 'Восстанавливает 45 здоровья. Использование: Q.', cost: { herbs: 3, cloth: 2 }, repeatable: true, icon: '✚' },
-  { id: 'meal', name: 'Уха с травами', category: 'supplies', desc: 'Восстанавливает 30 здоровья и всю выносливость.', cost: { fish: 1, herbs: 1, wood: 1 }, repeatable: true, icon: '♨' },
+  { id: 'meal', name: 'Походная еда', category: 'supplies', desc: 'Восстанавливает 30 здоровья и всю выносливость.', cost: { fish: 1, herbs: 1, wood: 1 }, repeatable: true, icon: '♨' },
   { id: 'ammo', name: 'Энергозаряды × 12', category: 'supplies', desc: 'Боеприпасы для бластера и карабина.', cost: { metal: 2, wire: 1 }, repeatable: true, icon: '▰' },
   { id: 'generator', name: 'Восстановить генератор', category: 'shelter', desc: 'Верни свет домой. Питает мастерскую и открывает новые рецепты.', cost: { metal: 10, wire: 4, parts: 3 }, icon: 'ϟ', fixed: true },
   { id: 'bridge', name: 'Починить мост в депо', category: 'shelter', desc: 'Восстанавливает прямой путь через канаву к техническим запасам депо.', cost: { wood: 14, metal: 8 }, icon: '═', fixed: true },
@@ -69,7 +77,7 @@ export const FISH = [
 export const HOME = { x: -16, z: 16 };
 export function freshState() {
   return {
-    visited: ['home'], foundNodes: [], lastHaul: {},
+    visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
     version: 1, x: HOME.x + 1, z: HOME.z + 2, health: 100, stamina: 100,
     stash: { wood: 3, metal: 2, cloth: 2 }, bag: {}, owned: [],
     equipment: { weapon: 'pipe', armor: null, bag: null, boots: null },
@@ -83,6 +91,9 @@ export function freshState() {
 export function validateSave(input) {
   if (!input || input.version !== 1) return null;
   const state = freshState();
+  for(const field of ['finds','storedFinds','lastFindHaul']) for(const id of Object.keys(FINDS)) if(Number.isInteger(input[field]?.[id])&&input[field][id]>0) state[field][id]=Math.min(99,input[field][id]);
+  state.findClaims=[...new Set((Array.isArray(input.findClaims)?input.findClaims:[]).filter(id=>typeof id==='string'&&/^node-\d{1,3}$/.test(id)))];
+  state.notes=[...new Set((Array.isArray(input.notes)?input.notes:[]).filter(id=>MEMORIES.some(n=>n.id===id)))];
   for (const key of ['stash', 'bag']) {
     if (!input[key] || typeof input[key] !== 'object') return null;
     state[key] = {};
@@ -112,7 +123,7 @@ export function validateSave(input) {
   state.placed = (Array.isArray(input.placed) ? input.placed : []).filter(p =>
     RECIPES.some(r => r.id === p.id && r.placeable) && Number.isFinite(p.x) && Number.isFinite(p.z)
     && p.x >= -26 && p.x <= -6 && p.z >= 6 && p.z <= 26
-  ).slice(0, 70).map(p => ({ id: p.id, x: p.x, z: p.z, rotation: Number.isFinite(p.rotation) ? p.rotation : 0, harvested: Number.isFinite(p.harvested) ? Math.min(state.elapsed, Math.max(0, p.harvested)) : state.elapsed }));
+  ).slice(0, 70).map(p => ({ id: p.id, x: p.x, z: p.z, rotation: Number.isFinite(p.rotation) ? p.rotation : 0, harvested: Number.isFinite(p.harvested) ? Math.min(state.elapsed, Math.max(0, p.harvested)) : state.elapsed, ...(['lamp','foundlamp','recordplayer'].includes(p.id)?{enabled:p.id==='recordplayer'?p.enabled===true:p.enabled!==false}:{}),...(p.id==='cropbed'?{crop:CROPS[p.crop]?p.crop:null,plantedAt:CROPS[p.crop]&&Number.isFinite(p.plantedAt)?Math.min(state.elapsed,Math.max(0,p.plantedAt)):null}:{}) }));
   if (input.depleted && typeof input.depleted === 'object') {
     for (const [id, t] of Object.entries(input.depleted).slice(0, 1000)) if (Number.isFinite(t)) state.depleted[id] = t;
   }
@@ -136,7 +147,8 @@ export function validateSave(input) {
   if (input.grave && Number.isFinite(input.grave.x) && Number.isFinite(input.grave.z)) {
     const loot = {};
     for (const id of Object.keys(RESOURCES)) if (Number.isFinite(input.grave.loot?.[id]) && input.grave.loot[id] > 0) loot[id] = Math.min(100000, Math.floor(input.grave.loot[id]));
-    state.grave = { x: Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, input.grave.x)), z: Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, input.grave.z)), loot };
+    const finds={};for(const id of Object.keys(FINDS)) if(Number.isInteger(input.grave.finds?.[id])&&input.grave.finds[id]>0) finds[id]=Math.min(99,input.grave.finds[id]);
+    state.grave = { ...(input.grave.finds?{finds}:{}), x: Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, input.grave.x)), z: Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, input.grave.z)), loot };
   }
   if (['garden', 'seedbed', 'purifier', 'recycler', 'rest'].includes(input.helper?.assignment)) state.helper.assignment = input.helper.assignment;
   if (Number.isFinite(input.helper?.cycles)) state.helper.cycles = Math.floor(Math.max(0, Math.min(100000000, input.helper.cycles)));
@@ -156,7 +168,7 @@ export function validateSave(input) {
   return state;
 }
 export function bagWeight(state) {
-  return Object.entries(state.bag).reduce((n, [id, count]) => n + (RESOURCES[id]?.weight || 0) * count, 0);
+  return Object.entries(state.bag).reduce((n,[id,count])=>n+(RESOURCES[id]?.weight||0)*count,0)+Object.entries(state.finds).reduce((n,[id,count])=>n+(FINDS[id]?.weight||0)*count,0);
 }
 export function capacity(state) {
   return RECIPES.find(r => r.id === state.equipment.bag)?.capacity || 26;
@@ -164,6 +176,8 @@ export function capacity(state) {
 export function total(state, id) { return (state.stash[id] || 0) + (state.bag[id] || 0); }
 export function craftStatus(state, recipe) {
   if (!recipe) return { ok: false, reason: 'Неизвестный рецепт' };
+  if(recipe.foundOnly&&state.placed.length>=70) return {ok:false,reason:'Достигнут лимит построек'};
+  if(recipe.foundOnly) return (state.finds[recipe.id]||0)+(state.storedFinds[recipe.id]||0)>0?{ok:true}:{ok:false,reason:'Эту вещь можно найти в районе'};
   if (recipe.id === 'helper' && !state.placed.some(p => p.id === 'bed')) return { ok: false, reason: 'Сначала размести удобную кровать для гостя' };
   if (recipe.requires && !state.owned.includes(recipe.requires)) {
     return { ok: false, reason: `Нужно: ${RECIPES.find(r => r.id === recipe.requires)?.name}` };
@@ -191,7 +205,7 @@ export function craft(state, id) {
   if (recipe.repeatable) {
     if (id === 'ammo') state.ammo += 12;
     if (id === 'medkit') state.medkits++;
-    if (id === 'meal') state.meals++;
+    if (id === 'meal'||id==='stew') state.meals++;
     if (id === 'tea') state.teas++;
   } else {
     state.owned.push(id);
@@ -204,9 +218,10 @@ export function place(state, id, x, z, rotation = 0) {
   const recipe = RECIPES.find(r => r.id === id);
   if (!recipe?.placeable || !craftStatus(state, recipe).ok) return false;
   if (x < -26 || x > -6 || z < 6 || z > 26) return false;
-  if(id!=='rug'&&state.placed.some(p=>p.id!=='rug'&&overlaps(footprint({id,x,z,rotation}),footprint(p),.15))) return false;
-  spend(state, recipe.cost);
-  state.placed.push({ id, x, z, rotation, harvested: state.elapsed });
+  if(id==='wallclock'&&!placementAllowed({id,x,z,rotation},[],state.placed)) return false;
+  if(id!=='rug'&&id!=='wallclock'&&state.placed.some(p=>p.id!=='rug'&&p.id!=='wallclock'&&overlaps(footprint({id,x,z,rotation}),footprint(p),.15))) return false;
+  if(recipe.foundOnly) {const stock=state.finds[id]>0?state.finds:state.storedFinds;stock[id]--;} else spend(state,recipe.cost);
+  state.placed.push({id,x,z,rotation,harvested:state.elapsed,...(['lamp','foundlamp','recordplayer'].includes(id)?{enabled:id!=='recordplayer'}:{}),...(id==='cropbed'?{crop:null,plantedAt:null}:{})});
   return true;
 }
 export function collect(state, loot) {
@@ -222,10 +237,11 @@ export function collect(state, loot) {
 }
 export function deposit(state) {
   let amount = 0;
+  const findHaul=Object.fromEntries(Object.entries(state.finds).filter(([,n])=>n>0));for(const [id,n] of Object.entries(state.finds)) {state.storedFinds[id]=(state.storedFinds[id]||0)+n;amount+=n;}state.finds={};
   const haul=Object.fromEntries(Object.entries(state.bag).filter(([,n])=>n>0));
   for (const [id, n] of Object.entries(state.bag)) { state.stash[id] = (state.stash[id] || 0) + n; amount += n; }
   state.bag = {};
-  if (amount) {state.trips++;state.lastHaul=haul;}
+  if (amount) {state.trips++;state.lastHaul=haul;state.lastFindHaul=findHaul;}
   return amount;
 }
 export function weapon(state) { if (state.equipment.weapon === null) return { id: 'unarmed', name: 'Без оружия', damage: 5, range: 1.6, cooldown: 0.75 }; return RECIPES.find(r => r.id === state.equipment.weapon) || DEFAULT_WEAPON; }
@@ -236,9 +252,10 @@ export function takeDamage(state, amount) {
 }
 export function respawn(state) {
   const previous = state.grave;
-  state.grave = { x: state.x, z: state.z, loot: { ...state.bag } };
+  state.grave = {x:state.x,z:state.z,loot:{...state.bag},finds:{...state.finds}};
+  if(previous) for(const [id,n] of Object.entries(previous.finds||{})) state.grave.finds[id]=(state.grave.finds[id]||0)+n;
   if (previous) for (const [id, n] of Object.entries(previous.loot)) state.grave.loot[id] = (state.grave.loot[id] || 0) + n;
-  state.bag = {}; state.x = HOME.x; state.z = HOME.z + 3;
+  state.bag = {};state.finds={}; state.x = HOME.x; state.z = HOME.z + 3;
   state.health = 65; state.stamina = 100;
 }
 export function useSupply(state, id) {
@@ -280,7 +297,8 @@ export function deliverContract(state, id) {
   state.contracts[id] = state.elapsed; state.completedOrders++;
   return { ok: true, contract };
 }
-export function productionInfo(state, item) {
+export function productionInfo(state,item) {
+  if(item.id==='cropbed') return cropInfo(state,item);
   const recipes = {
     seedbed: { interval: 120, loot: { herbs: 6 }, name: 'Собрать редкие травы' },
     garden: { interval: 90, loot: { herbs: 3 }, name: 'Собрать травы' },
@@ -308,6 +326,7 @@ export function harvestProduction(state, item) {
   if(toStash) { for(const [id,n] of Object.entries(info.loot)) state.stash[id]=(state.stash[id]||0)+n;received={...info.loot}; }
   else received=collect(state,info.loot).received;
   item.harvested=state.elapsed;
+  if(item.id==='cropbed') {item.crop=null;item.plantedAt=null;}
   return {ok:true,received,toStash};
 }
 
@@ -326,4 +345,30 @@ export function updateHelper(state) {
     item.harvested = state.elapsed; cycles++; state.helper.cycles++;
   }
   return cycles;
+}
+
+export function claimFind(state,node) {
+ const f=FINDS[node.find];if(!f||state.findClaims.includes(node.id)) return {ok:false,reason:'Вещь уже забрана'};
+ if(bagWeight(state)+f.weight>capacity(state)) return {ok:false,reason:`Для находки нужно ${f.weight} свободного веса`};
+ state.finds[node.find]=(state.finds[node.find]||0)+1;state.findClaims.push(node.id);return {ok:true};
+}
+export function takeStoredFind(state,id,count=1) {
+ if(!(state.x>=-27&&state.x<=-6&&state.z>=5&&state.z<=27)) return {ok:false,reason:'Склад доступен в убежище'};
+ if(!FINDS[id]||!Number.isInteger(count)||count<1||(state.storedFinds[id]||0)<count) return {ok:false,reason:'Вещи нет на складе'};
+ if(bagWeight(state)+FINDS[id].weight*count>capacity(state)) return {ok:false,reason:'Недостаточно места в рюкзаке'};
+ state.storedFinds[id]-=count;state.finds[id]=(state.finds[id]||0)+count;return {ok:true};
+}
+export function plantCrop(state,item,id) {
+ const crop=CROPS[id];if(item?.id!=='cropbed'||!crop||!state.placed.includes(item)) return {ok:false,reason:'Грядка не найдена'};
+ if(item.crop) return {ok:false,reason:'Сначала собери урожай'};
+ if(!spend(state,crop.cost)) return {ok:false,reason:'Не хватает семян или воды'};
+ item.crop=id;item.plantedAt=state.elapsed;return {ok:true};
+}
+export function recoverFinds(state,finds) {
+ for(const [id,n] of Object.entries(finds||{})) {
+  if(!FINDS[id]) continue;const count=Math.min(n,Math.floor((capacity(state)-bagWeight(state))/FINDS[id].weight));
+  if(count>0) {state.finds[id]=(state.finds[id]||0)+count;finds[id]-=count;}
+  if(!finds[id]) delete finds[id];
+ }
+ return Object.keys(finds||{}).length===0;
 }

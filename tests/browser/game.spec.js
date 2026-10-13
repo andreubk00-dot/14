@@ -432,7 +432,29 @@ test('District audit: entrances, solid walls, repaired bridge, loot access and s
   expect(audit.solar).toBeCloseTo(-.22);expect(audit.lamp).toEqual([-18,0,10.85]);
   expect(audit.repaired).toBe(1);expect(audit.savedProduction).toBe(321);expect(audit.legal).toBe(true);
   expect(audit.noLeakedLight).toBe(true);expect(audit.outsideDepth).toBe(true);expect(audit.insideDepth).toBe(true);
-  expect(audit.nodeCount).toBe(46);expect(audit.roofCounts).toEqual([2,2,2,2,2,2,2,2]);
+  expect(audit.nodeCount).toBe(52);expect(audit.roofCounts).toEqual([2,2,2,2,2,2,2,2]);
+});
+
+test('Solid containers disappear after collection and wait for the player before restoring',async({page})=>{
+ await start(page,{x:9,z:6.2,owned:['bag'],equipment:{weapon:'pipe',bag:'bag'}});
+ const solid=()=>page.evaluate(()=>window.__quietDistrict.world.blocked(9,5));
+ expect(await solid()).toBe(true);
+ await page.keyboard.press('KeyE');
+ await expect.poll(()=>page.evaluate(()=>window.__quietDistrict.world.nodes.find(n=>n.name==='Хозяйственный ящик').group.visible),{timeout:20000}).toBe(false);
+ expect(await solid()).toBe(false);
+ const restore=await page.evaluate(()=>{
+  const g=window.__quietDistrict,w=g.world,n=w.nodes.find(n=>n.name==='Хозяйственный ящик');g.visibilityPaused=true;
+  g.state.x=9;g.state.z=5;g.state.elapsed+=241;w.syncNodes();
+  const hidden=!n.group.visible&&!w.blocked(9,5);
+  g.state.z=5.6;w.syncNodes();const nearHidden=!n.group.visible;
+  g.state.z=6.2;w.syncNodes();const returned=n.group.visible&&w.blocked(9,5),loot={...n.loot};
+  // A partially filled save loaded inside a restored box retains its exact stock.
+  n.loot={wood:1};g.state.nodeLoot[n.id]={wood:1};g.state.z=5;w.syncNodes();g.state.z=6.2;w.syncNodes();
+  return {hidden,nearHidden,returned,loot,partial:n.loot};
+ });
+ expect(restore.hidden&&restore.nearHidden&&restore.returned).toBe(true);
+ expect(Object.values(restore.loot).some(v=>v>0)).toBe(true);
+ expect(restore.partial).toEqual({wood:1});
 });
 
 test('Independent exploration reveals outskirts and supplies on the map and survives reload',async({page})=>{
@@ -496,4 +518,68 @@ test('Respawned supplies and partially collected loot retain their rolled conten
  await page.context().addInitScript(value=>localStorage.setItem('quiet-district-save-v1',value),partial.saved);
  await page.reload();await expect(page.locator('[data-action="start"]')).toBeEnabled({timeout:60000});
  expect(await page.evaluate(()=>window.__quietDistrict.world.nodes.find(n=>n.id==='node-41').loot)).toEqual(partial.left);
+});
+
+async function jump(page,x,z) {
+ await page.evaluate(({x,z})=>{const g=window.__quietDistrict;if(g.world.blocked(x,z))throw Error(`Test approach blocked: ${x},${z}`);g.path=[];g.motion.reset();g.state.x=x;g.state.z=z;g.world.move(x,z);},{x,z});
+}
+async function dropAt(page,x,z) {
+ const p=await page.evaluate(({x,z})=>window.__quietDistrict.world.screenPosition(x,0,z),{x,z});
+ await page.mouse.move(p.x,p.y);await expect(page.locator('#build-hint')).toContainText('Нажми');await page.mouse.click(p.x,p.y);
+}
+test('Rare furniture travels through inventory and storage, installs only once and light toggles persist',async({page})=>{
+ test.setTimeout(240000);await start(page,{x:-46,z:31.8});
+ await page.keyboard.press('KeyE');await expect.poll(()=>page.evaluate(()=>window.__quietDistrict.state.finds.foundlamp||0),{timeout:30000}).toBe(1);
+ expect(await page.evaluate(()=>window.__quietDistrict.world.nodes[46].collider.disabled)).toBe(true);
+ await page.evaluate(()=>{const g=window.__quietDistrict;g.state.elapsed+=500;g.world.syncNodes();});
+ expect(await page.evaluate(()=>window.__quietDistrict.world.nodes[46].group.visible)).toBe(false);
+ await jump(page,-18,18);await page.keyboard.press('KeyI');await page.locator('[data-action="storage"]').click();await page.locator('[data-action="deposit"]').click();
+ await page.locator('#storage-grid [data-id="foundlamp"]').click();await page.locator('[data-action="withdraw-find"]').click();
+ expect(await page.evaluate(()=>window.__quietDistrict.state.storedFinds.foundlamp)).toBe(0);
+ await page.locator('#panel [data-action="inventory"]').click();await page.locator('#inventory-grid [data-id="foundlamp"]').click();await page.locator('[data-action="make"][data-id="foundlamp"]').click();
+ await dropAt(page,-16,23);expect(await page.evaluate(()=>window.__quietDistrict.state.finds.foundlamp)).toBe(0);
+ await jump(page,-16,21.8);await page.keyboard.press('KeyE');
+ expect(await page.evaluate(()=>window.__quietDistrict.world.placedGroups[0].group.userData.fixture.light.intensity)).toBe(0);
+ await page.keyboard.press('KeyE');expect(await page.evaluate(()=>window.__quietDistrict.world.placedGroups[0].group.userData.fixture.light.intensity)).toBe(7);
+ const saved=await page.evaluate(()=>localStorage.getItem('quiet-district-save-v1'));await page.context().addInitScript(s=>localStorage.setItem('quiet-district-save-v1',s),saved);await page.reload();
+ await expect(page.locator('[data-action="start"]')).toBeEnabled({timeout:60000});
+ expect(await page.evaluate(()=>window.__quietDistrict.state.placed.filter(p=>p.id==='foundlamp').length)).toBe(1);
+ expect(await page.evaluate(()=>window.__quietDistrict.world.nodes[46].group.visible)).toBe(false);
+});
+
+test('Manual crops show growth, harvest once, replant and produce usable food',async({page})=>{
+ test.setTimeout(180000);await start(page,{x:-17,z:21.8,stash:{seeds:6,water:5,herbs:4},placed:[{id:'cropbed',x:-17,z:23,rotation:0,harvested:0,crop:null,plantedAt:null}]});
+ await page.keyboard.press('KeyE');await page.locator('[data-action="plant-crop"][data-id="vegetables"]').click();
+ expect(await page.evaluate(()=>window.__quietDistrict.state.stash.seeds)).toBe(4);
+ await expect(page.locator('[data-action="harvest-bed"]')).toBeDisabled();await page.keyboard.press('Escape');
+ const growth=await page.evaluate(()=>{const g=window.__quietDistrict;g.visibilityPaused=true;g.state.elapsed=g.state.placed[0].plantedAt+90;g.world.update(.016,false,true);const root=g.world.placedGroups[0].group;return root.children.filter(m=>m.userData.cropLeaf).map(m=>({visible:m.visible,scale:m.scale.y}));});
+ expect(growth.length).toBe(6);expect(growth.every(m=>m.visible&&m.scale>.4&&m.scale<.6)).toBe(true);
+ await page.evaluate(()=>{const g=window.__quietDistrict;g.state.elapsed=g.state.placed[0].plantedAt+181;});
+ await page.keyboard.press('KeyE');await page.locator('[data-action="harvest-bed"]').click();
+ expect(await page.evaluate(()=>window.__quietDistrict.state.bag.vegetables)).toBe(4);
+ await expect(page.locator('[data-action="plant-crop"][data-id="flowers"]')).toBeVisible();await page.locator('[data-action="plant-crop"][data-id="flowers"]').click();
+ expect(await page.evaluate(()=>window.__quietDistrict.state.stash.seeds)).toBe(3);
+ await page.keyboard.press('Escape');await jump(page,-19,14);await page.keyboard.press('KeyC');await page.locator('[data-category="supplies"]').click();await page.locator('[data-action="make"][data-id="stew"]').click();
+ expect(await page.evaluate(()=>window.__quietDistrict.state.meals)).toBe(1);expect(await page.evaluate(()=>window.__quietDistrict.state.bag.vegetables)).toBe(2);
+});
+
+test('Clock mounts on the wall and record player respects distance and global sound controls',async({page})=>{
+ test.setTimeout(240000);await start(page,{storedFinds:{wallclock:1,recordplayer:1}});
+ await page.keyboard.press('KeyB');await page.locator('[data-action="make"][data-id="wallclock"]').click();await dropAt(page,-18,11);
+ const clock=await page.evaluate(()=>window.__quietDistrict.state.placed[0]);expect(clock.id).toBe('wallclock');expect(clock.z).toBeCloseTo(10.66,3);expect(clock.rotation).toBe(0);
+ expect(await page.evaluate(()=>window.__quietDistrict.world.blocked(-18,11.5))).toBe(false);
+ await page.keyboard.press('KeyB');await page.locator('[data-action="make"][data-id="recordplayer"]').click();await dropAt(page,-16,23);
+ await jump(page,-16,21.8);await page.keyboard.press('KeyE');expect(await page.evaluate(()=>window.__quietDistrict.state.placed[1].enabled)).toBe(true);
+ await page.locator('[data-action="settings"]').click();await page.locator('#panel [data-action="sound"]').click();await page.keyboard.press('Escape');
+ await page.waitForFunction(()=>window.__quietDistrict.audio.context.state==='running');
+ const sound=await page.evaluate(()=>{const g=window.__quietDistrict,calls=[],original=g.audio.tone.bind(g.audio);g.audio.tone=(...a)=>{calls.push(a);original(...a);};g.audio.nextRecord=0;g.audio.record(g.state.elapsed+1,0);g.audio.record(g.state.elapsed+2,20);g.audio.toggle(false);g.audio.record(g.state.elapsed+3,0);g.audio.tone=original;return calls;});
+ expect(sound.length).toBe(1);expect(sound[0][0]).toBeGreaterThan(200);expect(sound[0][1]).toBe(.8);expect(sound[0][3]).toBe('triangle');
+});
+
+test('Scene notes can be read physically and remain in the journal without adding objectives',async({page})=>{
+ test.setTimeout(180000);await start(page);
+ for(const [id,x,z] of [['bus',10.5,36.7],['picnic',-25.8,33],['yard',52,23.2]]) {
+  await jump(page,x,z);await page.keyboard.press('KeyE');await expect(page.locator('.found-note')).toBeVisible();expect(await page.evaluate(()=>window.__quietDistrict.state.notes)).toContain(id);await page.keyboard.press('Escape');
+ }
+ await page.keyboard.press('KeyJ');await expect(page.locator('#panel')).toContainText('Тетрадь механика');await expect(page.locator('#panel')).toContainText('Открытка у пледа');await expect(page.locator('#quest-card')).toHaveCount(0);
 });

@@ -1,5 +1,5 @@
 export class DistrictAudio {
-  constructor() { this.enabled = true; this.context = null; this.nextBird = 0; }
+  constructor() { this.enabled = true; this.context = null; this.nextBird = 0;this.nextRecord=0;this.recordStep=0; }
   start(enabled = true) {
     this.enabled = enabled;
     if (!this.context) {
@@ -33,6 +33,11 @@ export class DistrictAudio {
   water() { this.tone(230, 0.4, 0.1, 'sine', 60); }
   tick(time) {
     if (time > this.nextBird) { this.nextBird = time + 15 + Math.random() * 25; this.tone(1500, 0.19, 0.018, 'sine', 2200); setTimeout(() => this.tone(1900, 0.16, 0.015, 'sine', 1250), 220); }
+  }
+  record(time,distance) {
+    if(distance>=9||time<this.nextRecord||!this.enabled||this.context?.state!=='running') return;
+    const melody=[261.63,329.63,392,329.63,293.66,349.23,440,349.23,261.63,392,523.25,392,246.94,293.66,392,293.66];
+    this.tone(melody[this.recordStep++%melody.length],.8,.07*(1-distance/9),'triangle');this.nextRecord=time+.65;
   }
   pause() { this.context?.suspend().catch(() => {}); }
   resume() { this.context?.resume().catch(() => {}); }

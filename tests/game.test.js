@@ -352,3 +352,49 @@ test('Small furnishings commit with the same rotated overlap check used by the p
  const before=structuredClone(s.stash);assert.equal(place(s,'planter',-20.5,23),false);assert.deepEqual(s.stash,before);
  s.bag={wood:3,metal:0};deposit(s);assert.deepEqual(s.lastHaul,{wood:3});
 });
+
+import { FINDS, CROPS, dismantleInfo, machineKind, cropInfo } from '../src/homelife.js';
+import { claimFind, takeStoredFind, plantCrop, recoverFinds } from '../src/game.js';
+import { clockAnchor } from '../src/layout.js';
+test('Rare finds preserve quantity through collection, deposit, withdrawal and successful placement only',()=>{
+ const s=freshState(),n={id:'node-47',find:'armchair'};s.bag={wood:23};
+ const before=structuredClone(s);assert.equal(claimFind(s,n).ok,false);assert.deepEqual(s,before);
+ s.bag={wood:20};assert.equal(claimFind(s,n).ok,true);assert.equal(bagWeight(s),25);
+ assert.equal(claimFind(s,n).ok,false);assert.equal(s.finds.armchair,1);
+ assert.equal(place(s,'armchair',0,0),false);assert.equal(s.finds.armchair,1);
+ deposit(s);assert.equal(s.storedFinds.armchair,1);assert.equal(s.finds.armchair,undefined);
+ s.bag={wood:25};assert.equal(takeStoredFind(s,'armchair').ok,false);assert.equal(s.storedFinds.armchair,1);
+ s.bag={};assert.equal(takeStoredFind(s,'armchair').ok,true);assert.equal(place(s,'armchair',-17,23),true);
+ assert.equal(s.finds.armchair,0);assert.equal(place(s,'armchair',-20,23),false);
+ const clean=validateSave(s);assert.deepEqual(clean.findClaims,['node-47']);assert.equal(clean.placed.filter(p=>p.id==='armchair').length,1);
+});
+test('Found furniture is recoverable after death and never duplicated on another recovery',()=>{
+ const s=freshState();s.finds={recordplayer:1};s.bag={wood:22};respawn(s);assert.deepEqual(s.grave.finds,{recordplayer:1});assert.deepEqual(s.finds,{});
+ s.bag={wood:25};assert.equal(recoverFinds(s,s.grave.finds),false);assert.deepEqual(s.grave.finds,{recordplayer:1});
+ s.bag={};assert.equal(recoverFinds(s,s.grave.finds),true);assert.equal(s.finds.recordplayer,1);
+ assert.equal(recoverFinds(s,s.grave.finds),true);assert.equal(s.finds.recordplayer,1);
+});
+test('Clock anchors attach to actual interior wall faces, preserve orientation and never obstruct floor furniture',()=>{
+ const s=freshState();s.finds.wallclock=1;
+ assert.equal(place(s,'wallclock',-18,18),false);assert.equal(s.finds.wallclock,1);
+ const a=clockAnchor(-18,11);assert.deepEqual(a,{x:-18,z:10.66,rotation:0});
+ assert.equal(placementAllowed({id:'wallclock',...a},[],[{id:'bed',x:-18,z:11.5}]),true);
+ assert.equal(place(s,'wallclock',a.x,a.z,a.rotation),true);assert.equal(s.finds.wallclock,0);
+ const west=clockAnchor(-24,15);assert.equal(west.x,-23.84);assert.equal(west.rotation,Math.PI/2);
+ assert.equal(placementAllowed({id:'wallclock',...west,rotation:0},[],[]),false);
+});
+test('Planting and harvest are atomic, require replanting and preserve growth over saving',()=>{
+ const s=freshState();s.stash={seeds:4,water:2};s.elapsed=100;const bed={id:'cropbed',x:-17,z:23,rotation:0,harvested:0,crop:null,plantedAt:null};s.placed=[bed];
+ assert.equal(plantCrop(s,bed,'vegetables').ok,true);assert.equal(s.stash.seeds,2);assert.equal(s.stash.water,1);
+ const before=structuredClone(s);assert.equal(plantCrop(s,bed,'flowers').ok,false);assert.deepEqual(s,before);
+ s.elapsed=190;assert.equal(cropInfo(s,bed).progress,.5);const saved=validateSave(s);assert.equal(cropInfo(saved,saved.placed[0]).progress,.5);
+ s.elapsed=280;s.bag={wood:26};assert.equal(harvestProduction(s,bed).ok,false);assert.equal(bed.crop,'vegetables');
+ s.bag={};assert.equal(harvestProduction(s,bed).ok,true);assert.equal(s.bag.vegetables,4);assert.equal(bed.crop,null);assert.equal(harvestProduction(s,bed).ok,false);
+ assert.equal(plantCrop(s,bed,'flowers').ok,true);s.owned=['pump','solar'];assert.equal(cropInfo(s,bed).interval,CROPS.flowers.interval*.75*.75);
+});
+test('Tools accelerate the appropriate machinery; loose scrap stays loose scrap',()=>{
+ const motor={type:'scrap',name:'Разобранный мотор'},board={type:'electronics',name:'Электрощит'},pile={type:'scrap',name:'Куча металлолома'};
+ assert.equal(dismantleInfo(['wrench'],motor).duration,dismantleInfo([],motor).duration/2);
+ assert.equal(dismantleInfo(['cutter'],board).duration,dismantleInfo([],board).duration/2);
+ assert.equal(dismantleInfo(['pick'],motor).fast,false);assert.equal(machineKind(pile),null);assert.equal(machineKind({type:'electronics',name:'Радиоприёмник'}),'radio');
+});

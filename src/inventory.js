@@ -2,11 +2,12 @@ import { RESOURCES, RECIPES, DEFAULT_WEAPON, capacity, bagWeight } from './game.
 export const EQUIPMENT_SLOTS = { weapon: 'Оружие', armor: 'Броня', bag: 'Рюкзак', boots: 'Ботинки' };
 export function inventoryItems(state, storage=false) {
   const resources = Object.entries(storage ? state.stash : state.bag).filter(([,n])=>n>0).map(([id,count])=>({ id, count, name: RESOURCES[id].name, kind: 'resource', desc: `Материал для рецептов. Вес единицы: ${RESOURCES[id].weight}.` }));
-  if (storage) return resources;
+  const finds=Object.entries(storage?state.storedFinds:state.finds).filter(([,n])=>n>0).map(([id,count])=>({...RECIPES.find(r=>r.id===id),count,kind:'find'}));
+  if (storage) return [...resources,...finds];
   const supplies = [['medkit','medkits'],['meal','meals'],['tea','teas'],['ammo','ammo']].filter(([,field])=>state[field]>0).map(([id,field])=>({...RECIPES.find(r=>r.id===id), count:state[field], kind:'supply'}));
   const equipped = Object.values(state.equipment);
   const gear = [{...DEFAULT_WEAPON, slot:'weapon', desc:'Надёжная стальная труба для ближнего боя.'}, ...RECIPES.filter(r=>r.slot && state.owned.includes(r.id))].filter(r=>!equipped.includes(r.id)).map(r=>({...r,count:1,kind:'gear'}));
-  return [...resources, ...supplies, ...gear];
+  return [...resources,...finds, ...supplies, ...gear];
 }
 export function equipItem(state, id) {
   const item = id === 'pipe' ? {...DEFAULT_WEAPON,slot:'weapon'} : RECIPES.find(r=>r.id===id);

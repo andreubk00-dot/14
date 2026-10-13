@@ -1,3 +1,5 @@
+import { CROPS, FINDS, MEMORIES, dismantleInfo } from './homelife.js';
+import { clockAnchor } from './layout.js';
 import { discover, WORLD_LIMIT } from './district.js';
 import './style.css';
 import './interface.css';
@@ -10,7 +12,7 @@ import { Locomotion } from './movement.js';
 import { World, LOCATIONS } from './world.js';
 import { UI } from './ui.js';
 import { DistrictAudio } from './audio.js';
-import { SAVE_KEY, RESOURCES, RECIPES, HOME, freshState, validateSave, collect, deposit, craft, craftStatus, place, weapon, takeDamage, respawn, useSupply, catchFish, bagWeight, capacity, deliverContract, productionInfo, harvestProduction, updateHelper } from './game.js';
+import { SAVE_KEY, RESOURCES, RECIPES, HOME, claimFind, takeStoredFind, plantCrop, recoverFinds, freshState, validateSave, collect, deposit, craft, craftStatus, place, weapon, takeDamage, respawn, useSupply, catchFish, bagWeight, capacity, deliverContract, productionInfo, harvestProduction, updateHelper } from './game.js';
 
 class QuietDistrict {
   constructor() {
@@ -143,7 +145,7 @@ class QuietDistrict {
     if (action === 'panel-open') { this.motion.reset(); this.path = []; this.target = null; this.job = null; this.keys.clear(); this.touchMovement = { x: 0, z: 0 }; this.ui.progress(null); this.cancelFishing(); return; }
     if (action === 'panel-close') { this.keys.clear(); return; }
     if (this.ui.pendingConfirm) return;
-    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders', 'helper', 'storage'].includes(action)) {
+    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders', 'helper', 'storage', 'garden'].includes(action)) {
       if (action === 'storage' && !this.atHome()) { this.ui.toast('Подойди к хранилищу в убежище.'); return; }
       this.cancelBuild(); this.cancelFishing();
       if (this.ui.panel === action) this.ui.close(); else this.ui.open(action);
@@ -168,6 +170,12 @@ class QuietDistrict {
       if (result.ok) { this.audio.collect(); this.world.playCharacterAction('cheer'); } this.changed(); return;
     }
     if (action === 'dismiss-tutorial') { this.state.tutorial = false; document.getElementById('tutorial').hidden = true; this.save(); return; }
+    if(action==='withdraw-find') {const result=takeStoredFind(this.state,data.id,Number(data.count));if(!result.ok)this.ui.toast(result.reason);this.changed();return;}
+    if(action==='plant-crop'||action==='harvest-bed') {
+      const item=this.state.placed[Number(data.index)];if(!item||!this.atHome()||Math.hypot(item.x-this.state.x,item.z-this.state.z)>3) {this.ui.toast('Подойди к грядке.');return;}
+      const result=action==='plant-crop'?plantCrop(this.state,item,data.id):harvestProduction(this.state,item);if(!result.ok)this.ui.toast(result.reason);else {this.audio.collect();this.world.renderDirty=true;}this.changed();return;
+    }
+    if(action==='toggle-furniture') {const p=this.state.placed[Number(data.index)];if(!p||!this.atHome()||!['lamp','foundlamp','recordplayer'].includes(p.id))return;p.enabled=!p.enabled;this.world.renderDirty=true;this.world.syncFurniture();this.changed();return;}
     if (action === 'make') { this.make(data.id); return; }
     if (action === 'move-furniture') {
       const index = Number(data.index), item = this.state.placed[index];
@@ -189,7 +197,7 @@ class QuietDistrict {
     }
     if (action === 'deposit') {
       if (!this.atHome()) { this.ui.toast('Добычу можно сложить только в убежище.'); return; }
-      const n = deposit(this.state); this.ui.toast(n ? `Добыча дома: ${n} ресурсов отправлено на склад` : 'Рюкзак уже пуст.', n ? 'success' : 'info');
+      const n = deposit(this.state); this.ui.toast(n ? `На склад отправлено: ${n} материалов и находок` : 'Рюкзак уже пуст.', n ? 'success' : 'info');
       if (n) this.audio.collect(); this.changed(); return;
     }
     if (['use-medkit', 'use-meal', 'use-tea'].includes(action)) {
@@ -255,7 +263,7 @@ class QuietDistrict {
       this.ui.toast(this.state.lanternOn ? 'Фонарь включён.' : 'Фонарь выключен.');
     } else {
       const target = this.nearestInteraction();
-      if (target?.type === 'node' && target.entity.requires === item.id) this.interact();
+      if (target?.type === 'node' && (target.entity.requires === item.id||dismantleInfo(this.state.owned,target.entity).tool===item.id)) this.interact();
       else this.ui.toast(`${item.name} готов. Подойди к подходящей находке.`);
     }
     this.changed();
@@ -293,7 +301,8 @@ class QuietDistrict {
   updateBuildPreview() {
     if (!this.build) return;
     const hit = this.world.pointer(this.pointerPosition.x, this.pointerPosition.y), b = this.build;
-    b.x = Math.round(hit.point.x); b.z = Math.round(hit.point.z);
+    b.x=Math.round(hit.point.x);b.z=Math.round(hit.point.z);
+    if(b.recipe.id==='wallclock') {const anchor=clockAnchor(hit.point.x,hit.point.z);if(anchor) Object.assign(b,anchor);}
     b.valid = this.world.canPlace({id:b.recipe.id,x:b.x,z:b.z,rotation:b.rotation},b.movingIndex)
       && (b.movingIndex !== undefined || craftStatus(this.state, b.recipe).ok);
     const ghost = this.world.ghost;
@@ -327,7 +336,8 @@ class QuietDistrict {
   nearestInteraction() {
     const s = this.state, candidates = [];
     const add = (type, x, z, label, hint, entity, range = 2.4) => { const distance = Math.hypot(s.x - x, s.z - z); if (distance < range) candidates.push({ type, x, z, label, hint, entity, distance }); };
-    for (const node of this.world.nodes) if (node.group.visible) add('node', node.x, node.z, `${({ tree: 'Рубить дерево', wood: 'Собрать доски', ore: 'Добыть металл', herbs: 'Собрать растения', electronics: 'Разобрать электронику', crate: 'Открыть ящик', cloth: 'Собрать ткань', scrap: 'Разобрать лом', drop: 'Забрать добычу' })[node.type] || 'Собрать'} · ${node.name}`, node.requires && !s.owned.includes(node.requires) ? `Нужно: ${RECIPES.find(r => r.id === node.requires)?.name}` : 'Добыча в рюкзак', node);
+    for(const note of this.world.memories) add('note',note.x,note.z,'Прочитать запись',note.name,note,1.8);
+    for (const node of this.world.nodes) if (node.group.visible) add('node', node.x, node.z, `${({ tree: 'Рубить дерево', wood: 'Собрать доски', ore: 'Добыть металл', herbs: 'Собрать растения', electronics: 'Разобрать электронику', crate: 'Открыть ящик', cloth: 'Собрать ткань', scrap: 'Разобрать лом', drop: 'Забрать добычу' })[node.type] || (node.find?'Забрать находку':'Собрать')} · ${node.name}`, node.requires && !s.owned.includes(node.requires) ? `Нужно: ${RECIPES.find(r => r.id === node.requires)?.name}` : node.find?`Вес находки: ${FINDS[node.find].weight}`:dismantleInfo(s.owned,node).kind?`${dismantleInfo(s.owned,node).duration.toFixed(1)} сек. · ${dismantleInfo(s.owned,node).fast?'инструмент ускоряет разбор':'ручной разбор'}`:'Добыча в рюкзак', node);
     add('station', -21, 13, 'Станция рецептов', 'Создать снаряжение', null, 2.8);
     add('storage', -13.5, 17, 'Открыть хранилище', 'Склад убежища', null, 2.2);
     add('bed', -22, 17.7, 'Отдохнуть', 'Восстановить здоровье', null, 2);
@@ -338,7 +348,9 @@ class QuietDistrict {
     if (s.grave) add('grave', s.grave.x, s.grave.z, 'Вернуть оставленный рюкзак', 'Твои ресурсы', s.grave);
     for (const p of s.placed) {
       const info = productionInfo(s, p);
-      if (info) add('production', p.x, p.z, RECIPES.find(r => r.id === p.id).name, info.remaining ? `До готовности: ${Math.ceil(info.remaining)} сек.` : info.name, p);
+      if(p.id==='cropbed') add('garden',p.x,p.z,'Посадочная грядка',info?info.remaining?`Растёт: ${Math.ceil(info.remaining)} сек.`:'Урожай готов':'Выбрать посадки',p);
+      if(['lamp','foundlamp','recordplayer'].includes(p.id)) add('furniture-toggle',p.x,p.z,p.id==='recordplayer'?(p.enabled?'Выключить проигрыватель':'Включить проигрыватель'):(p.enabled?'Погасить свет':'Включить свет'),'Обустройство убежища',p);
+      if (info&&p.id!=='cropbed') add('production', p.x, p.z, RECIPES.find(r => r.id === p.id).name, info.remaining ? `До готовности: ${Math.ceil(info.remaining)} сек.` : info.name, p);
       if (p.id === 'bed') add('bed', p.x, p.z, 'Отдохнуть', 'Восстановить здоровье полностью', p);
       if (p.id === 'chest') add('storage', p.x, p.z, 'Открыть хранилище', 'Склад убежища', p);
     }
@@ -351,6 +363,9 @@ class QuietDistrict {
     const target = this.nearestInteraction();
     if (!target) { this.ui.toast('Подойди ближе к находке или рабочей станции.'); return; }
     this.path = []; this.target = null; this.world.destination.visible = false;
+    if(target.type==='note') {if(!this.state.notes.includes(target.entity.id))this.state.notes.push(target.entity.id);this.ui.noteId=target.entity.id;this.ui.open('note');this.save(false);return;}
+    if(target.type==='garden') {this.ui.gardenIndex=this.state.placed.indexOf(target.entity);this.ui.open('garden');return;}
+    if(target.type==='furniture-toggle') {this.action('toggle-furniture',{index:this.state.placed.indexOf(target.entity)});return;}
     if (target.type === 'station') { this.ui.open('craft'); return; }
     if (target.type === 'helper') { this.ui.open('helper'); return; }
     if (target.type === 'orders') { this.ui.open('orders'); return; }
@@ -375,7 +390,8 @@ class QuietDistrict {
     }
     if (target.type === 'grave') {
       const result = collect(this.state, this.state.grave.loot); this.showLoot(result.received, target.x, target.z);
-      if (!Object.keys(result.remaining).length) { this.state.grave = null; this.ui.toast('Все вещи снова с тобой.', 'success'); } else this.state.grave.loot = result.remaining;
+      const recovered=recoverFinds(this.state,this.state.grave.finds);
+      if (!Object.keys(result.remaining).length&&recovered) { this.state.grave = null; this.ui.toast('Все вещи снова с тобой.', 'success'); } else this.state.grave.loot = result.remaining;
       this.updateGrave(); this.changed(); return;
     }
     if (target.type === 'node') this.harvest(target.entity);
@@ -384,21 +400,23 @@ class QuietDistrict {
     if (!node.group.visible || this.job) return;
     if (node.requires && !this.state.owned.includes(node.requires)) { this.ui.toast(`Нужно изготовить: ${RECIPES.find(r => r.id === node.requires).name}`); return; }
     if (bagWeight(this.state) >= capacity(this.state)) { this.ui.toast('Рюкзак полон. Вернись домой и сложи добычу.'); return; }
-    this.job = { type: 'harvest', node, elapsed: 0, duration: node.type === 'tree' || node.type === 'ore' ? 1.8 : 1.1, x: this.state.x, z: this.state.z, label: node.type === 'herbs' ? 'Собираем травы…' : 'Разбираем находку…' };
+    this.job = { type: 'harvest', node, elapsed: 0, duration: dismantleInfo(this.state.owned,node).duration, x: this.state.x, z: this.state.z, label: node.type === 'herbs' ? 'Собираем травы…' : 'Разбираем находку…' };
     this.audio.hit();
     this.world.playCharacterAction('pickup');
   }
   finishJob() {
     const job = this.job; this.job = null; this.ui.progress(null);
     if (job.type === 'rest') { this.state.health = Math.max(this.state.health, job.max); this.state.stamina = 100; this.ui.toast('Силы вернулись. Дом ждёт новых находок.', 'success'); this.changed(); return; }
-    const node = job.node, result = collect(this.state, node.loot);
+    const node=job.node;
+    if(node.find) {const result=claimFind(this.state,node);if(!result.ok) this.ui.toast(result.reason);else {node.group.visible=false;node.marker.visible=false;if(node.collider)node.collider.disabled=true;this.world.floatingText(`+1 ${FINDS[node.find].name}`,node.x,node.z,'#e6cc98',[node.find]);this.audio.collect();}this.changed();return;}
+    const result=collect(this.state,node.loot);
     this.showLoot(result.received, node.x, node.z);
     node.loot = result.remaining;
     this.state.nodeLoot ||= {};
     if (!Object.keys(result.remaining).length) {
       this.state.depleted[node.id] = this.state.elapsed; delete this.state.nodeLoot[node.id];
       if (node.type === 'drop') this.state.drops = this.state.drops.filter(d => d.id !== node.id);
-      node.group.visible = false; node.marker.visible = false;
+      node.group.visible = false; node.marker.visible = false;if(node.collider)node.collider.disabled=true;
     } else {
       this.state.nodeLoot[node.id] = { ...result.remaining };
       if (node.type === 'drop') { const savedDrop = this.state.drops.find(d => d.id === node.id); if (savedDrop) savedDrop.loot = { ...result.remaining }; }
@@ -566,7 +584,7 @@ class QuietDistrict {
     if (active) {
       this.state.elapsed += dt;
       if (updateHelper(this.state)) this.ui.update(); this.attackCooldown = Math.max(0, this.attackCooldown - dt);
-      moving = this.movement(dt); if(discover(this.state,this.world.nodes)) this.save(false); this.updateEnemies(dt); this.audio.tick(this.state.elapsed);
+      moving = this.movement(dt); if(discover(this.state,this.world.nodes)) this.save(false); this.updateEnemies(dt); this.audio.tick(this.state.elapsed);const music=this.state.placed.filter(p=>p.id==='recordplayer'&&p.enabled).map(p=>Math.hypot(p.x-this.state.x,p.z-this.state.z));this.audio.record(this.state.elapsed,music.length?Math.min(...music):Infinity);
       if (this.target) {
         const target = this.target, range = target.type === 'enemy' ? weapon(this.state).range : 2;
         if (Math.hypot(target.entity.x - this.state.x, target.entity.z - this.state.z) <= range) {

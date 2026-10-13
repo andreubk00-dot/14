@@ -12,6 +12,16 @@ const shell = path('M12 40Q0 8 32 7Q64 8 52 40L40 56H24Z','#c6a4b8')+line(18,18,
 const station = c => rect(8,23,48,33,c,4)+rect(14,10,36,15,dark)+rect(19,15,26,5,steel)+rect(14,32,20,17,dark)+circle(24,40,5,gold)+rect(39,31,11,5,steel)+rect(39,42,11,5,steel)+rect(13,56,7,4,dark)+rect(44,56,7,4,dark);
 const bed = rect(8,31,48,20,wood)+rect(10,23,44,16,'#7daa8a',4)+rect(12,20,13,16,'#eae0c2',3)+path('M29 24H53V45H29Z','#9fbd91')+rect(8,49,5,9,dark)+rect(51,49,5,9,dark);
 const art = {
+  wrench: path('M14 56L7 48L35 20Q28 7 42 6L38 15L44 21L53 16Q55 29 43 29Z',steel)+line(15,47,35,27,gold,2),
+  vegetables:path('M17 22L30 53L45 20Z','#d99a61')+herb(31,28)+line(27,34,35,30,'#ad6b47',2),
+  flowers:line(20,56,28,22,'#89a86d',4)+line(42,56,38,30,'#89a86d',4)+circle(22,18,8,'#d69eae')+circle(34,18,8,'#d69eae')+circle(28,25,8,'#e7b9c4')+circle(28,21,4,gold)+circle(42,29,8,'#c6a0c7')+circle(42,29,3,gold),
+  cropbed:rect(6,38,52,19,wood)+rect(10,35,44,8,'#514a36')+herb(20,44)+path('M34 30L42 52L50 30Z','#d99a61')+circle(44,21,7,'#d69eae')+line(44,29,44,36,'#89a86d',3),
+  stew:path('M9 31H55Q51 58 32 58Q13 58 9 31Z',steel)+path('M14 28H50L47 36H17Z','#caa266')+circle(24,31,4,'#d99a61')+circle(39,31,4,'#98b07a')+line(28,9,23,19,gold,2),
+  bouquet:rect(22,36,20,23,wood,4)+line(31,37,24,17,'#89a86d',3)+line(34,37,43,23,'#89a86d',3)+circle(23,16,9,'#d8a1b3')+circle(43,22,8,'#c6a0c7')+circle(34,11,7,'#e7c7a1'),
+  foundlamp:rect(28,24,6,29,steel)+path('M15 12H47L53 30H9Z','#d1b57c')+rect(18,54,28,5,steel)+path('M22 30H42L39 35H25Z',gold),
+  armchair:rect(13,11,38,31,'#9b7c6a',7)+rect(15,35,34,17,'#c3a084',4)+rect(6,28,11,25,wood,4)+rect(47,28,11,25,wood,4)+rect(12,51,5,9,steel)+rect(47,51,5,9,steel),
+  wallclock:circle(32,31,25,wood)+circle(32,31,21,'#e2d6b3')+[0,1,2,3].map(i=>{const a=i*Math.PI/2;return line(32+Math.sin(a)*16,31+Math.cos(a)*16,32+Math.sin(a)*19,31+Math.cos(a)*19,steel,2)}).join('')+line(32,31,32,15,steel,3)+line(32,31,44,37,steel,3),
+  recordplayer:rect(7,25,50,29,wood,4)+path('M7 25L13 10H53L57 25Z','#b69c6d')+circle(28,32,15,dark)+circle(28,32,5,gold)+line(47,22,42,40,steel,3)+rect(10,50,44,7,steel),
   tooling: rect(7,36,50,9,wood)+rect(13,45,5,13,steel)+rect(46,45,5,13,steel)+rect(25,22,22,14,steel)+line(36,11,36,24,gold,4)+circle(19,29,6,gold),
   receiver: rect(10,21,44,35,wood)+rect(15,27,34,7,steel)+rect(15,40,34,7,gold)+path('M25 6H39V16H48L32 29L16 16H25Z','#9eb9ba'),
   pipe: path('M13 51L39 12L47 17L22 57Z',steel)+path('M16 48L21 51L42 18L39 16Z','#dce8e3')+rect(9,47,14,9,dark),

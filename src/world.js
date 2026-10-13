@@ -1,3 +1,4 @@
+import { FINDS, MEMORIES, SCENES, machineKind, cropInfo } from './homelife.js';
 import { LOCATIONS, ROADS, WORLD_LIMIT, cycleLoot } from './district.js';
 export { LOCATIONS } from './district.js';
 import { circleHitsRect, footprint, solidFootprint, placementAllowed, repairFurniture } from './layout.js';
@@ -16,7 +17,7 @@ import { Reflector } from 'three/addons/objects/Reflector.js';
 
 const rand = seed => { let n = seed; return () => { n = (n * 1664525 + 1013904223) >>> 0; return n / 4294967296; }; };
 const rng = rand(1472);
-const overlapsPlayer=(item,state)=>item.id!=='rug' && circleHitsRect(state.x,state.z,.4,footprint(item));
+const overlapsPlayer=(item,state)=>item.id!=='rug'&&item.id!=='wallclock' && circleHitsRect(state.x,state.z,.4,footprint(item));
 const Y = new THREE.Vector3(0, 1, 0);
 const color = { ground: '#384339', road: '#3a4546', wall: '#77796c', rust: '#785b47', wood: '#766a50', leaf: '#546e4e', dark: '#283b39', cream: '#b3aa89', orange: '#f4bb77' };
 const materials = new Map();
@@ -59,7 +60,7 @@ export class World {
         gl_FragColor=vec4(c,1.);}`,
     });
     this.composer.addPass(this.grade);
-    this.buildings = []; this.colliders = []; this.nodes = []; this.enemies = []; this.floating = []; this.lights = [];
+    this.memories=MEMORIES;this.buildings = []; this.colliders = []; this.nodes = []; this.enemies = []; this.floating = []; this.lights = [];
     this.pickables = []; this.fogs = []; this.mixers = []; this.placedGroups = [];
     this.raycaster = new THREE.Raycaster(); this.mouse = new THREE.Vector2();
     this.plane = new THREE.Plane(Y, 0); this.time = 0;
@@ -72,7 +73,7 @@ export class World {
     this.scene.updateMatrixWorld(true);
     const batches = new Map();
     const excluded = new Set([this.genIndicator, this.towerIndicator, this.water, this.destination, this.selectionRing,
-      this.homeLamp.glow, this.homeLamp.spill, ...this.lights.flatMap(l => [l.glow, l.spill])]);
+      this.homeLamp.glow, this.homeLamp.spill, ...this.lights.flatMap(l => [l.glow, l.spill].filter(Boolean))]);
     this.scene.traverse(mesh => {
       if (mesh.userData.cutaway || !mesh.isMesh || excluded.has(mesh) || this.pickables.includes(mesh) || mesh.material.isShaderMaterial || mesh.material.transparent) return;
       let parent = mesh;
@@ -169,7 +170,7 @@ export class World {
     this.reflection.material.fragmentShader = this.reflection.material.fragmentShader.replace('varying vec4 vUv;', 'varying vec4 vUv; varying vec2 vLocal; uniform float time;').replace('vec4 base = texture2DProj( tDiffuse, vUv );', 'vec4 uv = vUv; uv.x += sin(vLocal.y * 14.0 + time * 0.6) * 0.0015 * uv.w; vec4 base = texture2DProj(tDiffuse, uv);').replace('gl_FragColor = vec4( blendOverlay( base.rgb, color ), 1.0 );', 'vec3 water = mix(vec3(0.08, 0.13, 0.12), base.rgb, 0.55); float edge = 1.0 - smoothstep(0.65, 1.0, length(vLocal)); gl_FragColor = vec4(water, edge * 0.8);');
     this.reflection.material.transparent = true; this.reflection.material.depthWrite = false;
     this.scene.add(this.reflection);
-    this.buildHome(); this.buildMarket(); this.buildDepot(); this.furnishExpeditions(); this.buildOutskirts(); this.buildPond(); this.buildTower();
+    this.buildHome(); this.buildMarket(); this.buildDepot(); this.furnishExpeditions(); this.buildOutskirts(); this.buildScenes(); this.buildPond(); this.buildTower();
     // Treelines frame the district, leaving the traversable paths readable.
     for (let i = 0; i < 180; i++) {
       const x = rng() * 126 - 63, z = rng() * 126 - 63;
@@ -399,6 +400,7 @@ export class World {
   buildMarket() {
     this.building(13, 4, 10, 8, 5, '#8b8974', 'ПРОДУКТЫ');
     this.building(15, 19, 11, 8, 6.3, '#747e72', 'ЖИЛОЙ ДОМ');
+    this.box(11, -.01, 24.2, 1.8, .07, 1.7, '#8c866c');
     this.building(29, 6, 9, 11, 7.2, '#78837a', 'АТЕЛЬЕ');
     this.box(14, 0.45, 7, 3, 0.7, 0.7, '#6e7465');
     for (let i = 0; i < 3; i++) this.box(14 + i * 0.9 - 0.9, 1.6, 0.8, 0.75, 2.3, 0.35, '#666e62');
@@ -411,6 +413,19 @@ export class World {
     for (let i = 0; i < 12; i++) this.box(8.5 + (i % 4) * 0.5, 0.5 + Math.floor(i / 4) * 0.23, 8.18, 0.46, 0.19, 0.035, i % 2 ? '#a08d70' : '#8d846d');
     for (const x of [8.4, 17.6]) { this.box(x, 0.3, 8.8, 0.7, 0.6, 0.7, '#8d7c5e'); this.bush(x, 8.8, 0.5).position.y = 0.8; }
     this.label('СТАРЫЙ КВАРТАЛ', 6.5, 2.1, 8.2, 3.2, '#cbbd9e'); this.box(6.5, 1.0, 8.1, 0.08, 2, 0.08, '#6f7564');
+  }
+  buildScenes() {
+    // A bus shelter faces the street; the narrow roof covers the bench only.
+    for(const x of [7,11]) {this.box(x,1.3,37,.12,2.6,.12,'#6e7c70');this.collider(x,37,.12,.12);}
+    this.box(9,2.65,37,4.5,.13,1.1,'#788477');this.box(8.5,.6,36.7,2.6,.16,.55,'#9b8965');this.collider(8.5,36.7,2.6,.55);
+    for(const x of [7.6,9.4])this.box(x,.28,36.7,.12,.56,.45,'#607160');
+    this.label('ОСТАНОВКА · 12',9,2.3,37.15,3);
+    this.box(-27,.025,32.5,2.2,.045,1.5,'#aa8f78');
+    for(const x of [-30.8,-29.2])this.box(x,.35,32,.15,.7,.8,'#66745e');this.box(-30,.78,32,2.2,.15,1.2,'#9c8963');this.collider(-30,32,2.2,1.2);
+    for(const x of [-27.4,-26.8])this.cylinder(x,.14,32.2,.08,.14,'#c6bea3');
+    this.box(52,.5,22,2,1,1,'#817b62');this.collider(52,22,2,1);
+    this.cylinder(54.5,.55,23.5,.4,1.1,'#6e8274');this.collider(54.5,23.5,.8,.8);
+    for(const n of MEMORIES) {const h=n.id==='bus'?.7:n.id==='yard'?1.01:.065;this.box(n.x,h,n.z,.3,.012,.23,'#e0d6b8');}
   }
   buildOutskirts() {
     this.building(-49,32,10,9,4.6,'#92978a','КЛИНИКА');
@@ -557,7 +572,7 @@ export class World {
       ['electronics', 'Старый электрощит', 11.5, 1, { wire: 3, parts: 1 }],
       ['cloth', 'Забытая сумка', 16, 6, { cloth: 4, herbs: 1 }],
       ['scrap', 'Сломанная техника', 15, 2.5, { metal: 4, wire: 2 }],
-      ['crate', 'Ящик на крыльце', 11, 15, { wood: 4, cloth: 2 }],
+      ['crate', 'Ящик на крыльце', 11, 24.2, { wood: 4, cloth: 2 }],
       ['electronics', 'Радиоприёмник', 17.5, 17, { parts: 2, wire: 2 }],
       ['cloth', 'Шкаф с одеждой', 13, 20, { cloth: 5 }],
       ['scrap', 'Разобранный мотор', 23, 4, { metal: 4, parts: 2 }],
@@ -594,16 +609,27 @@ export class World {
       ['herbs','Уцелевшие посадки оранжереи',-42,-43,{herbs:6,seeds:2}],
       ['crate','Закрытый семенной фонд',-44,-46.3,{seeds:6,cloth:2},'cutter'],
       ['crate','Ящик садовника',-40,-41.5,{water:3,seeds:2,wood:3}],
+      ['find','Светильник из клиники',-46,33,{},null,'foundlamp'],
+      ['find','Оставленное кресло',-29,35,{},null,'armchair'],
+      ['find','Часы у остановки',10,35.7,{},null,'wallclock'],
+      ['find','Проигрыватель в квартире',16,21,{},null,'recordplayer'],
+      ['scrap','Стиральная машина',14,18,{metal:5,wire:2},null,null,'appliance'],
+      ['scrap','Снятый двигатель',52,20,{metal:6,parts:3},null,null,'motor'],
     ];
-    definitions.forEach(([type, name, x, z, loot, requires], i) => {
-      const group = new THREE.Group(); group.position.set(x, 0.16, z); this.scene.add(group);
-      if (type === 'crate') { this.crate(0, 0, 1, group); }
+    definitions.forEach(([type, name, x, z, loot, requires, find, machine], i) => {
+      const group = new THREE.Group(); group.position.set(x,this.furnitureElevation(x,z),z); this.scene.add(group);
+      const kind=machineKind({type,name,machine});
+      if(find) {const model=this.makeFurniture(find);model.scale.setScalar(.6);group.add(model);if(find==='wallclock')this.crate(0,0,1,group);}
+      else if(kind==='motor') {this.box(0,.55,0,1.15,.8,.8,'#667970',group);for(const xx of [-.4,0,.4])this.cylinder(xx,1.05,0,.13,.4,'#83958a',group,8);this.box(0,.075,0,1.35,.15,.95,'#857c62',group);}
+      else if(kind==='radio') {this.box(0,.3,0,.9,.5,.4,'#83917d',group);this.cylinder(.3,.85,0,.015,.8,'#b2bca0',group,6);this.box(-.15,.35,.22,.4,.3,.025,'#4c6253',group);for(const x of [-.3,.3])for(const z of [-.15,.15])this.box(x,.025,z,.08,.05,.06,'#647564',group);}
+      else if(kind==='appliance') {this.box(0,.65,0,1,1.25,.8,'#8d9a8e',group);const drum=this.cylinder(0,.6,.43,.29,.055,'#435c57',group,12);drum.rotation.x=Math.PI/2;this.box(0,1.15,.43,.8,.1,.05,'#b4b49a',group);for(const x of [-.38,.38])for(const z of [-.28,.28])this.box(x,.0125,z,.1,.025,.08,'#69796c',group);}
+      else if (type === 'crate') { this.crate(0, 0, 1, group); }
       else if (type === 'wood' || type === 'tree') {
         for (let j = 0; j < (type === 'tree' ? 4 : 3); j++) this.box(0, 0.13 + j * 0.17, j % 2 * 0.15, type === 'tree' ? 2.3 : 1.5, 0.15, 0.4, j % 2 ? '#9a8b61' : '#7c7655', group).rotation.y = j * 0.1;
       } else if (type === 'herbs') {
         for (let j = 0; j < 5; j++) { this.bush((j % 3 - 1) * 0.3, Math.floor(j / 3) * 0.3, 0.35, group); this.cylinder((j % 3 - 1) * 0.3, 0.5, Math.floor(j / 3) * 0.3, 0.04, 0.07, '#cbb898', group, 6); }
       } else if (type === 'electronics') {
-        this.box(0, 0.6, 0, 0.9, 1.1, 0.6, '#64746a', group); this.box(0, 0.7, 0.32, 0.6, 0.45, 0.04, '#a5a081', group);
+        this.box(0,.55,0,.9,1.1,.6,'#64746a',group); this.box(0, 0.7, 0.32, 0.6, 0.45, 0.04, '#a5a081', group);
         for (let j = 0; j < 3; j++) this.box(-0.2 + j * 0.2, 0.7, 0.35, 0.05, 0.28, 0.02, '#837550', group);
       } else if (type === 'cloth') {
         this.box(0, 0.28, 0, 1, 0.45, 0.65, '#99957f', group); this.box(0, 0.4, 0, 0.12, 0.4, 0.67, '#5e695a', group);
@@ -611,7 +637,8 @@ export class World {
         for (let j = 0; j < 4; j++) this.box((rng() - 0.5) * 0.7, 0.2 + j * 0.12, (rng() - 0.5) * 0.6, 0.6 + rng() * 0.3, 0.25, 0.5, j % 2 ? '#7f897a' : '#626f67', group).rotation.y = rng() * 3;
       }
       const marker = this.marker(x, 1.5, z, type === 'herbs' ? '#a9c181' : '#e7c993');
-      const node = { id: `node-${i}`, type, name, x, z, loot: { ...(this.state.nodeLoot[`node-${i}`] || cycleLoot(`node-${i}`,loot,this.state.depleted[`node-${i}`]===undefined?0:Math.floor(this.state.elapsed/(type==='herbs'?120:240)))) }, originalLoot: { ...loot }, requires, group, marker, respawnTime: type === 'herbs' ? 120 : 240 };
+      const node = { id: `node-${i}`, type, name, x, z, loot: { ...(this.state.nodeLoot[`node-${i}`] || cycleLoot(`node-${i}`,loot,this.state.depleted[`node-${i}`]===undefined?0:Math.floor(this.state.elapsed/(type==='herbs'?120:240)))) }, originalLoot: { ...loot }, requires, find, machine:kind, group, marker, respawnTime: type === 'herbs' ? 120 : 240 };
+      if(kind||find||type==='crate') {const f=find?footprint({id:find,x:0,z:0}):null;const size=find?(find==='wallclock'?[1.05,1.13]:[f.w*.6,f.d*.6]):type==='crate'?[1.05,1.13]:kind==='motor'?[1.35,.95]:kind==='appliance'?[1,.8]:kind==='radio'?[.9,.4]:[.9,.6];node.collider=this.collider(x,z,...size);}
       group.traverse(mesh => { mesh.userData.node = node; if (mesh.isMesh) this.pickables.push(mesh); });
       if(this.state.depleted[node.id]!==undefined && this.state.elapsed-this.state.depleted[node.id]>=node.respawnTime && !this.state.nodeLoot[node.id]) this.state.nodeLoot[node.id]={...node.loot};
       this.nodes.push(node);
@@ -768,20 +795,22 @@ export class World {
   syncNodes() {
     for (const node of this.nodes) {
       const time = this.state.depleted[node.id];
-      const visible = time === undefined || this.state.elapsed - time >= node.respawnTime;
-      if (visible && !node.group.visible) { node.loot = cycleLoot(node.id,node.originalLoot,Math.floor(this.state.elapsed/node.respawnTime)); this.state.nodeLoot[node.id]={...node.loot}; }
-      node.group.visible = visible; node.marker.visible = visible;
+      let visible=node.find?!this.state.findClaims.includes(node.id):time===undefined||this.state.elapsed-time>=node.respawnTime;
+      // A restored container must wait until the player leaves its footprint.
+      if(visible&&!node.find&&time!==undefined&&node.collider&&circleHitsRect(this.state.x,this.state.z,.3,node.collider)) visible=false;
+      if (visible && !node.group.visible && !node.find) { node.loot = {...(this.state.nodeLoot[node.id]||cycleLoot(node.id,node.originalLoot,Math.floor(this.state.elapsed/node.respawnTime)))}; this.state.nodeLoot[node.id]={...node.loot}; }
+      node.group.visible=visible;node.marker.visible=visible;if(node.collider)node.collider.disabled=!visible;
     }
   }
-  onRoad(x,z,margin=0) {return ROADS.some(r=>Math.abs(x-r.x)<r.w/2+margin&&Math.abs(z-r.z)<r.d/2+margin);}
+  onRoad(x,z,margin=0) {return [...ROADS,...SCENES].some(r=>Math.abs(x-r.x)<r.w/2+margin&&Math.abs(z-r.z)<r.d/2+margin);}
   blocked(x, z, radius = 0.3) {
     if (x < -WORLD_LIMIT || x > WORLD_LIMIT || z < -WORLD_LIMIT || z > WORLD_LIMIT) return true;
     // Pond shoreline; dock remains navigable.
     if (Math.pow((x - 23) / 9, 2) + Math.pow((z + 24) / 7.4, 2) < 1 && !(x < 21.5 && z > -18.1)) return true;
-    return this.colliders.some(c => !c.disabled && circleHitsRect(x,z,radius,c)) || this.state.placed.some(p=>p.id!=='rug' && circleHitsRect(x,z,radius,solidFootprint(p)));
+    return this.colliders.some(c => !c.disabled && circleHitsRect(x,z,radius,c)) || this.state.placed.some(p=>p.id!=='rug'&&p.id!=='wallclock' && circleHitsRect(x,z,radius,solidFootprint(p)));
   }
   repairFurniture() { return repairFurniture(this.colliders,this.state.placed); }
-  furnitureElevation(x,z) { return isInsideBuilding({x:-18,z:15,w:12,d:9},x,z)? .205 : .025; }
+  furnitureElevation(x,z) { return this.buildings.some(b=>isInsideBuilding(b,x,z))?.205:.025; }
   canPlace(item,ignore=-1) {
     return placementAllowed(item,this.colliders,this.state.placed,ignore) && !overlapsPlayer(item,this.state);
   }
@@ -845,12 +874,34 @@ export class World {
   makeFurniture(id, ghost = false) {
     const group = new THREE.Group();
     if (id === 'lamp') {
-      this.lamp(0, 0, 3, !ghost, group);
-    } else if (['garden', 'seedbed'].includes(id)) {
+      group.userData.fixture={...this.lamp(0,0,3,!ghost,group),base:15};
+    } else if(id==='foundlamp') {
+      this.cylinder(0,.05,0,.28,.1,'#7d856b',group);this.cylinder(0,.7,0,.045,1.3,'#69796c',group);
+      this.cylinder(0,1.35,0,.32,.32,'#c6ae7b',group,8);
+      const glow=this.cylinder(0,1.2,0,.17,.04,'#ffe0a0',group);glow.material=new THREE.MeshStandardMaterial({color:'#ffe0a0',emissive:'#ffc17c',emissiveIntensity:ghost?0:2});
+      const light=new THREE.PointLight('#ffd39a',ghost?0:7,8,1.5);light.position.set(0,1.15,0);group.add(light);this.lights.push({light,glow,base:ghost?0:7});
+      group.userData.fixture={light,glow,base:7};
+    } else if(id==='armchair') {
+      this.box(0,.55,0,1.05,.4,.9,'#9d806b',group);this.box(0,1.05,-.43,1.15,.95,.2,'#8d7566',group);
+      for(const x of [-.6,.6]) {this.box(x,.85,0,.2,.45,1.1,'#b29373',group);for(const z of [-.4,.4])this.box(x,.2,z,.13,.4,.13,'#586458',group);}
+      this.box(0,.8,0,.95,.1,.8,'#c0a185',group);
+    } else if(id==='wallclock') {
+      const frame=this.cylinder(0,1.8,0,.4,.07,'#9a7d59',group,24);frame.rotation.x=Math.PI/2;
+      const face=this.cylinder(0,1.8,.045,.34,.03,'#ddd5b3',group,24);face.rotation.x=Math.PI/2;
+      for(let i=0;i<12;i++) {const angle=i*Math.PI/6;const tick=this.box(Math.sin(angle)*.27,1.8+Math.cos(angle)*.27,.07,.025,.06,.025,'#465e53',group);tick.rotation.z=-angle;}
+      for(const [tag,length,width] of [['clockMinute',.26,.022],['clockHour',.18,.035]]) {const hand=new THREE.Group();hand.position.set(0,1.8,.09);hand.userData[tag]=true;group.add(hand);this.box(0,length/2,0,width,length,.025,'#43574f',hand);}
+    } else if(id==='recordplayer') {
+      this.box(0,.75,0,1.15,.12,.7,'#9a8059',group);for(const x of [-.48,.48])for(const z of [-.23,.23])this.box(x,.35,z,.09,.7,.09,'#61715d',group);
+      this.box(0,.9,0,.9,.18,.55,'#bda275',group);this.cylinder(-.15,1.01,0,.21,.025,'#334b42',group,20);this.cylinder(-.15,1.028,0,.055,.012,'#b58b6b',group,12);
+      this.box(.24,1.035,.03,.025,.03,.33,'#b0baa6',group).rotation.y=-.4;
+    } else if(id==='bouquet') {
+      this.cylinder(0,.3,0,.16,.6,'#a58a67',group,8);for(const x of [-.15,0,.15]) {this.cylinder(x,.65,0,.02,.55,'#698b5d',group,6);this.cylinder(x,.96,0,.1,.08,'#d6a6b8',group,6);}
+    } else if (['garden', 'seedbed','cropbed'].includes(id)) {
       this.box(0, 0.2, 0, 2, 0.4, 1.6, '#8c7a55', group); this.box(0, 0.42, 0, 1.8, 0.06, 1.4, '#4a4b34', group);
       for (let i = 0; i < 6; i++) {
         const plant = this.bush((i % 3 - 1) * 0.5, (Math.floor(i / 3) - 0.5) * 0.6, 0.27, group);
-        plant.position.y = 0.56; plant.userData.gardenPlant = true;
+        plant.position.y=.56;plant.userData.gardenPlant=true;
+        if(id==='cropbed') {plant.userData.cropLeaf=true;plant.visible=false;const fruit=this.cylinder(plant.position.x,.65,plant.position.z,.08,.16,'#d69eb6',group,6);fruit.material=fruit.material.clone();fruit.userData.cropFruit=true;fruit.visible=false;}
       }
     } else if (id === 'chest') this.crate(0, 0, 1.25, group);
     else if (id === 'bed') {
@@ -874,6 +925,13 @@ export class World {
     if (ghost) group.traverse(mesh => { if (mesh.isMesh) { mesh.material = mesh.material.clone(); mesh.material.transparent = true; mesh.material.opacity = 0.5; mesh.castShadow = false; } });
     return group;
   }
+  syncFurniture() {
+    for(const {item,group} of this.placedGroups) {
+      const f=group.userData.fixture;if(!f)continue;
+      const on=item.enabled!==false&&(item.id!=='lamp'||this.state.owned.includes('generator'));
+      f.light.intensity=on?f.base:0;f.glow.material.emissiveIntensity=on?2:0;if(f.spill)f.spill.material.opacity=on?.15:0;
+    }
+  }
   createGhost(id) { this.removeGhost(); this.ghost = this.makeFurniture(id, true); this.scene.add(this.ghost); return this.ghost; }
   removeGhost() {
     if (this.ghost) {
@@ -896,7 +954,7 @@ export class World {
     this.scene.add(line); this.effects ||= []; this.effects.push({ mesh: line, life: 0.15, max: 0.15 }); this.impact(tx, 1.1, tz);
   }
   update(dt, moving, focus = true) {
-    this.time += dt; this.updateRoofs(dt);
+    this.time += dt; this.updateRoofs(dt);this.syncFurniture();
     const player = this.player;
     if (focus) {
       const desired = new THREE.Vector3(this.state.x + 1, 0, this.state.z - 1);
@@ -938,6 +996,10 @@ export class World {
     for (const { item, group } of this.placedGroups) if (['garden', 'seedbed'].includes(item.id)) {
       const growth = 0.4 + Math.min(1, Math.max(0, (this.state.elapsed - item.harvested) / productionInfo(this.state, item).interval)) * 0.6;
       group.traverse(mesh => { if (mesh.userData.gardenPlant) mesh.scale.set(1.4 * growth, 0.8 * growth, 1.1 * growth); });
+    }
+    for(const {item,group} of this.placedGroups) {
+      if(item.id==='cropbed') {const info=cropInfo(this.state,item);group.traverse(mesh=>{if(mesh.userData.cropLeaf) {mesh.visible=!!info;const growth=.2+(info?.progress||0)*.8;mesh.scale.set(1.4*growth,.8*growth,1.1*growth);mesh.position.y=.44+.216*growth;}if(mesh.userData.cropFruit) {mesh.visible=!!info&&info.progress>.8&&item.crop!=='herbs';if(info) {mesh.material.color.set(info.color);mesh.position.y=.48+info.progress*.47;}}});}
+      if(item.id==='wallclock') {const minutes=17*60+42+this.state.elapsed/2;group.traverse(hand=>{if(hand.userData.clockMinute)hand.rotation.z=-minutes%60/60*Math.PI*2;if(hand.userData.clockHour)hand.rotation.z=-(minutes/60)%12/12*Math.PI*2;});}
     }
     this.fishingMarker.material.opacity = 0.45 + Math.sin(this.time * 1.5) * 0.15;
     for (const node of this.nodes) { node.marker.visible=node.group.visible&&Math.hypot(node.x-this.state.x,node.z-this.state.z)<9; if(node.marker.visible) node.marker.position.y = 1.45 + Math.sin(this.time * 1.8 + node.x) * 0.12; }
