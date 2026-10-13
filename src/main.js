@@ -24,6 +24,7 @@ class QuietDistrict {
     try {
       this.world = new World(document.getElementById('world'), this.state);
       this.world.setQuality(this.state.settings.quality);
+      this.repairedFurniture = this.world.repairFurniture();
       for (const item of this.state.placed) this.world.addPlaced(item);
       if (this.world.blocked(this.state.x, this.state.z)) {
         const candidates = [];
@@ -128,6 +129,7 @@ class QuietDistrict {
   start() {
     if (!this.ready || this.started) return;
     this.started = true; this.audio.start(this.state.settings.sound); this.ui.start();
+    if(this.repairedFurniture) { this.ui.toast('Мебель, пересекавшая стены или проходы, переставлена на ближайшие свободные места.'); this.repairedFurniture=0; this.save(); }
     this.ui.region(this.world.location(), true); this.currentRegion = this.world.location().id;
     this.save(false);
   }
@@ -288,26 +290,20 @@ class QuietDistrict {
     if (!this.build) return;
     const hit = this.world.pointer(this.pointerPosition.x, this.pointerPosition.y), b = this.build;
     b.x = Math.round(hit.point.x); b.z = Math.round(hit.point.z);
-    b.valid = b.x >= -25 && b.x <= -7 && b.z >= 7 && b.z <= 25
-      && !this.world.blocked(b.x, b.z, 0.85)
-      && this.state.placed.every((p, i) => i === b.movingIndex || Math.hypot(p.x - b.x, p.z - b.z) >= 1.8)
-      && Math.hypot(b.x + 21, b.z - 13) > 2
-      && Math.hypot(b.x + 11, b.z - 11.4) > 1.8
-      && Math.hypot(b.x + 13.5, b.z - 17) > 1.8
-      && Math.hypot(b.x + 22, b.z - 17.7) > 1.8
+    b.valid = this.world.canPlace({id:b.recipe.id,x:b.x,z:b.z,rotation:b.rotation},b.movingIndex)
       && (b.movingIndex !== undefined || craftStatus(this.state, b.recipe).ok);
     const ghost = this.world.ghost;
-    ghost.position.set(b.x, 0.25, b.z); ghost.rotation.y = b.rotation;
+    ghost.position.set(b.x, this.world.furnitureElevation(b.x,b.z), b.z); ghost.rotation.y = b.rotation;
     ghost.traverse(mesh => { if (mesh.isMesh) mesh.material.color.set(b.valid ? '#b6cd9a' : '#b57359'); });
     this.ui.buildHint(b.recipe, b.valid, b.rotation);
   }
   confirmBuild() {
-    if (!this.build?.valid) { this.ui.toast('Здесь недостаточно места. Выбери свободный участок дома.'); return; }
+    if (!this.build?.valid || !this.world.canPlace({id:this.build.recipe.id,x:this.build.x,z:this.build.z,rotation:this.build.rotation},this.build.movingIndex)) { this.ui.toast('Здесь недостаточно места. Выбери свободный участок дома.'); return; }
     const b = this.build;
     if (b.movingIndex !== undefined) {
       const item = this.state.placed[b.movingIndex], group = this.world.placedGroups[b.movingIndex].group;
       item.x = b.x; item.z = b.z; item.rotation = b.rotation;
-      group.position.set(b.x, 0.24, b.z); group.rotation.y = b.rotation;
+      group.position.set(b.x, this.world.furnitureElevation(b.x,b.z), b.z); group.rotation.y = b.rotation;
       this.cancelBuild(); this.audio.craft(); this.changed(); return;
     }
     if (place(this.state, b.recipe.id, b.x, b.z, b.rotation)) {

@@ -191,7 +191,7 @@ test('HUD preserves controls; recipe search and filters explain available crafti
 test('Neighbour orders, water restoration and production are playable', async ({ page }) => {
   // This scenario includes three separate UI workflows under software WebGL.
   test.setTimeout(150000);
-  await start(page, { owned: ['generator', 'bridge', 'radio'], stash: { wood: 60, metal: 80, cloth: 20, parts: 40, wire: 30 }, elapsed: 130,
+  await start(page, { x: -19, z: 15, owned: ['generator', 'bridge', 'radio'], stash: { wood: 60, metal: 80, cloth: 20, parts: 40, wire: 30 }, elapsed: 130,
     placed: [{ id: 'recycler', x: -18, z: 14, rotation: 0, harvested: 0 }] });
   await page.keyboard.press('KeyK');
   await expect(page.locator('#panel')).toContainText('Заказы соседей');
@@ -385,4 +385,53 @@ test('Mobile cell inventory supports item selection and equipment with usable to
   expect(layout.width).toBeLessThanOrEqual(layout.viewport);expect(layout.cell).toBeGreaterThanOrEqual(44);expect(layout.slot).toBeGreaterThanOrEqual(44);
   await page.screenshot({path:'/workspace/artifacts/screenshots/v05-mobile-inventory.png'});
   expect(errors).toEqual([]);await context.close();
+});
+
+test('District audit: entrances, solid walls, repaired bridge, loot access and safe furnishing', async ({page})=>{
+  test.setTimeout(180000);
+  await start(page,{x:-18,z:18,owned:['bridge','solar','generator'],placed:[]});
+  const audit=await page.evaluate(()=>{
+    const g=window.__quietDistrict,w=g.world;
+    g.visibilityPaused=true;
+    const entrances=w.buildings.map(b=>({
+      entry:!w.blocked(b.x,b.z+b.d/2),
+      wall:w.blocked(b.x-b.w/2,b.z),
+      route:w.pathTo(b.x,b.z).length>0,
+    }));
+    const before=w.blocked(-17,-11),bank=w.blocked(-23,-11);
+    g.state.owned=g.state.owned.filter(id=>id!=='bridge');w.applyProgress();
+    const closed=w.blocked(-17,-11);g.state.owned.push('bridge');w.applyProgress();
+    // Flood walkable half-metre centres to verify at least one reachable collection approach.
+    const step=.5, key=(x,z)=>`${x},${z}`, queue=[[-18,18]],seen=new Set([key(-18,18)]);
+    for(let i=0;i<queue.length;i++) {
+      const [x,z]=queue[i];
+      for(const [dx,dz] of [[step,0],[-step,0],[0,step],[0,-step]]) {
+        const nx=x+dx,nz=z+dz,k=key(nx,nz);
+        if(!seen.has(k)&&!w.blocked(nx,nz)) {seen.add(k);queue.push([nx,nz]);}
+      }
+    }
+    const inaccessible=w.nodes.filter(n=>!queue.some(([x,z])=>Math.hypot(x-n.x,z-n.z)<2.1)).map(n=>n.name);
+    const furniture={id:'bed',x:-16,z:12,rotation:Math.PI/2};
+    const free=w.canPlace(furniture),door=w.canPlace({...furniture,x:-18,z:19.5});
+    g.state.placed.push(furniture);w.addPlaced(furniture);
+    const solid=w.blocked(-16,12),overlap=w.canPlace({...furniture,id:'sofa',x:-15,z:12});
+    const solar=w.solarRoof.rotation.x, lamp=w.homeLamp.group.position.toArray();
+    const old={id:'bed',x:-22,z:20,rotation:0,harvested:321};g.state.placed.push(old);
+    const repaired=w.repairFurniture(),savedProduction=old.harvested,legal=w.canPlace(old,g.state.placed.length-1);
+    const lightCount=w.lights.length;w.createGhost('lamp');w.removeGhost();
+    const noLeakedLight=w.lights.length===lightCount;
+    g.world.move(-18,23);w.updateRoofs(1);
+    const outsideDepth=w.buildings[0].roofMeshes.every(m=>m.material.depthWrite);
+    g.world.move(-18,15);w.updateRoofs(1);
+    const insideDepth=w.buildings[0].roofMeshes.every(m=>!m.material.depthWrite);
+    return {repaired,savedProduction,legal,noLeakedLight,outsideDepth,insideDepth,entrances,before,bank,closed,inaccessible,free,door,solid,overlap,solar,lamp,nodeCount:w.nodes.length,roofCounts:w.buildings.map(b=>b.roofMeshes.length)};
+  });
+  expect(audit.entrances.every(e=>e.entry&&e.wall&&e.route)).toBe(true);
+  expect(audit.before).toBe(false);expect(audit.bank).toBe(true);expect(audit.closed).toBe(true);
+  expect(audit.inaccessible).toEqual([]);
+  expect(audit.free).toBe(true);expect(audit.door).toBe(false);expect(audit.solid).toBe(true);expect(audit.overlap).toBe(false);
+  expect(audit.solar).toBeCloseTo(-.22);expect(audit.lamp).toEqual([-18,0,10.85]);
+  expect(audit.repaired).toBe(1);expect(audit.savedProduction).toBe(321);expect(audit.legal).toBe(true);
+  expect(audit.noLeakedLight).toBe(true);expect(audit.outsideDepth).toBe(true);expect(audit.insideDepth).toBe(true);
+  expect(audit.nodeCount).toBe(36);expect(audit.roofCounts).toEqual([2,2,2,2,2]);
 });

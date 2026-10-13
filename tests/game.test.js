@@ -260,3 +260,45 @@ test('Every item and crafting recipe has painted, coloured artwork', () => {
   }
   assert.notEqual(itemArt('vest'),itemArt('armor')); assert.notEqual(itemArt('bag'),itemArt('bag2'));
 });
+
+import { overlaps, circleHitsRect, footprint, placementAllowed } from '../src/layout.js';
+test('Rotated collision footprints follow visible cars and leave their empty corners walkable',()=>{
+  const car={x:0,z:0,w:2,d:4,rotation:Math.PI/2};
+  assert.equal(circleHitsRect(1.8,0,.1,car),true);
+  assert.equal(circleHitsRect(0,1.8,.1,car),false);
+  assert.equal(circleHitsRect(2.1,1.1,.1,car),false);
+  assert.equal(overlaps(car,{x:1.8,z:0,w:.2,d:.2}),true);
+  assert.equal(overlaps(car,{x:0,z:1.8,w:.2,d:.2}),false);
+});
+test('Furnishing checks rotated extents, entire boundary, walls, nearby furniture and door clearance',()=>{
+  const bed={id:'bed',x:-16,z:12,rotation:Math.PI/2};
+  assert.equal(placementAllowed(bed,[],[]),true);
+  assert.equal(placementAllowed({...bed,x:-24.5},[],[]),false);
+  assert.equal(placementAllowed(bed,[{x:-17,z:12,w:.25,d:3}],[]),false);
+  assert.equal(placementAllowed(bed,[],[{id:'sofa',x:-14.5,z:12,rotation:0}]),false);
+  assert.equal(placementAllowed(bed,[],[bed],0),true);
+  assert.equal(placementAllowed({...bed,x:-18,z:19.5},[],[]),false);
+  assert.equal(placementAllowed({...bed,x:-8.7,z:20},[],[]),false);
+  assert.equal(placementAllowed(bed,[],[{...bed,id:'rug'}]),true);
+  assert.equal(footprint(bed).d,2.3);
+});
+
+import { repairFurniture } from '../src/layout.js';
+test('Old furnishings overlapping new walls are moved nearby without loss or resetting production',()=>{
+  const objects=[{id:'bed',x:-22,z:20,rotation:0,harvested:12},{id:'garden',x:-12,z:23,rotation:0,harvested:77}];
+  const walls=[{x:-22,z:19.5,w:4.8,d:.25}];
+  const before=structuredClone(objects[1]);
+  assert.equal(repairFurniture(walls,objects),1);
+  assert.equal(objects.length,2);assert.equal(objects[0].harvested,12);
+  assert.deepEqual(objects[1],before);
+  objects.forEach((o,i)=>assert.equal(placementAllowed(o,walls,objects,i),true));
+  assert.equal(repairFurniture(walls,objects),0);
+});
+
+import { solidFootprint } from '../src/layout.js';
+test('Lamp placement reserves the fixture while walking only collides with its pole',()=>{
+  const lamp={id:'lamp',x:0,z:0,rotation:0};
+  assert.equal(circleHitsRect(.5,0,.2,footprint(lamp)),true);
+  assert.equal(circleHitsRect(.5,0,.2,solidFootprint(lamp)),false);
+  assert.equal(circleHitsRect(0,0,.2,solidFootprint(lamp)),true);
+});

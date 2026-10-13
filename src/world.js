@@ -1,3 +1,4 @@
+import { circleHitsRect, footprint, solidFootprint, placementAllowed, repairFurniture } from './layout.js';
 import { isInsideBuilding, fadeOpacity } from './roofs.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -13,6 +14,7 @@ import { Reflector } from 'three/addons/objects/Reflector.js';
 
 const rand = seed => { let n = seed; return () => { n = (n * 1664525 + 1013904223) >>> 0; return n / 4294967296; }; };
 const rng = rand(1472);
+const overlapsPlayer=(item,state)=>item.id!=='rug' && circleHitsRect(state.x,state.z,.4,footprint(item));
 const Y = new THREE.Vector3(0, 1, 0);
 const color = { ground: '#384339', road: '#3a4546', wall: '#77796c', rust: '#785b47', wood: '#766a50', leaf: '#546e4e', dark: '#283b39', cream: '#b3aa89', orange: '#f4bb77' };
 const materials = new Map();
@@ -107,7 +109,8 @@ export class World {
     const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, vertices), mat(c));
     mesh.position.set(x, y, z); mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh); return mesh;
   }
-  collider(x, z, w, d) { this.colliders.push({ x, z, w, d }); }
+  collider(x, z, w, d, rotation = 0) { const rect={x,z,w,d,rotation}; this.colliders.push(rect); return rect; }
+  wall(x,z,w,d,h,shade,parent=this.scene) { const mesh=this.box(x,h/2,z,w,h,d,shade,parent); const p=parent.position; this.collider(x+p.x,z+p.z,w,d); return mesh; }
   texture(kind) {
     const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
     const ctx = canvas.getContext('2d');
@@ -132,9 +135,10 @@ export class World {
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, width / 4), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 }));
     mesh.position.set(x, y, z); parent.add(mesh); return mesh;
   }
-  lamp(x, z, height = 4.5, powered = true, parent = this.scene) {
+  lamp(x, z, height = 4.5, powered = true, parent = this.scene, mounted = false) {
     const group = new THREE.Group(); group.position.set(x, 0, z); parent.add(group);
-    this.cylinder(0, height / 2, 0, 0.055, height, '#3c4945', group, 6);
+    if (!mounted) { this.cylinder(0, height / 2, 0, 0.055, height, '#3c4945', group, 6); if(parent===this.scene) this.collider(x,z,.14,.14); }
+    else this.box(0,height-.15,-.15,.12,.3,.35,'#3c4945',group);
     this.box(0.23, height, 0, 0.65, 0.08, 0.32, '#55605b', group);
     const glow = this.box(0.23, height - 0.08, 0, 0.35, 0.09, 0.21, '#ffce8c', group, new THREE.MeshStandardMaterial({ color: '#ffe1aa', emissive: '#ffb764', emissiveIntensity: powered ? 3 : 0 }));
     const light = new THREE.PointLight('#ffc58c', powered ? 15 : 0, 10, 1.5); light.position.set(0.2, height - 0.3, 0); group.add(light);
@@ -171,18 +175,18 @@ export class World {
     this.reflection.material.fragmentShader = this.reflection.material.fragmentShader.replace('varying vec4 vUv;', 'varying vec4 vUv; varying vec2 vLocal; uniform float time;').replace('vec4 base = texture2DProj( tDiffuse, vUv );', 'vec4 uv = vUv; uv.x += sin(vLocal.y * 14.0 + time * 0.6) * 0.0015 * uv.w; vec4 base = texture2DProj(tDiffuse, uv);').replace('gl_FragColor = vec4( blendOverlay( base.rgb, color ), 1.0 );', 'vec3 water = mix(vec3(0.08, 0.13, 0.12), base.rgb, 0.55); float edge = 1.0 - smoothstep(0.65, 1.0, length(vLocal)); gl_FragColor = vec4(water, edge * 0.8);');
     this.reflection.material.transparent = true; this.reflection.material.depthWrite = false;
     this.scene.add(this.reflection);
-    this.buildHome(); this.buildMarket(); this.buildDepot(); this.buildPond(); this.buildTower();
+    this.buildHome(); this.buildMarket(); this.buildDepot(); this.furnishExpeditions(); this.buildPond(); this.buildTower();
     // Treelines frame the district, leaving the traversable paths readable.
     for (let i = 0; i < 130; i++) {
       const x = rng() * 87 - 43.5, z = rng() * 87 - 43.5;
       if (Math.hypot(x + 34, z + 5) < 8) continue;
-      if (Math.abs(x) < 6 || Math.abs(z - 3) < 5 || this.blocked(x, z, 2)) continue;
+      if (Math.abs(x) < 6 || Math.abs(z - 3) < 5 || this.blocked(x, z, 2) || this.buildings.some(b=>isInsideBuilding({...b,w:b.w+2,d:b.d+2},x,z))) continue;
       if (Math.hypot(x + 17, z - 16) < 13 || Math.hypot(x - 20, z + 20) < 12) continue;
       this.tree(x, z, 0.75 + rng() * 0.7);
     }
     for (let i = 0; i < 75; i++) {
       const x = rng() * 75 - 37.5, z = rng() * 75 - 37.5;
-      if (Math.abs(x) < 5 || Math.abs(z - 3) < 4 || this.blocked(x, z, 1)) continue;
+      if (Math.abs(x) < 5 || Math.abs(z - 3) < 4 || this.blocked(x, z, 1) || this.buildings.some(b=>isInsideBuilding(b,x,z))) continue;
       this.bush(x, z, 0.3 + rng() * 0.5);
     }
     this.buildGarden();
@@ -221,11 +225,19 @@ export class World {
     const group = new THREE.Group(); group.position.set(x,0,z); this.scene.add(group);
     const angle = 0.22, half = (d+0.8)/2;
     for (const side of [-1,1]) {
-      const roof = this.box(0,h+half*Math.sin(angle)/2+0.22,side*half/2,w+0.9,0.18,half/Math.cos(angle),shade,group);
+      const roof = this.box(0,h+half*Math.tan(angle)/2+0.1,side*half/2,w+0.9,0.18,half/Math.cos(angle),shade,group);
       roof.rotation.x = side*angle;
       for(let xx=-w/2;xx<=w/2;xx+=1.2) {
         const seam=this.box(xx,roof.position.y+0.11,roof.position.z,0.035,0.025,half/Math.cos(angle),'#91a298',group); seam.rotation.x=roof.rotation.x;
       }
+    }
+    for(const xx of [-w/2,w/2]) {
+      const rise=half*Math.tan(angle), vertices=[];
+      for(const offset of [-.1,.1]) vertices.push(xx+offset,h,-half, xx+offset,h,half, xx+offset,h+rise,0);
+      const geometry=new THREE.BufferGeometry(); geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));
+      geometry.setAttribute('uv',new THREE.Float32BufferAttribute([0,0,1,0,.5,1,0,0,1,0,.5,1],2));
+      geometry.setIndex([0,2,1,3,4,5,0,1,4,0,4,3,1,2,5,1,5,4,2,0,3,2,3,5]); geometry.computeVertexNormals();
+      const mesh=new THREE.Mesh(geometry,mat(shade)); mesh.castShadow=true; mesh.receiveShadow=true; group.add(mesh);
     }
     group.updateMatrixWorld(true);
     const batches=new Map();
@@ -255,7 +267,7 @@ export class World {
     };
     roof.traverse(mesh=>mark(mesh,roofMeshes));
     for(const object of structures) object.traverse(mesh=>{
-      if(mesh.isMesh && (mesh===object || mesh.position.y>0.8)) mark(mesh,wallMeshes);
+      if(mesh.isMesh && (mesh===object || mesh.position.y>0.8 || object===this.solarRoof)) mark(mesh,wallMeshes);
     });
     const batches=new Map(), mergedWalls=[];
     for(const mesh of wallMeshes) {
@@ -275,8 +287,8 @@ export class World {
     }
     wallMeshes.splice(0,wallMeshes.length,...mergedWalls);
     const building={x,z,w,d,roofMeshes,wallMeshes,inside:isInsideBuilding({x,z,w,d},this.state.x,this.state.z)};
-    for(const mesh of roofMeshes) mesh.material.opacity=building.inside?0.035:1;
-    for(const mesh of wallMeshes) mesh.material.opacity=building.inside?0.13:1;
+    for(const mesh of roofMeshes) { mesh.material.opacity=building.inside?0.035:1; mesh.material.depthWrite=!building.inside; }
+    for(const mesh of wallMeshes) { mesh.material.opacity=building.inside?0.13:1; mesh.material.depthWrite=!building.inside; }
     this.buildings.push(building);
   }
   updateRoofs(dt) {
@@ -285,7 +297,7 @@ export class World {
       const updated=new Set();
       for(const [meshes,target] of [[b.roofMeshes,b.inside?0.035:1],[b.wallMeshes,b.inside?0.13:1]]) {
         for(const mesh of meshes) {
-          if(!updated.has(mesh.material)) { mesh.material.opacity=fadeOpacity(mesh.material.opacity,target,dt); updated.add(mesh.material); }
+          if(!updated.has(mesh.material)) { mesh.material.opacity=fadeOpacity(mesh.material.opacity,target,dt); mesh.material.depthWrite=mesh.material.opacity>.98; updated.add(mesh.material); }
           mesh.castShadow=!b.inside;
         }
       }
@@ -293,12 +305,12 @@ export class World {
   }
   building(x, z, w, d, h, shade, sign) {
     const group = new THREE.Group(); group.position.set(x, 0, z); this.scene.add(group);
-    this.box(0, 0.13, 0, w + 0.3, 0.25, d + 0.3, '#77786d', group);
-    this.box(0, h / 2, -d / 2, w, h, 0.32, shade, group);
-    this.box(-w / 2, h / 2, 0, 0.32, h, d, shade, group);
-    this.box(w / 2, h / 2, -d * 0.15, 0.32, h, d * 0.7, shade, group);
-    this.box(-w * 0.3, h / 2, d / 2, w * 0.4, h, 0.32, shade, group);
-    this.box(w * 0.3, h / 2, d / 2, w * 0.4, h, 0.32, shade, group);
+    this.box(0, 0.09, 0, w + 0.3, 0.2, d + 0.3, '#77786d', group);
+    this.wall(0,-d/2,w,.32,h,shade,group);
+    this.wall(-w/2,0,.32,d,h,shade,group);
+    this.wall(w/2,0,.32,d,h,shade,group);
+    this.wall(-w*.3,d/2,w*.4,.32,h,shade,group);
+    this.wall(w*.3,d/2,w*.4,.32,h,shade,group);
     for (let xx = -w / 2 + 1.4; xx < w / 2 - 0.5; xx += 2.8) {
       this.box(xx, h * 0.65, -d / 2 + 0.18, 1.2, 1.35, 0.05, '#3e5350', group);
       this.box(xx, h * 0.65, -d / 2 + 0.24, 0.07, 1.4, 0.07, '#b1ab91', group);
@@ -307,10 +319,7 @@ export class World {
 
     this.box(0, h - 0.2, d / 2, w + 0.3, 0.18, 0.65, '#6f7567', group);
     if (sign) this.label(sign, 0, h - 0.95, d / 2 + 0.19, w * 0.73, '#ccbe98', '#46594c', group);
-    this.collider(x, z - d / 2, w, 0.6); this.collider(x - w / 2, z, 0.6, d);
-    this.collider(x + w / 2, z - d * 0.15, 0.6, d * 0.7);
-    this.collider(x - w * 0.3, z + d / 2, w * 0.4, 0.6); this.collider(x + w * 0.3, z + d / 2, w * 0.4, 0.6);
-    for (let i = 0; i < 8; i++) this.box(rng() * (w - 1) - w / 2 + 0.5, 0.32, rng() * (d - 1) - d / 2 + 0.5, 0.2 + rng() * 0.35, 0.13, 0.2 + rng() * 0.35, '#8b8975', group);
+    for (let i = 0; i < 8; i++) this.box(rng() * (w - 1) - w / 2 + 0.5, 0.255, rng() * (d - 1) - d / 2 + 0.5, 0.2 + rng() * 0.35, 0.13, 0.2 + rng() * 0.35, '#8b8975', group);
     const roof = this.createRoof(x, z, w, d, h, '#566d65');
     this.registerBuilding(x,z,w,d,roof,[group]);
     return group;
@@ -318,9 +327,11 @@ export class World {
   buildHome() {
     const x = -18, z = 15;
     this.box(x, 0.09, z, 12, 0.2, 9, '#827b63');
-    // Open cutaway walls keep the interior legible from the isometric camera.
-    const backWall = this.box(x, 1.8, z - 4.5, 12, 3.6, 0.25, '#8c8d76'); this.collider(x, z - 4.5, 12, 0.5);
-    const sideWall = this.box(x - 6, 1.8, z, 0.25, 3.6, 9, '#777c6b'); this.collider(x - 6, z, 0.5, 9);
+    // Exterior shell and movement share the same wall dimensions.
+    const backWall = this.wall(x,z-4.5,12,.25,3.6,'#8c8d76');
+    const sideWall = this.wall(x-6,z,.25,9,3.6,'#777c6b');
+    const frontWalls=[this.wall(-21.6,19.5,4.8,.25,3.6,'#8c8d76'),this.wall(-14.4,19.5,4.8,.25,3.6,'#8c8d76')];
+    const rightWalls=[this.wall(-12,12.65,.25,4.3,3.6,'#777c6b'),this.wall(-12,18.35,.25,2.3,3.6,'#777c6b')];
     for (let xx = -23; xx < -12; xx += 1) this.box(xx, 0.205, z, 0.04, 0.015, 9, '#655f4e');
     this.homeRoof = this.createRoof(x,z,12,9,3.6,'#4a6056');
     // Roof beams, worn paint and climbing plants give the cutaway shelter a lived-in silhouette.
@@ -330,10 +341,10 @@ export class World {
       const leaf = this.bush(-23.75 + rng() * 0.25, 10.8 + rng() * 1.5, 0.2 + rng() * 0.15);
       leaf.position.y = 1 + rng() * 2.2;
     }
-    this.box(-18, 0.4, 20.6, 11.2, 0.8, 0.22, '#6e7868');
+    for(const xx of [-21.4,-14.6]) this.wall(xx,20.6,4.4,.22,.8,'#6e7868');
     // Entrance gap and garden border.
-    this.box(-8.7, 0.3, 16, 0.18, 0.6, 17, '#5b6858');
-    for (let zz = 8; zz < 25; zz += 2) this.box(-8.7, 0.75, zz, 0.22, 1.5, 0.22, '#7c7b60');
+    for(const [zz,length] of [[13,11],[23.5,2]]) this.wall(-8.7,zz,.18,length,.6,'#5b6858');
+    for (const zz of [8,10,12,14,16,18.5,21.5,24]) this.box(-8.7, 0.75, zz, 0.22, 1.5, 0.22, '#7c7b60');
     this.label('РЕМОНТНАЯ СТАНЦИЯ', -18, 2.9, 10.65, 7.4);
     this.label('ДОМ', -10.5, 1.7, 20.8, 1.5, '#e9c993');
     this.box(-10.5, 0.8, 20.65, 0.08, 1.6, 0.08, '#756e54');
@@ -357,7 +368,7 @@ export class World {
     this.box(0, 0.6, 0, 1.5, 1.15, 1.1, '#6c7662', this.generator); this.cylinder(0, 0.63, 0.62, 0.4, 0.11, '#344b44', this.generator).rotation.x = Math.PI / 2;
     this.box(-0.45, 1.2, 0, 0.13, 0.8, 0.13, '#535f55', this.generator);
     this.genIndicator = this.box(0.48, 0.9, 0.57, 0.12, 0.12, 0.06, '#b1664d', this.generator, new THREE.MeshStandardMaterial({ color: '#b1664d', emissive: '#b1664d', emissiveIntensity: 0.5 }));
-    this.homeLamp = this.lamp(-17, 14, 3.2, false);
+    this.homeLamp = this.lamp(-18, 10.85, 3.2, false, this.scene, true);
     this.porchLamp = this.lamp(-10, 21.5, 3.4, true);
     this.homeLight = new THREE.PointLight('#ffbf75', 0, 14, 1.5); this.homeLight.position.set(-19, 2.8, 15); this.scene.add(this.homeLight);
     // A tiny stove remains the warm heart of the unpowered house.
@@ -371,11 +382,13 @@ export class World {
     this.box(-14.5, 1.6, 12.2, 1.5, 1.4, 0.15, '#9b8763');
     for (const xx of [-14.9, -14.2]) this.box(xx, 1.65, 12.3, 0.45, 0.65, 0.02, '#d3c8a3').rotation.z = xx < -14.5 ? 0.12 : -0.08;
     this.solarRoof = new THREE.Group(); this.scene.add(this.solarRoof);
+    this.solarRoof.position.set(-18,3.6+.1+(4.9-3.1)*Math.tan(.22)+.18,11.9); this.solarRoof.rotation.x=-.22;
     for (let i = 0; i < 3; i++) {
-      this.box(-22 + i * 3.3, 3.99, 11.5, 2.5, 0.12, 1.8, '#344b59', this.solarRoof);
-      for (let j = 0; j < 4; j++) this.box(-23 + i * 3.3 + j * 0.65, 4.057, 11.5, 0.025, 0.012, 1.7, '#879990', this.solarRoof);
+      this.box(-3.3 + i * 3.3, 0, 0, 2.5, 0.12, 1.8, '#344b59', this.solarRoof);
+      for (let j = 0; j < 4; j++) this.box(-4.3 + i * 3.3 + j * .65, .067, 0, .025, .012, 1.7, '#879990', this.solarRoof);
     }
-    this.registerBuilding(x,z,12,9,this.homeRoof,[backWall,sideWall,this.solarRoof]);
+    for(const [xx,zz,ww,dd] of [[-21,13,2.8,1.25],[-13.5,17,1.2,1.2],[-13.6,15.5,.8,.8],[-22,17.7,2.3,1.35],[-23.25,15.6,.6,1.2],[-23,12.3,.8,.8],[-11,11.4,1.5,1.1],[-20,19,.86,.86]]) this.collider(xx,zz,ww,dd);
+    this.registerBuilding(x,z,12,9,this.homeRoof,[backWall,sideWall,...frontWalls,...rightWalls,this.solarRoof]);
   }
   buildMarket() {
     this.building(13, 4, 10, 8, 5, '#8b8974', 'ПРОДУКТЫ');
@@ -393,12 +406,33 @@ export class World {
     for (const x of [8.4, 17.6]) { this.box(x, 0.3, 8.8, 0.7, 0.6, 0.7, '#8d7c5e'); this.bush(x, 8.8, 0.5).position.y = 0.8; }
     this.label('СТАРЫЙ КВАРТАЛ', 6.5, 2.1, 8.2, 3.2, '#cbbd9e'); this.box(6.5, 1.0, 8.1, 0.08, 2, 0.08, '#6f7564');
   }
+  furnishExpeditions() {
+    const shelf=(x,z,w,h,d,shade) => {
+      const group=new THREE.Group(); group.position.set(x,0,z); this.scene.add(group);
+      for(const xx of [-w/2+.08,w/2-.08]) this.box(xx,h/2,0,.12,h,d,shade,group);
+      for(const y of [.25,h*.5,h-.15]) this.box(0,y,0,w,.1,d,shade,group);
+      this.collider(x,z,w,d);
+      return group;
+    };
+    const shop=shelf(16.7,3.5,1.3,2.1,3,'#79816a');
+    for(let i=0;i<4;i++) this.box(0,.48+(i%2)*.95,-1+i*.7,.55,.38,.45,i%2?'#a39065':'#879b71',shop);
+    const tailor=shelf(32.3,5,1.2,2.4,3.4,'#787e6c');
+    for(let i=0;i<5;i++) this.box(0,.48+(i%2)*1.05,-1.3+i*.6,.75,.25,.5,i%2?'#9e8da3':'#95a897',tailor);
+    const depot=shelf(-25.8,-24,1.3,2.8,4,'#697870');
+    for(let i=0;i<4;i++) this.box(0,.55+(i%2)*1.15,-1.4+i*.9,.85,.5,.6,'#8c8a70',depot);
+    // Low counters leave the doorway and collection routes clear.
+    this.box(10.8,.65,2.5,2.4,1.3,.8,'#8a8267'); this.collider(10.8,2.5,2.4,.8);
+    this.box(29.4,.6,9,2.2,1.2,1.1,'#8b816a'); this.collider(29.4,9,2.2,1.1);
+    this.label('ЗАПАСЫ',16.7,1.9,5.03,1.8);
+    this.label('ТКАНИ',32.3,2.2,6.75,1.5);
+    this.label('ДЕТАЛИ',-25.8,2.6,-21.95,1.7);
+  }
   car(x, z, rotation, c) {
     const group = new THREE.Group(); group.position.set(x, 0, z); group.rotation.y = rotation; this.scene.add(group);
     this.box(0, 0.65, 0, 1.9, 0.6, 3.8, c, group); this.box(0, 1.2, -0.2, 1.75, 0.6, 1.8, c, group);
     this.box(0, 1.22, 0.73, 1.55, 0.4, 0.035, '#4c6964', group);
     for (const xx of [-0.95, 0.95]) for (const zz of [-1.15, 1.15]) { const tire = this.cylinder(xx, 0.4, zz, 0.38, 0.16, '#303b35', group); tire.rotation.z = Math.PI / 2; }
-    this.box(0, 0.5, 1.94, 1.6, 0.16, 0.1, '#8f9786', group); this.collider(x, z, 2, 4); return group;
+    this.box(0, 0.5, 1.94, 1.6, 0.16, 0.1, '#8f9786', group); this.collider(x, z, 2, 4, rotation); return group;
   }
   buildDepot() {
     this.building(-19, -25, 16, 12, 5.5, '#76857d', 'ДЕПО · 04');
@@ -415,6 +449,8 @@ export class World {
     this.bridgeGroup = new THREE.Group(); this.scene.add(this.bridgeGroup);
     for (let i = 0; i < 10; i++) this.box(-18 + i * 0.33, 0.2, -11, 0.28, 0.19, 4.2, '#998667', this.bridgeGroup);
     for (const zz of [-13, -9]) { this.box(-16.5, 0.85, zz, 3.4, 0.09, 0.09, '#b2a17b', this.bridgeGroup); }
+    this.collider(-23.1,-11,9.8,2.2); this.collider(-10.4,-11,8.8,2.2);
+    this.collider(-16.5,-13,3.4,.09); this.collider(-16.5,-9,3.4,.09);
     this.bridgeCollider = { x: -17, z: -11, w: 22, d: 2.2, bridge: true }; this.colliders.push(this.bridgeCollider);
   }
   buildPond() {
@@ -508,6 +544,9 @@ export class World {
       ['herbs', 'Уцелевшие посадки', -32, -5, { seeds: 2, herbs: 4 }],
       ['electronics', 'Система полива сада', -30, -9, { parts: 3, wire: 3 }],
       ['wood', 'Доски старой теплицы', -38, -2, { wood: 7 }],
+      ['crate', 'Уцелевшие продукты магазина', 14, 4, { herbs: 3, water: 2, cloth: 1 }],
+      ['cloth', 'Рулоны ткани ателье', 30, 5, { cloth: 6, wire: 2 }],
+      ['crate', 'Комплект деталей депо', -18, -26.5, { parts: 3, metal: 4, wire: 2 }, 'cutter'],
     ];
     definitions.forEach(([type, name, x, z, loot, requires], i) => {
       const group = new THREE.Group(); group.position.set(x, 0.16, z); this.scene.add(group);
@@ -637,7 +676,7 @@ export class World {
         let used = 0;
         for (let i = 0; i < 900 && used < 300; i++) {
           const x = rng() * 86 - 43, z = rng() * 86 - 43;
-          if (Math.abs(x) < 4.5 || Math.abs(z - 3) < 3.4 || this.blocked(x, z, 1) || (x > -25 && x < -8 && z > 10 && z < 20)) continue;
+          if (Math.abs(x) < 4.5 || Math.abs(z - 3) < 3.4 || this.blocked(x, z, 1) || this.buildings.some(b=>isInsideBuilding(b,x,z))) continue;
           p.set(x, 0.02, z); quaternion.setFromAxisAngle(Y, rng() * 6.28); s.setScalar(0.7 + rng() * 0.6); matrix.compose(p, quaternion, s); instances.setMatrixAt(used++, matrix);
         }
         instances.count = used; instances.receiveShadow = true; this.scene.add(instances);
@@ -689,7 +728,12 @@ export class World {
     if (x < -43 || x > 43 || z < -43 || z > 43) return true;
     // Pond shoreline; dock remains navigable.
     if (Math.pow((x - 23) / 9, 2) + Math.pow((z + 24) / 7.4, 2) < 1 && !(x < 21.5 && z > -18.1)) return true;
-    return this.colliders.some(c => !c.disabled && Math.abs(x - c.x) < c.w / 2 + radius && Math.abs(z - c.z) < c.d / 2 + radius);
+    return this.colliders.some(c => !c.disabled && circleHitsRect(x,z,radius,c)) || this.state.placed.some(p=>p.id!=='rug' && circleHitsRect(x,z,radius,solidFootprint(p)));
+  }
+  repairFurniture() { return repairFurniture(this.colliders,this.state.placed); }
+  furnitureElevation(x,z) { return isInsideBuilding({x:-18,z:15,w:12,d:9},x,z)? .205 : .025; }
+  canPlace(item,ignore=-1) {
+    return placementAllowed(item,this.colliders,this.state.placed,ignore) && !overlapsPlayer(item,this.state);
   }
   move(x, z) {
     if (!this.blocked(x, this.state.z)) this.state.x = x;
@@ -745,7 +789,7 @@ export class World {
   }
   setDestination(x, z) { this.destination.position.set(x, 0.1, z); this.destination.visible = true; }
   addPlaced(item) {
-    const group = this.makeFurniture(item.id); group.position.set(item.x, 0.24, item.z); group.rotation.y = item.rotation; this.scene.add(group);
+    const group = this.makeFurniture(item.id); group.position.set(item.x, this.furnitureElevation(item.x,item.z), item.z); group.rotation.y = item.rotation; this.scene.add(group);
     this.placedGroups.push({ item, group }); return group;
   }
   makeFurniture(id, ghost = false) {
@@ -761,10 +805,12 @@ export class World {
     } else if (id === 'chest') this.crate(0, 0, 1.25, group);
     else if (id === 'bed') {
       this.box(0, 0.25, 0, 1.5, 0.35, 2.3, '#756f54', group); this.box(0, 0.5, 0.2, 1.5, 0.25, 1.8, '#a4ae91', group); this.box(0, 0.64, -0.7, 1.2, 0.15, 0.55, '#d6cab0', group);
+      for(const xx of [-.6,.6]) for(const zz of [-1,1]) this.box(xx,.05,zz,.12,.1,.12,'#59665c',group);
     } else if (id === 'sofa') {
       this.box(0, 0.45, 0, 2.3, 0.7, 1, '#9e8f69', group); this.box(0, 0.9, -0.4, 2.3, 0.8, 0.25, '#8f825f', group);
       for (const x of [-1, 1]) this.box(x, 0.8, 0, 0.3, 0.6, 1.2, '#9e8f69', group);
       this.box(0.4, 0.9, -0.15, 0.45, 0.45, 0.2, '#b7ac89', group);
+      for(const xx of [-1,1]) for(const zz of [-.4,.4]) this.box(xx,.1,zz,.12,.2,.12,'#59665c',group);
     } else if (id === 'planter') { this.cylinder(0, 0.3, 0, 0.4, 0.6, '#ad8867', group); for (let i = 0; i < 5; i++) this.bush(Math.cos(i) * 0.25, Math.sin(i) * 0.25, 0.43, group).position.y = 0.7; }
     else if (id === 'rug') this.box(0, 0.015, 0, 2.2, 0.035, 1.6, '#aa825c', group);
     else if (id === 'purifier') {
