@@ -576,7 +576,7 @@ export class World {
       const model = this.assets[id === 'pistol' ? 'blaster' : 'blaster-repeater'].scene.clone();
       const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3()); model.scale.setScalar(0.8 / Math.max(size.x, size.y, size.z)); this.weaponRoot.add(model);
     } else { const pipe = this.cylinder(0, 0, -0.3, id === 'spear' ? 0.04 : 0.06, id === 'spear' ? 1.8 : 0.8, '#b2b8a0', this.weaponRoot, 6); pipe.rotation.x = 0.7; }
-    this.playerLight.intensity = this.state.owned.includes('lantern') ? 3.5 : 0;
+    this.playerLight.intensity = this.state.owned.includes('lantern') && this.state.lanternOn !== false ? 3.5 : 0;
   }
   playCharacterAction(name) {
     const action = this.actions?.[name]; if (!action || action === this.idleAction || action === this.walkAction) return;
@@ -707,8 +707,8 @@ export class World {
       this.scene.remove(this.ghost); this.ghost = null;
     }
   }
-  floatingText(text, x, z, c = '#e6cc98') {
-    this.floating.push({ text, x, z, color: c, life: 1.6, y: 1.6 });
+  floatingText(text, x, z, c = '#e6cc98', icons = []) {
+    this.floating.push({ text, x, z, icons, color: c, life: 1.6, y: 1.6 });
   }
   impact(x, y, z, color = '#ffca7a', scale = 1) {
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTexture(), color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));

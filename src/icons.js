@@ -57,10 +57,42 @@ const paths = {
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/>',
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/>',
 };
+// Item silhouettes stay distinct even without colour, including upgraded equipment.
+Object.assign(paths, {
+  lantern: '<path d="M8 6V4a4 4 0 0 1 8 0v2M7 7h10l2 13H5zM5 22h14M11 10c-3 5-2 8 1 8s4-3 1-8c0 2-2 3-2 0"/>',
+  pearl: '<path d="M4 15C0 3 24 3 20 15l-4 6H8zM7 7l3 8M12 5v8M17 7l-3 8"/><circle cx="12" cy="17" r="3"/>',
+  add: '<path d="M12 5v14M5 12h14"/>',
+  hotbar: '<rect x="1" y="7" width="6" height="10" rx="1"/><rect x="9" y="7" width="6" height="10" rx="1"/><rect x="17" y="7" width="6" height="10" rx="1"/>',
+
+  pipe: '<path d="m4 20 12-16 4 3L8 23zM14 7l4 3M6 17l4 3"/>',
+  spear: '<path d="m3 22 13-16M14 7l4-6 4 1-1 4-6 3M13 9l3 3"/>',
+  pistol: '<path d="M3 7h17v5H10l-2 9H3l3-9H3zM16 7V5h3v2M11 12v4h4v-4M17 9h3"/>',
+  carbine: '<path d="M2 9h5V6h13v2h3v4H12v4h-3l-1-4H6v7H2zM14 7v4M17 7v4M10 6V3h5v3"/>',
+  rod2: '<path d="m3 22 10-20 9 3v10a3 3 0 0 1-6 0M7 14l3 2"/><circle cx="9" cy="15" r="3"/><path d="M9 14v2M13 2l-3 1"/>',
+  vest: '<path d="M7 3h3l2 3 2-3h3l4 5-4 3v11H7V11L3 8zM12 6v16M7 14h3v4H7M14 14h3v4h-3"/>',
+  armor: '<path d="M7 3h3l2 3 2-3h3l4 6-4 3v10H7V12L3 9zM8 10h8v4H8zM8 16h8v4H8zM12 10v10"/>',
+  bag2: '<rect x="4" y="5" width="16" height="17" rx="3"/><path d="M9 5V2h6v3M4 11h16M9 13h6v6H9zM1 11h3v8H1M20 11h3v8h-3M8 8h8"/>',
+  seeds: '<path d="M5 8h14l2 14H3zM7 8V3h10v5M12 18v-6M12 15c-4 0-5-3-5-3 4-1 5 3 5 3M12 13c0-3 4-4 4-4s1 4-4 4"/>',
+  lamp: '<path d="M11 22V7h7M8 22h6M17 7V4h5v3M16 8h7l-1 5h-5zM20 15v2"/>',
+  garden: '<path d="M2 15h20v7H2zM2 18h20M7 15V7M17 15V5M7 10C3 10 3 6 3 6c4 0 4 4 4 4M7 8c0-4 4-5 4-5s1 5-4 5M17 9c0-4 4-5 4-5s1 5-4 5"/>',
+  seedbed: '<path d="M2 11 12 2l10 9v11H2zM7 22V11h10v11M9 19v-4M15 19v-4M8 13h2M14 13h2M2 11h20M12 2v9"/>',
+  planter: '<path d="M6 14h12l-2 8H8zM12 14V4M12 9C5 9 4 4 4 4c7-1 8 5 8 5M12 11c0-7 8-8 8-8s1 8-8 8"/>',
+  pump: '<path d="M3 21V10h8v11H3zM3 14h8M7 10V5h11v4h3M16 5V2M18 11c-2 3-3 4-3 6a3 3 0 0 0 6 0c0-2-1-3-3-6"/>',
+  purifier: '<path d="M3 6h8v16H3zM5 6V2h4v4M3 11h8M11 9h8v5M15 22h7v-7h-7zM18 18h1"/>',
+  recycler: '<path d="M2 10h20v12H2zM5 10l2-7h10l2 7M7 14h10l-3-2M17 18H7l3 2M7 14v4M17 18v-4"/>',
+  solar: '<path d="m5 3 16 3-3 12-16-3zM4 9l16 3M10 4 7 16M16 5l-3 12M10 17v5M6 22h8"/>',
+  tea: '<path d="M3 10h14v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4zM17 11h3a3 3 0 0 1 0 6h-3M7 7c-3-3 3-3 0-6M12 7c-3-3 3-3 0-6"/>',
+  helper: '<circle cx="12" cy="7" r="4"/><path d="M4 22v-3a8 8 0 0 1 16 0v3M12 22v-7M12 19c-4 0-5-3-5-3 4-1 5 3 5 3M12 17c0-3 4-4 4-4s1 4-4 4"/>',
+  'fish-perch': '<path d="M4 12c4-7 13-7 17 0-4 7-13 7-17 0L1 7v10zM9 7l3-4 3 4M10 8v8M13 8v8"/><circle cx="17" cy="11" r=".6"/>',
+  'fish-crucian': '<path d="M4 12c4-11 13-11 17 0-4 11-13 11-17 0L1 7v10zM11 7l2 2-2 2 2 2-2 2M15 7l2 2-2 2 2 2-2 2"/>',
+  'fish-trout': '<path d="M4 12c4-6 13-6 17 0-4 6-13 6-17 0L1 7v10zM9 8l4-4 3 4"/><circle cx="11" cy="12" r=".7"/><circle cx="14" cy="12" r=".7"/><circle cx="17" cy="11" r=".7"/>',
+  shell: '<path d="M3 15c-4-15 22-15 18 0l-6 7H9zM6 7l4 12M12 4v15M18 7l-4 12M8 19h8"/><circle cx="12" cy="19" r="2"/>',
+});
 export function icon(name, size = 20) {
   return `<svg class="ui-icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.info}</svg>`;
 }
-export const resourceIcon = (id, size = 20) => icon(id === 'seeds' ? 'leaf' : id, size);
-const recipeIcons = { helper: 'herbs', seedbed: 'leaf', axe: 'axe', pick: 'pick', cutter: 'cutter', rod: 'rod', rod2: 'rod', pipe: 'sword', spear: 'sword', pistol: 'gun', carbine: 'gun', vest: 'shield', armor: 'shield', bag: 'bag', bag2: 'bag', boots: 'boots', lantern: 'lantern', medkit: 'medkit', meal: 'meal', ammo: 'ammo', generator: 'generator', bridge: 'bridge', lamp: 'lantern', bed: 'bed', garden: 'herbs', chest: 'chest', sofa: 'sofa', planter: 'leaf', rug: 'rug', radio: 'radio', pump: 'water', purifier: 'water', recycler: 'parts', solar: 'sun', tea: 'water' };
-export const recipeIcon = (id, size = 24) => icon(recipeIcons[id] || 'craft', size);
+export const resourceIcon = (id, size = 20) => icon(id, size);
+const recipeIcons = { pipe: 'pipe', axe: 'axe', pick: 'pick', cutter: 'cutter', rod: 'rod', rod2: 'rod2', spear: 'spear', pistol: 'pistol', carbine: 'carbine', vest: 'vest', armor: 'armor', bag: 'bag', bag2: 'bag2', boots: 'boots', lantern: 'lantern', medkit: 'medkit', meal: 'meal', ammo: 'ammo', generator: 'generator', bridge: 'bridge', lamp: 'lamp', bed: 'bed', garden: 'garden', chest: 'chest', sofa: 'sofa', planter: 'planter', rug: 'rug', radio: 'radio', pump: 'pump', purifier: 'purifier', recycler: 'recycler', solar: 'solar', tea: 'tea', helper: 'helper', seedbed: 'seedbed' };
+export const ITEM_ICON_IDS = Object.keys(recipeIcons);
+export const recipeIcon = (id, size = 24) => icon(recipeIcons[id] || id, size);
 export const categoryIcon = id => icon(({ tools: 'axe', weapons: 'sword', gear: 'shield', supplies: 'medkit', shelter: 'home' })[id], 18);

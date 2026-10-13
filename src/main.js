@@ -1,5 +1,8 @@
 import './style.css';
 import './interface.css';
+import './hud.css';
+import { fishingFrameDelta } from './fishing.js';
+import { hotbarItem, assignHotbar } from './hotbar.js';
 import { Locomotion } from './movement.js';
 import { World, LOCATIONS } from './world.js';
 import { UI } from './ui.js';
@@ -69,6 +72,7 @@ class QuietDistrict {
       }
       if (key === 'Escape') { this.cancelAction(); return; }
       if (event.repeat) { if (!this.ui.panel) this.keys.add(key); return; }
+      if (!this.ui.panel && /^Digit[1-6]$/.test(key)) { event.preventDefault(); this.action('hotbar-use', { index: Number(key.slice(-1)) - 1 }); return; }
       const shortcuts = { KeyC: 'craft', KeyI: 'inventory', KeyB: 'build', KeyM: 'map', KeyJ: 'journal', KeyK: 'orders', KeyQ: 'use-medkit', KeyH: 'home' };
       if (shortcuts[key]) { this.action(shortcuts[key]); return; }
       if (key === 'KeyR' && this.build) { this.action('rotate-build'); return; }
@@ -137,6 +141,11 @@ class QuietDistrict {
       if (this.ui.panel === action) this.ui.close(); else this.ui.open(action);
       return;
     }
+    if (action === 'hud-change') { this.save(false); return; }
+    if (action === 'hotbar-assign') {
+      if (assignHotbar(this.state, Number(data.index), data.id || null)) this.changed(); return;
+    }
+    if (action === 'hotbar-use') { this.useHotbar(Number(data.index)); return; }
     if (action === 'craft-objective') { this.ui.open('craft', 'shelter'); return; }
     if (action === 'station-route') {
       this.ui.close(); this.target = { type: 'station', entity: { x: -19.5, z: 13 }, x: -19.5, z: 13 }; this.navigate(-19.5, 13); return;
@@ -164,6 +173,7 @@ class QuietDistrict {
       if (data.id === 'pipe') this.state.equipment.weapon = 'pipe';
       else if (recipe && this.state.owned.includes(data.id) && Object.hasOwn(this.state.equipment, recipe.slot)) this.state.equipment[recipe.slot] = data.id;
       else return;
+      if (recipe?.slot === 'weapon' || data.id === 'pipe') this.state.hotbarSelected = this.state.hotbar.indexOf(data.id);
       this.world.updateEquipment(); this.ui.renderPanel(); this.ui.update(); this.save(); return;
     }
     if (action === 'deposit') {
@@ -215,6 +225,29 @@ class QuietDistrict {
     if (action === 'rotate-build' && this.build) { this.build.rotation += Math.PI / 2; this.updateBuildPreview(); return; }
     if (action === 'cancel-build') { this.cancelBuild(); return; }
   }
+  useHotbar(index) {
+    if (!Number.isInteger(index) || index < 0 || index > 5 || this.ui.panel) return;
+    if (this.build || this.fish) { this.ui.toast('Заверши строительство или смотай удочку, чтобы сменить предмет.'); return; }
+    const item = hotbarItem(this.state, this.state.hotbar[index]);
+    if (!item) { this.ui.toast('Назначь предмет в эту ячейку через инвентарь.'); return; }
+    if (!item.available) { this.ui.toast(item.supply ? `${item.name}: запас закончился.` : `Сначала создай: ${item.name}.`); return; }
+    if (item.supply) { this.action(`use-${item.id}`); return; }
+    this.state.hotbarSelected = index;
+    if (item.slot === 'weapon' || item.id === 'pipe') {
+      this.state.equipment.weapon = item.id; this.world.updateEquipment();
+    } else if (item.id === 'rod' || item.id === 'rod2') {
+      if (Math.hypot(this.state.x - 19.7, this.state.z + 17) <= 3) this.startFishing();
+      else this.ui.toast('Удочка готова. Подойди к затопленному причалу.');
+    } else if (item.id === 'lantern') {
+      this.state.lanternOn = !this.state.lanternOn; this.world.updateEquipment();
+      this.ui.toast(this.state.lanternOn ? 'Фонарь включён.' : 'Фонарь выключен.');
+    } else {
+      const target = this.nearestInteraction();
+      if (target?.type === 'node' && target.entity.requires === item.id) this.interact();
+      else this.ui.toast(`${item.name} готов. Подойди к подходящей находке.`);
+    }
+    this.changed();
+  }
   atHome() { return this.state.x >= -27 && this.state.x <= -6 && this.state.z >= 5 && this.state.z <= 27; }
   atStation() { return Math.hypot(this.state.x + 21, this.state.z - 13) < 4.5; }
   navigate(x, z, notify = true) {
@@ -236,6 +269,7 @@ class QuietDistrict {
       this.world.createGhost(id); this.updateBuildPreview(); return;
     }
     this.audio.craft(); this.world.applyProgress(); this.world.updateEquipment();
+    if (recipe.slot === 'weapon') this.state.hotbarSelected = this.state.hotbar.indexOf(id);
     if (id === 'generator') { this.ui.toast('В убежище снова горит свет. Ты сделал это.', 'success'); this.ui.region(LOCATIONS.find(l => l.id === 'home'), true); }
     else if (id === 'bridge') this.ui.toast('Мост восстановлен. Депо теперь доступно.', 'success');
     else if (id === 'radio') { this.ui.toast('В тишине появился голос. Первая глава завершена.', 'success'); this.ui.open('journal'); }
@@ -277,13 +311,17 @@ class QuietDistrict {
   }
   cancelBuild() { if (this.build?.movingIndex !== undefined) this.world.placedGroups[this.build.movingIndex].group.visible = true; this.build = null; this.world?.removeGhost(); this.ui.buildHint(null); }
   cancelAction() {
+    const navigation = document.querySelector('.toolbar');
+    if (!navigation.hidden) {
+      navigation.hidden = true; document.querySelector('[data-action="toggle-menu"]').setAttribute('aria-expanded', 'false'); return;
+    }
     if (this.ui.panel) this.ui.close(); else if (this.build) this.cancelBuild(); else if (this.fish) this.cancelFishing();
     else { this.path = []; this.target = null; this.job = null; this.ui.progress(null); this.world.destination.visible = false; }
   }
   nearestInteraction() {
     const s = this.state, candidates = [];
     const add = (type, x, z, label, hint, entity, range = 2.4) => { const distance = Math.hypot(s.x - x, s.z - z); if (distance < range) candidates.push({ type, x, z, label, hint, entity, distance }); };
-    for (const node of this.world.nodes) if (node.group.visible) add('node', node.x, node.z, node.name, node.requires && !s.owned.includes(node.requires) ? `Нужно: ${RECIPES.find(r => r.id === node.requires)?.name}` : 'Собрать', node);
+    for (const node of this.world.nodes) if (node.group.visible) add('node', node.x, node.z, `${({ tree: 'Рубить дерево', wood: 'Собрать доски', ore: 'Добыть металл', herbs: 'Собрать растения', electronics: 'Разобрать электронику', crate: 'Открыть ящик', cloth: 'Собрать ткань', scrap: 'Разобрать лом', drop: 'Забрать добычу' })[node.type] || 'Собрать'} · ${node.name}`, node.requires && !s.owned.includes(node.requires) ? `Нужно: ${RECIPES.find(r => r.id === node.requires)?.name}` : 'Добыча в рюкзак', node);
     add('station', -21, 13, 'Станция рецептов', 'Создать снаряжение', null, 2.8);
     add('storage', -13.5, 17, 'Сложить добычу', 'Запасы убежища', null, 2.2);
     add('bed', -22, 17.7, 'Отдохнуть', 'Восстановить здоровье', null, 2);
@@ -364,7 +402,7 @@ class QuietDistrict {
   }
   showLoot(loot, x, z) {
     const entries = Object.entries(loot);
-    if (entries.length) this.world.floatingText(entries.map(([id, n]) => `+${n} ${RESOURCES[id].name.toLowerCase()}`).join(' · '), x, z);
+    if (entries.length) this.world.floatingText(entries.map(([id, n]) => `+${n} ${RESOURCES[id].name.toLowerCase()}`).join(' · '), x, z, '#e6cc98', entries.map(([id]) => id));
   }
   attack(target) {
     if (this.ui.panel || this.build || this.job || this.attackCooldown > 0) return;
@@ -451,17 +489,17 @@ class QuietDistrict {
         const loot = { [f.result.resource]: f.result.count }; collect(this.state, loot);
         if (!this.state.fishCollection.includes(f.result.name)) this.state.fishCollection.push(f.result.name);
         this.showLoot(loot, this.state.x, this.state.z); this.audio.collect(); this.changed();
-      } else { f.target = 28 + Math.random() * 44; f.timer += 0.4; }
+      } else { f.target = 28 + Math.random() * 44; }
       this.ui.fishing(f);
     }
   }
   updateFishing(dt) {
     const f = this.fish; if (!f) return;
-    f.timer += dt;
+    const delta = fishingFrameDelta(dt, f.phase); f.timer += delta;
     if (f.phase === 'wait' && f.timer >= f.biteAt) { f.phase = 'bite'; f.timer = 0; this.audio.bite(); this.ui.fishing(f); }
     if (f.phase === 'bite' && f.timer > 2.3) { this.ui.toast('Поклёвку упустили. Сделай новый заброс.'); this.cancelFishing(); }
     if (f.phase === 'reel') {
-      f.totalTime += dt; f.needle = 50 + Math.sin(f.timer * 2.6) * 46; this.ui.updateFishNeedle(f.needle);
+      f.totalTime += delta; f.needle = 50 + Math.sin(f.timer * 2.6) * 46; this.ui.updateFishNeedle(f.needle);
       if (f.totalTime > 18) { this.ui.toast('Рыба сорвалась. В следующий раз получится.'); this.cancelFishing(); }
     }
   }
@@ -522,7 +560,7 @@ class QuietDistrict {
     if (active) {
       this.state.elapsed += dt;
       if (updateHelper(this.state)) this.ui.update(); this.attackCooldown = Math.max(0, this.attackCooldown - dt);
-      moving = this.movement(dt); this.updateEnemies(dt); this.updateFishing(dt); this.audio.tick(this.state.elapsed);
+      moving = this.movement(dt); this.updateEnemies(dt); this.audio.tick(this.state.elapsed);
       if (this.target) {
         const target = this.target, range = target.type === 'enemy' ? weapon(this.state).range : 2;
         if (Math.hypot(target.entity.x - this.state.x, target.entity.z - this.state.z) <= range) {
@@ -550,10 +588,11 @@ class QuietDistrict {
     return moving;
   }
   frame(time) {
-    // Fixed simulation steps preserve real-time fishing, movement and combat on slower GPUs.
+    // Small simulation steps preserve movement and combat on slower GPUs.
     const elapsed = Math.min(Math.max(0, (time - this.lastFrame) / 1000), 0.5); this.lastFrame = time;
     let remaining = elapsed, moving = false;
     while (remaining > 0.0001) { const step = Math.min(1 / 60, remaining); moving = this.tick(step) || moving; remaining -= step; }
+    if (this.started && !this.ui.panel && !this.visibilityPaused) this.updateFishing(elapsed);
     if (!this.visibilityPaused) {
       // A paused scene needs one frame, then only redraws for equipment, lighting or resize changes.
       if (!this.ui.panel || !this.panelRendered || this.world.renderDirty) this.world.update(this.ui.panel ? 0 : elapsed, moving, this.started);

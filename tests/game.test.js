@@ -183,3 +183,44 @@ test('Seed nursery benefits from both upgrades and helper respects rest assignme
   s.elapsed = 140; s.helper.assignment = 'rest'; assert.equal(updateHelper(s), 0);
   assert.equal(harvestProduction(s, s.placed[0]).ok, true); assert.equal(s.bag.herbs, 6);
 });
+
+import { hotbarItem, assignHotbar, DEFAULT_HOTBAR } from '../src/hotbar.js';
+import { ITEM_ICON_IDS, recipeIcon, resourceIcon } from '../src/icons.js';
+test('Hotbar assignments swap existing items, preserve selection and reject invalid changes', () => {
+  const s = freshState(); assert.deepEqual(s.hotbar, DEFAULT_HOTBAR);
+  assert.equal(assignHotbar(s, 3, 'pipe'), true); assert.equal(s.hotbar[0], 'medkit'); assert.equal(s.hotbarSelected, 3);
+  const before = structuredClone(s); assert.equal(assignHotbar(s, 7, 'axe'), false); assert.equal(assignHotbar(s, 0, 'generator'), false); assert.deepEqual(s, before);
+  assert.equal(assignHotbar(s, 3, null), true); assert.equal(s.hotbarSelected, -1);
+});
+test('Hotbar availability and counts reflect actual supplies, ownership and ammunition', () => {
+  const s = freshState(); assert.equal(hotbarItem(s, 'axe').available, false); s.owned.push('axe', 'pistol');
+  assert.equal(hotbarItem(s, 'axe').available, true); assert.equal(hotbarItem(s, 'pipe').available, true);
+  assert.equal(hotbarItem(s, 'medkit').count, 1); s.medkits = 0; assert.equal(hotbarItem(s, 'medkit').available, false);
+  s.ammo = 12; assert.equal(hotbarItem(s, 'pistol').count, 12); assert.equal(hotbarItem(s, 'bed'), null);
+});
+test('Legacy saves gain a hotbar; custom layout, collapse settings and lantern survive round trip', () => {
+  const s = freshState(); const old = structuredClone(s); delete old.hotbar; delete old.hotbarSelected;
+  assert.deepEqual(validateSave(old).hotbar, DEFAULT_HOTBAR);
+  assignHotbar(s, 0, 'tea'); s.hotbarSelected = -1; s.settings.questExpanded = true; s.settings.minimapExpanded = true; s.lanternOn = false;
+  const copy = validateSave(JSON.parse(JSON.stringify(s))); assert.deepEqual(copy.hotbar, s.hotbar); assert.equal(copy.hotbarSelected, -1);
+  assert.equal(copy.settings.questExpanded, true); assert.equal(copy.settings.minimapExpanded, true); assert.equal(copy.lanternOn, false);
+  assert.deepEqual(validateSave({ ...s, hotbar: ['generator', 'fake', 'pipe'] }).hotbar, [null, null, 'pipe', null, null, null]);
+});
+test('Every recipe has a distinct item icon, and resources have explicit silhouettes', () => {
+  const icons = RECIPES.map(r => { assert.ok(ITEM_ICON_IDS.includes(r.id), r.id); return recipeIcon(r.id); });
+  assert.equal(new Set(icons).size, RECIPES.length);
+  assert.notEqual(resourceIcon('seeds'), resourceIcon('herbs'));
+  assert.notEqual(recipeIcon('pipe'), recipeIcon('spear')); assert.notEqual(recipeIcon('fish-perch'), recipeIcon('fish-trout'));
+});
+
+import { fishingFrameDelta } from '../src/fishing.js';
+test('Reel indicator cannot jump over the input zone during a slow visible frame', () => {
+  assert.equal(fishingFrameDelta(1 / 60, 'reel'), 1 / 60);
+  assert.equal(fishingFrameDelta(0.5, 'wait'), 0.5); assert.equal(fishingFrameDelta(0.5, 'bite'), 0.5);
+  let time = 0;
+  for (let i = 0; i < 300; i++) {
+    const previous = 50 + Math.sin(time * 2.6) * 46; time += fishingFrameDelta(0.5, 'reel');
+    assert.ok(Math.abs(50 + Math.sin(time * 2.6) * 46 - previous) < 6);
+  }
+  assert.equal(fishingFrameDelta(-1, 'reel'), 0);
+});

@@ -1,0 +1,187 @@
+/* Compact HUD: information appears when requested; readable controls on touch and desktop. */
+:root { font-size: 18px; --muted: #b2c3b0; }
+.topbar { height: 72px; padding: 16px 22px; }
+.brand > span { font-size: 16px; letter-spacing: 1px; }
+.brand small { font-size: 14px; letter-spacing: .6px; }
+.weather { font-size: 16px; }
+.weather-text, .saved-indicator, .hud-secondary, .control-hint { display: none; }
+.header-actions { gap: 10px; }
+.icon-button { width: 44px; height: 44px; }
+.menu-toggle { display: flex; align-items: center; gap: 8px; background: #a9bf9e12; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; font-size: 18px; }
+.quest-card { top: 86px; left: 22px; width: 310px; padding: 16px; max-height: calc(100dvh - 340px); overflow: auto; }
+.quest-card .eyebrow { font-size: 14px; letter-spacing: .6px; }
+.quest-card h3, .quest-card.collapsed h3 { font-size: 20px; margin: 10px 0 0; }
+.quest-card p { font-size: 18px; margin-top: 12px; }
+.quest-toggle { width: 44px; height: 36px; font-size: 26px; margin-left: auto; }
+.quest-card.collapsed { padding: 10px 14px; }
+.quest-card.collapsed .eyebrow { font-size: 14px; }
+.quest-actions { flex-direction: column; }
+.quest-actions .text-button, .cost-caption { font-size: 16px; }
+.minimap { top: 86px; bottom: auto; right: 22px; width: 220px; }
+.minimap > div { padding: 10px; gap: 8px; }
+.minimap button { font-size: 16px; min-height: 38px; display: flex; align-items: center; gap: 8px; }
+.minimap canvas { width: 218px; height: 151px; }
+.minimap small { font-size: 16px; }
+.minimap.collapsed { width: 170px; }
+.minimap.collapsed canvas, .minimap.collapsed small, .minimap.collapsed .map-expand { display: none; }
+.toolbar { top: 76px; bottom: auto; right: 22px; left: auto; transform: none; width: 390px; padding: 12px; display: grid; grid-template-columns: 1fr 1fr; z-index: 15; }
+.toolbar button { width: auto; height: 64px; gap: 8px; flex-direction: row; justify-content: flex-start; padding: 12px; }
+.toolbar button span { font-size: 18px; }
+.toolbar button svg { width: 26px; height: 26px; }
+.toolbar button kbd, .toolbar-cargo { display: none !important; }
+.hotbar-dock { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); padding: 10px 12px 12px; width: 516px; pointer-events: auto; }
+.hotbar-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 9px; font-size: 18px; }
+.hotbar-heading > span { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.hotbar-heading button { display: flex; align-items: center; gap: 8px; background: transparent; font-size: 16px; color: #d4dfc6; min-height: 32px; }
+.hotbar-slots, .hotbar-edit-slots { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.hotbar-slot { position: relative; height: 70px; display: flex; align-items: center; justify-content: center; border: 1px solid #b7cba635; border-radius: 8px; background: #081c1740; color: #e4d7b5; }
+.hotbar-slot.active { border-color: #e6cb8a; background: #d3bc7d18; box-shadow: inset 0 0 0 1px #e6cb8a40; }
+.hotbar-slot:hover { background: #b7cba61f; }
+.hotbar-slot.unavailable > svg { opacity: .38; }
+.hotbar-slot kbd { position: absolute; top: 3px; left: 5px; border: 0; padding: 0; font-size: 14px; background: transparent; }
+.hotbar-count { position: absolute; bottom: 3px; right: 6px; font-size: 16px; color: #e8dfc9; }
+.hotbar-lock { position: absolute; bottom: 4px; right: 4px; color: #b4beab; }
+.vitals { bottom: 151px; left: 50%; transform: translateX(-50%); width: 516px; padding: 10px 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.vital-row { margin: 0; gap: 8px; }
+.vital-detail span, .vital-detail b, .vital-detail small { font-size: 16px; }
+.vital-detail > div:first-child { gap: 8px; }
+.meter { height: 7px; }
+.context { bottom: 224px; padding: 12px; max-width: min(700px, calc(100vw - 28px)); white-space: normal; }
+.context button { font-size: 18px; flex-wrap: wrap; gap: 10px; text-align: left; }
+.context small { display: block; font-size: 16px; }
+.context kbd { font-size: 16px; }
+.task-progress { bottom: 224px; font-size: 18px; width: min(440px, calc(100vw - 28px)); }
+.build-hint { bottom: 224px; font-size: 18px; max-width: calc(100vw - 28px); }
+.region-banner { top: 180px; }
+.region-banner > span { font-size: 16px; }
+.panel { width: min(700px, 100vw); }
+.panel-header { padding: 24px 26px 20px; }
+.panel-header h2 { font-size: 32px; }
+.panel-header p, .panel p { font-size: 18px; line-height: 1.6; }
+.panel .eyebrow, .panel small, .panel-note, .panel-footer, .recipe-reason, .recipe-cost-guide, .station-status, .availability-badge, .owned-text { font-size: 16px; }
+.panel-body { padding: 24px 26px; }
+.panel h3, .recipe-card h3, .gear-row strong { font-size: 20px; }
+.category-tabs { overflow-x: auto; flex-wrap: nowrap; padding-bottom: 6px; }
+.category-tabs button { flex-shrink: 0; font-size: 17px; padding: 12px; min-height: 50px; }
+.recipe-heading { flex-wrap: wrap; }
+.recipe-icon { width: 50px; height: 50px; border-radius: 10px; }
+.recipe-icon svg { width: 34px; height: 34px; }
+.recipe-card p { font-size: 18px; }
+.recipe-top > div { min-width: 0; }
+.recipe-tools { flex-wrap: wrap; }
+.recipe-tools label { flex: 1 1 280px; min-width: 0; }
+.recipe-tools input { font-size: 18px; min-height: 48px; width: 100%; }
+.filter-button { font-size: 16px; min-height: 48px; }
+.cost, .cost small, .text-button, .craft-button, .primary, .secondary, .supplies button { font-size: 18px; }
+.cost { padding: 7px; }
+.cost svg { width: 22px; height: 22px; }
+.costs { flex-wrap: wrap; }
+.craft-button, .primary, .secondary, .supplies button { min-height: 48px; }
+.resource-tile small { font-size: 18px; }
+.resource-tile b { font-size: 22px; }
+.gear-row { flex-wrap: wrap; }
+.gear-row p { font-size: 18px; }
+.hotbar-edit-slots { margin: 18px 0; }
+.hotbar-edit-slots button { border: 1px solid var(--border); background: #0e231b; border-radius: 8px; height: 70px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+.hotbar-edit-slots .active { border-color: #dfc88f; background: #d3bc7d18; }
+.hotbar-edit-slots b { font-size: 16px; }
+.hotbar-choices { display: grid; gap: 10px; margin-bottom: 20px; }
+.hotbar-choices button { display: flex; align-items: center; gap: 14px; text-align: left; min-height: 64px; padding: 12px; border: 1px solid var(--border); background: #10261f; border-radius: 8px; font-size: 18px; }
+.hotbar-choices button.selected { border-color: #dfc88f; }
+.hotbar-choices span { flex: 1; }
+.hotbar-choices small { display: block; color: var(--muted); margin-top: 3px; }
+.fish-ui { width: min(460px, calc(100vw - 24px)); bottom: 220px; }
+.fish-ui p, .fish-ui button, .fish-score small { font-size: 18px; }
+.toast { font-size: 18px; max-width: min(580px, calc(100vw - 24px)); }
+.confirm-overlay p, .confirm-overlay button { font-size: 18px; }
+@media (max-width: 760px) {
+  :root { font-size: 16px; }
+  .topbar { height: 64px; padding: 8px 12px; }
+  .brand { gap: 6px; }
+  .brand > svg, .weather { display: none; }
+  .brand > span { font-size: 14px; letter-spacing: .4px; }
+  .brand small { font-size: 13px; max-width: 170px; overflow: hidden; text-overflow: ellipsis; }
+  .header-actions { gap: 4px; }
+  .menu-toggle { padding: 10px; font-size: 16px; min-height: 44px; }
+  .quest-card { left: 12px; top: 76px; width: calc(100vw - 24px); max-height: calc(100dvh - 390px); }
+  .quest-card h3, .quest-card.collapsed h3 { font-size: 18px; }
+  .quest-card p { font-size: 16px; }
+  .quest-card.collapsed { padding: 8px 12px; }
+  .quest-card.collapsed .eyebrow { display: none; }
+  .quest-card.collapsed h3 { margin: 0; padding-right: 35px; }
+  .quest-card.collapsed .quest-toggle { display: block; position: absolute; right: 7px; top: 2px; }
+  .quest-card.collapsed .eyebrow { display: block; height: 0; font-size: 0; color: transparent; }
+  .quest-card.collapsed .eyebrow > svg, .quest-card.collapsed .chapter { display: none; }
+  .minimap { right: 12px; top: 132px; }
+  .minimap.collapsed { width: 160px; }
+  .minimap.collapsed > div { padding: 5px 8px; }
+  .minimap button { font-size: 16px; }
+  .toolbar { width: calc(100vw - 24px); top: 70px; right: 12px; }
+  .toolbar button span { font-size: 16px; }
+  .hotbar-dock { width: calc(100vw - 24px); bottom: max(10px, env(safe-area-inset-bottom)); padding: 8px; }
+  .hotbar-heading { font-size: 16px; gap: 6px; }
+  .hotbar-heading > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 76%; }
+  .hotbar-heading button { font-size: 16px; flex-shrink: 0; }
+  .hotbar-slots { gap: 5px; }
+  .hotbar-slot { height: 58px; }
+  .hotbar-slot > svg { width: 30px; height: 30px; }
+  .hotbar-slot kbd { font-size: 13px; }
+  .vitals { width: calc(100vw - 24px); left: 50%; bottom: 129px; padding: 10px; gap: 12px; }
+  .vital-detail span, .vital-detail b, .vital-detail small { font-size: 16px; }
+  .vital-detail small { display: none; }
+  .vital-row > svg { width: 18px; }
+  .mobile-controls { display: flex; }
+  .joystick { width: 88px; height: 88px; left: 14px; bottom: 207px; }
+  .mobile-actions { right: 12px; bottom: 214px; gap: 8px; }
+  .mobile-actions button { width: 54px; height: 54px; font-size: 22px; }
+  .context { bottom: 311px; width: calc(100vw - 24px); max-width: none; padding: 10px; }
+  .context button { font-size: 16px; display: grid; grid-template-columns: 24px 28px 1fr; gap: 8px; width: 100%; }
+  .context small { display: block; font-size: 16px; grid-column: 3; }
+  .task-progress, .build-hint, .fish-ui { bottom: 311px; font-size: 16px; }
+  .panel-header { padding: 20px 18px 16px; }
+  .panel-header h2 { font-size: 28px; }
+  .panel-header p, .panel p, .panel small { font-size: 16px; }
+  .panel-body { padding: 18px; }
+  .category-tabs button { font-size: 16px; padding: 10px; }
+  .inventory-tabs button { flex-direction: column; }
+  .recipe-card h3, .gear-row strong { font-size: 19px; }
+  .recipe-card p, .recipe-tools input, .filter-button { font-size: 16px; }
+  .recipe-top { gap: 10px; }
+  .recipe-icon { width: 44px; height: 44px; }
+  .recipe-icon svg { width: 30px; height: 30px; }
+  .recipe-bottom { flex-wrap: wrap; gap: 12px; }
+  .recipe-bottom .craft-button { width: 100%; }
+  .cost, .cost small, .craft-button, .primary, .secondary, .resource-tile small, .text-button { font-size: 16px; }
+  .resource-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hotbar-edit-slots { gap: 5px; }
+  .hotbar-choices button { font-size: 16px; }
+  .toast, .fish-ui p, .fish-ui button { font-size: 16px; }
+  .region-banner { top: 215px; }
+}
+@media (max-height: 500px) and (min-width: 761px) {
+  .hotbar-dock { bottom: 8px; }
+  .hotbar-slot { height: 52px; }
+  .vitals { bottom: 116px; }
+  .context, .task-progress, .build-hint { bottom: 186px; }
+  .quest-card { max-height: calc(100dvh - 200px); }
+}
+#floating-text > div { display: flex; align-items: center; gap: 6px; font-size: 18px; }
+/* More specific than the legacy title styling. */
+.topbar .brand > span { font-size: 16px; letter-spacing: .5px; }
+.topbar .brand small { font-size: 16px; letter-spacing: .2px; margin-top: 3px; }
+.panel .passive-badge, .panel .equipment-slots span { font-size: 16px; }
+@media (max-width: 760px) {
+  .quest-card:not(.collapsed) ~ .minimap { display: none; }
+  .quest-card:not(.collapsed) ~ .context { visibility: hidden; }
+  .hotbar-slot kbd { font-size: 16px; }
+  .topbar .brand { width: auto; min-width: 0; }
+  .topbar .brand small { max-width: 170px; }
+}
+.panel-footer > span, .panel kbd, .stats-grid span { font-size: 16px; }
+.location-list strong, .orders-summary strong, .production-list strong, .owned-items button, .collection-list > div { font-size: 18px; }
+.location-list button > div { min-width: 0; }
+.fish-ui .eyebrow { font-size: 16px; }
+@media (max-width: 760px) {
+  .location-list strong, .orders-summary strong, .production-list strong, .owned-items button, .collection-list > div { font-size: 16px; }
+  .collection-list { grid-template-columns: 1fr; }
+}

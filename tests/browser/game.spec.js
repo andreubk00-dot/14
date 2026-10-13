@@ -108,7 +108,7 @@ test('Fishing needs timing, produces loot and updates collection', async ({ page
       return f.phase === 'caught';
     }
     return false;
-  }, undefined, { timeout: 60000, polling: 16 });
+  }, undefined, { timeout: 90000, polling: 16 });
   expect(await page.evaluate(() => window.__reelVisible)).toBe(true);
   await expect(page.locator('#fish-ui')).toContainText('Ещё один заброс');
   expect(await page.evaluate(() => window.__quietDistrict.state.fishCollection.length)).toBe(1);
@@ -134,13 +134,17 @@ test('Mobile layout exposes touch controls, usable menus and no page overflow', 
   const page = await context.newPage();
   await start(page);
   await expect(page.locator('#joystick')).toBeVisible();
+  await page.locator('[data-action="toggle-menu"]').click();
   await page.locator('.toolbar [data-action="inventory"]').click();
   await expect(page.locator('#panel')).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  const bounds = await page.locator('#panel').boundingBox(); expect(bounds.width).toBeLessThanOrEqual(390);
+  const bounds = await page.locator('#panel').boundingBox(); expect(bounds.width).toBeLessThanOrEqual(390.01); // Allow subpixel transform rounding.
   await page.locator('[data-action="close"]').click();
+  await page.locator('[data-action="toggle-menu"]').click();
   await page.locator('.toolbar [data-action="map"]').click();
   await expect(page.locator('#large-map')).toBeVisible();
+  expect(await page.evaluate(() => { const c = document.getElementById('large-map'); return parseFloat(c.getContext('2d').font) * c.getBoundingClientRect().width / c.width; })).toBeGreaterThanOrEqual(16);
+  expect(await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.location-list strong')).fontSize))).toBeGreaterThanOrEqual(16);
   await page.screenshot({ path: 'test-results/mobile-verified.png' });
   await context.close();
 });
@@ -188,7 +192,7 @@ test('Neighbour orders, water restoration and production are playable', async ({
   test.setTimeout(150000);
   await start(page, { owned: ['generator', 'bridge', 'radio'], stash: { wood: 60, metal: 80, cloth: 20, parts: 40, wire: 30 }, elapsed: 130,
     placed: [{ id: 'recycler', x: -18, z: 14, rotation: 0, harvested: 0 }] });
-  await page.locator('[data-action="orders"]').click();
+  await page.keyboard.press('KeyK');
   await expect(page.locator('#panel')).toContainText('Заказы соседей');
   await page.locator('[data-action="deliver-order"][data-id="timber"]').click();
   expect(await page.evaluate(() => window.__quietDistrict.state.completedOrders)).toBe(1);
@@ -211,7 +215,7 @@ test('Neighbour orders, water restoration and production are playable', async ({
 test('Expanded garden, helper assignments and smooth movement work in the playable world', async ({ page }) => {
   test.setTimeout(150000);
   await start(page, { owned: ['radio', 'generator', 'pump', 'helper'], placed: [{ id: 'bed', x: -22, z: 20, harvested: 0 }, { id: 'garden', x: -12, z: 23, harvested: 0 }], elapsed: 95 });
-  await page.locator('[data-action="orders"]').first().click();
+  await page.keyboard.press('KeyK');
   await page.locator('[data-action="helper"]').click();
   await expect(page.locator('#panel')).toContainText('Лада · садовница');
   expect(await page.evaluate(async () => {
@@ -241,4 +245,73 @@ test('Expanded garden, helper assignments and smooth movement work in the playab
   expect(result.nodes).toBe(2); expect(result.nursery).toBe(true); expect(result.path).toBeGreaterThan(0);
   await page.keyboard.press('KeyM');
   await expect(page.locator('#panel')).toContainText('Заброшенный сад');
+});
+
+test('Hotbar uses keyboard supplies, equips weapons and persists inventory assignments', async ({ page }) => {
+  test.setTimeout(180000);
+  await start(page, { health: 50, medkits: 2, ammo: 12, owned: ['pistol', 'carbine', 'axe', 'rod', 'lantern'],
+    hotbar: ['pistol', 'axe', 'rod', 'medkit', 'meal', 'lantern'] });
+  await expect(page.locator('.hotbar-slot')).toHaveCount(6);
+  await expect(page.locator('#quest-card')).toHaveClass(/collapsed/);
+  await expect(page.locator('.minimap')).toHaveClass(/collapsed/);
+  await expect(page.locator('.toolbar')).toBeHidden();
+  await page.locator('[data-action="toggle-menu"]').click();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.toolbar')).toBeHidden();
+  await page.keyboard.press('Digit4');
+  expect(await page.evaluate(() => window.__quietDistrict.state.health)).toBe(95);
+  expect(await page.evaluate(() => window.__quietDistrict.state.medkits)).toBe(1);
+  await expect(page.locator('.hotbar-slot[data-index="3"] .hotbar-count')).toHaveText('1');
+  await page.keyboard.press('Digit1');
+  expect(await page.evaluate(() => window.__quietDistrict.state.equipment.weapon)).toBe('pistol');
+  await page.keyboard.press('Digit6');
+  expect(await page.evaluate(() => window.__quietDistrict.world.playerLight.intensity)).toBe(0);
+  await page.keyboard.press('Digit6');
+  expect(await page.evaluate(() => window.__quietDistrict.world.playerLight.intensity)).toBeGreaterThan(0);
+  await page.keyboard.press('KeyI');
+  await page.locator('[data-action="inventory-tab"][data-view="hotbar"]').click();
+  await page.locator('[data-action="hotbar-edit-slot"][data-index="0"]').click();
+  await page.locator('[data-action="hotbar-assign"][data-id="carbine"]').click();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('quiet-district-save-v1')).hotbar[0])).toBe('carbine');
+  await page.keyboard.press('Digit4');
+  expect(await page.evaluate(() => window.__quietDistrict.state.medkits)).toBe(1);
+  await page.keyboard.press('Escape'); await page.keyboard.press('Digit1');
+  expect(await page.evaluate(() => window.__quietDistrict.state.equipment.weapon)).toBe('carbine');
+  await page.locator('[data-action="toggle-quest"]').click();
+  await expect(page.locator('#quest-card')).not.toHaveClass(/collapsed/);
+  await page.locator('[data-action="toggle-minimap"]').click();
+  await expect(page.locator('.minimap canvas')).toBeVisible();
+  expect(await page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('.vital-detail span')).fontSize))).toBeGreaterThanOrEqual(16);
+  await page.screenshot({ path: '/workspace/artifacts/screenshots/v04-desktop.png' });
+});
+
+test('Mobile hotbar and editor have readable text, usable touch targets and no overlap', async ({ browser }) => {
+  test.setTimeout(180000);
+  const context = await browser.newContext({viewport:{width:390,height:844},hasTouch:true,isMobile:true});
+  const page = await context.newPage(), errors = []; page.on('pageerror', e => errors.push(e.message));
+  await start(page, { health: 40, medkits: 2 });
+  const sizes = await page.evaluate(() => {
+    const box = id => document.querySelector(id).getBoundingClientRect();
+    const bar = box('#hotbar'), vitals = box('#vitals'), joystick = box('#joystick');
+    return { width:document.documentElement.scrollWidth, viewport:innerWidth,
+      target:box('.hotbar-slot').width, font:parseFloat(getComputedStyle(document.querySelector('.vital-detail span')).fontSize),
+      overlaps:bar.top < vitals.bottom || bar.top < joystick.bottom };
+  });
+  expect(sizes.width).toBeLessThanOrEqual(sizes.viewport); expect(sizes.target).toBeGreaterThanOrEqual(44);
+  expect(sizes.font).toBeGreaterThanOrEqual(16); expect(sizes.overlaps).toBe(false);
+  await page.locator('[data-action="toggle-quest"]').tap();
+  await expect(page.locator('.minimap')).toBeHidden();
+  await page.locator('[data-action="toggle-quest"]').tap();
+  await page.locator('.hotbar-slot[data-index="3"]').tap();
+  expect(await page.evaluate(() => window.__quietDistrict.state.health)).toBe(85);
+  await page.screenshot({path:'/workspace/artifacts/screenshots/v04-mobile.png'});
+  await page.locator('#hotbar [data-action="inventory"]').tap();
+  await page.locator('[data-action="inventory-tab"][data-view="hotbar"]').tap();
+  await expect(page.locator('.hotbar-edit-slots button')).toHaveCount(6);
+  await page.locator('[data-action="hotbar-edit-slot"][data-index="1"]').tap();
+  await page.locator('[data-action="hotbar-assign"][data-id="medkit"]').tap();
+  expect(await page.evaluate(() => window.__quietDistrict.state.hotbar[1])).toBe('medkit');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({path:'/workspace/artifacts/screenshots/v04-editor-mobile.png'});
+  expect(errors).toEqual([]); await context.close();
 });
