@@ -1,6 +1,8 @@
 import './style.css';
 import './interface.css';
 import './hud.css';
+import './inventory.css';
+import { equipItem, unequipItem, withdrawResource } from './inventory.js';
 import { fishingFrameDelta } from './fishing.js';
 import { hotbarItem, assignHotbar } from './hotbar.js';
 import { Locomotion } from './movement.js';
@@ -136,7 +138,8 @@ class QuietDistrict {
     if (action === 'panel-open') { this.motion.reset(); this.path = []; this.target = null; this.job = null; this.keys.clear(); this.touchMovement = { x: 0, z: 0 }; this.ui.progress(null); this.cancelFishing(); return; }
     if (action === 'panel-close') { this.keys.clear(); return; }
     if (this.ui.pendingConfirm) return;
-    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders', 'helper'].includes(action)) {
+    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders', 'helper', 'storage'].includes(action)) {
+      if (action === 'storage' && !this.atHome()) { this.ui.toast('Подойди к хранилищу в убежище.'); return; }
       this.cancelBuild(); this.cancelFishing();
       if (this.ui.panel === action) this.ui.close(); else this.ui.open(action);
       return;
@@ -168,13 +171,16 @@ class QuietDistrict {
       this.world.placedGroups[index].group.visible = false;
       this.world.createGhost(item.id); this.updateBuildPreview(); return;
     }
-    if (action === 'equip') {
-      const recipe = RECIPES.find(r => r.id === data.id);
-      if (data.id === 'pipe') this.state.equipment.weapon = 'pipe';
-      else if (recipe && this.state.owned.includes(data.id) && Object.hasOwn(this.state.equipment, recipe.slot)) this.state.equipment[recipe.slot] = data.id;
-      else return;
-      if (recipe?.slot === 'weapon' || data.id === 'pipe') this.state.hotbarSelected = this.state.hotbar.indexOf(data.id);
-      this.world.updateEquipment(); this.ui.renderPanel(); this.ui.update(); this.save(); return;
+    if (action === 'equip' || action === 'unequip') {
+      const result = action === 'equip' ? equipItem(this.state, data.id) : unequipItem(this.state, data.slot);
+      if (!result.ok) this.ui.toast(result.reason);
+      else this.world.updateEquipment();
+      this.changed(); return;
+    }
+    if (action === 'withdraw') {
+      const result = withdrawResource(this.state, data.id, Number(data.count));
+      if (!result.ok) this.ui.toast(result.reason);
+      this.changed(); return;
     }
     if (action === 'deposit') {
       if (!this.atHome()) { this.ui.toast('Добычу можно сложить только в убежище.'); return; }
@@ -323,7 +329,7 @@ class QuietDistrict {
     const add = (type, x, z, label, hint, entity, range = 2.4) => { const distance = Math.hypot(s.x - x, s.z - z); if (distance < range) candidates.push({ type, x, z, label, hint, entity, distance }); };
     for (const node of this.world.nodes) if (node.group.visible) add('node', node.x, node.z, `${({ tree: 'Рубить дерево', wood: 'Собрать доски', ore: 'Добыть металл', herbs: 'Собрать растения', electronics: 'Разобрать электронику', crate: 'Открыть ящик', cloth: 'Собрать ткань', scrap: 'Разобрать лом', drop: 'Забрать добычу' })[node.type] || 'Собрать'} · ${node.name}`, node.requires && !s.owned.includes(node.requires) ? `Нужно: ${RECIPES.find(r => r.id === node.requires)?.name}` : 'Добыча в рюкзак', node);
     add('station', -21, 13, 'Станция рецептов', 'Создать снаряжение', null, 2.8);
-    add('storage', -13.5, 17, 'Сложить добычу', 'Запасы убежища', null, 2.2);
+    add('storage', -13.5, 17, 'Открыть хранилище', 'Склад убежища', null, 2.2);
     add('bed', -22, 17.7, 'Отдохнуть', 'Восстановить здоровье', null, 2);
     add('fish', 19.7, -17, 'Забросить удочку', s.owned.includes('rod') ? 'Рыбалка' : 'Сначала создай удочку', null, 2.8);
     add('orders', -14.5, 12.8, 'Заказы соседей', 'Обмен материалов на награды', null, 2.2);
@@ -334,7 +340,7 @@ class QuietDistrict {
       const info = productionInfo(s, p);
       if (info) add('production', p.x, p.z, RECIPES.find(r => r.id === p.id).name, info.remaining ? `До готовности: ${Math.ceil(info.remaining)} сек.` : info.name, p);
       if (p.id === 'bed') add('bed', p.x, p.z, 'Отдохнуть', 'Восстановить здоровье полностью', p);
-      if (p.id === 'chest') add('storage', p.x, p.z, 'Сложить добычу', 'Запасы убежища', p);
+      if (p.id === 'chest') add('storage', p.x, p.z, 'Открыть хранилище', 'Склад убежища', p);
     }
     candidates.sort((a, b) => a.distance - b.distance); return candidates[0] || null;
   }
@@ -348,7 +354,7 @@ class QuietDistrict {
     if (target.type === 'station') { this.ui.open('craft'); return; }
     if (target.type === 'helper') { this.ui.open('helper'); return; }
     if (target.type === 'orders') { this.ui.open('orders'); return; }
-    if (target.type === 'storage') { this.action('deposit'); return; }
+    if (target.type === 'storage') { this.action('storage'); return; }
     if (target.type === 'fish') { this.startFishing(); return; }
     if (target.type === 'bed') {
       const max = target.entity ? 100 : 80;

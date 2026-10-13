@@ -37,7 +37,8 @@ test('Imported models load, node pickup works, and route avoids obstacles', asyn
   expect(routing.length).toBeGreaterThan(5); expect(routing.valid).toBe(true);
   expect(routing.character).toBe(true); expect(routing.assets.length).toBe(6);
   await page.keyboard.press('KeyI');
-  await expect(page.locator('#panel')).toContainText('Рюкзак и снаряжение');
+  await expect(page.locator('#panel')).toContainText('Инвентарь');
+  await page.locator('[data-action="storage"]').click();
   await page.locator('[data-action="deposit"]').click();
   await expect.poll(() => page.evaluate(() => window.__quietDistrict.state.stash.metal)).toBe(6);
   expect(errors).toEqual([]);
@@ -314,4 +315,74 @@ test('Mobile hotbar and editor have readable text, usable touch targets and no o
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({path:'/workspace/artifacts/screenshots/v04-editor-mobile.png'});
   expect(errors).toEqual([]); await context.close();
+});
+
+test('Inventory cells equip and remove gear, storage transfers stacks and coloured artwork is present', async ({ page }) => {
+  test.setTimeout(180000);
+  await start(page,{owned:['pistol','vest','bag','bag2','boots','axe'],bag:{wood:45},equipment:{weapon:'pipe',armor:'vest',bag:'bag2',boots:null},ammo:12});
+  await page.keyboard.press('KeyI');
+  await expect(page.locator('.equipment-slot')).toHaveCount(4);
+  await expect(page.locator('#inventory-grid .item-cell')).toHaveCount(24);
+  await expect(page.locator('#inventory-grid [data-id="wood"] b')).toHaveText('45');
+  await page.locator('.equipment-slot[data-id="bag2"]').click();
+  await page.locator('[data-action="unequip"][data-slot="bag"]').click();
+  expect(await page.evaluate(()=>window.__quietDistrict.state.equipment.bag)).toBe('bag2');
+  await page.locator('[data-action="storage"]').click();
+  await page.locator('[data-action="deposit"]').click();
+  await page.locator('#storage-grid [data-id="wood"]').click();
+  await page.locator('[data-action="withdraw"][data-count="1"]').click();
+  expect(await page.evaluate(()=>window.__quietDistrict.state.bag.wood)).toBe(1);
+  await page.locator('.storage-actions [data-action="inventory"]').click();
+  await page.locator('#inventory-grid [data-id="pistol"]').click();
+  await page.locator('[data-action="equip"][data-id="pistol"]').click();
+  expect(await page.evaluate(()=>window.__quietDistrict.state.equipment.weapon)).toBe('pistol');
+  await page.locator('[data-action="unequip"][data-slot="weapon"]').click();
+  expect(await page.evaluate(()=>window.__quietDistrict.state.equipment.weapon)).toBe(null);
+  expect(await page.evaluate(()=>window.__quietDistrict.world.weaponRoot.children.length)).toBe(0);
+  await page.locator('#inventory-grid [data-id="pipe"]').click();
+  await page.locator('[data-action="equip"][data-id="pipe"]').click();
+  await page.locator('#inventory-grid [data-id="boots"]').click();
+  await page.locator('[data-action="equip"][data-id="boots"]').click();
+  expect(await page.evaluate(()=>window.__quietDistrict.state.equipment.boots)).toBe('boots');
+  expect(await page.locator('#inventory-grid .item-icon [fill]').count()).toBeGreaterThan(8);
+  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('quiet-district-save-v1')).equipment.boots)).toBe('boots');
+  await page.screenshot({path:'/workspace/artifacts/screenshots/v05-inventory.png'});
+});
+
+test('Roofs fade on entering each building and restore outside without changing collisions', async ({ page }) => {
+  test.setTimeout(150000);
+  await start(page);
+  const result=await page.evaluate(()=>{
+    const g=window.__quietDistrict,w=g.world,b=w.buildings.find(b=>b.x===13);
+    const before=w.blocked(8,4); g.ui.open('settings');
+    const count=w.buildings.length, geometries=w.buildings.map(b=>b.roofMeshes.length);
+    g.state.x=13;g.state.z=4;w.updateRoofs(.1);
+    const transition=b.roofMeshes[0].material.opacity;
+    for(let i=0;i<60;i++)w.updateRoofs(1/60);
+    const inside=b.roofMeshes[0].material.opacity, wall=b.wallMeshes[0].material.opacity;
+    g.state.x=5;g.state.z=4;for(let i=0;i<60;i++)w.updateRoofs(1/60);
+    return {count,geometries,transition,inside,wall,outside:b.roofMeshes[0].material.opacity,collision:before===w.blocked(8,4)};
+  });
+  expect(result.count).toBe(5); expect(result.geometries.every(n=>n===2)).toBe(true);
+  expect(result.transition).toBeGreaterThan(.035); expect(result.transition).toBeLessThan(1);
+  expect(result.inside).toBeLessThan(.04);expect(result.wall).toBeLessThan(.14);expect(result.outside).toBeGreaterThan(.99);expect(result.collision).toBe(true);
+});
+
+test('Mobile cell inventory supports item selection and equipment with usable touch targets', async ({browser})=>{
+  test.setTimeout(150000);
+  const context=await browser.newContext({viewport:{width:390,height:844},hasTouch:true,isMobile:true});
+  const page=await context.newPage(),errors=[]; page.on('pageerror',e=>errors.push(e.message));
+  await start(page,{owned:['boots','vest'],bag:{metal:6,cloth:3}});
+  await page.keyboard.press('KeyI');
+  await expect(page.locator('.equipment-slot')).toHaveCount(4);
+  await page.locator('#inventory-grid [data-id="boots"]').tap();
+  await expect(page.locator('.item-details')).toContainText('Походные ботинки');
+  await page.locator('[data-action="equip"][data-id="boots"]').tap();
+  expect(await page.evaluate(()=>window.__quietDistrict.state.equipment.boots)).toBe('boots');
+  const layout=await page.evaluate(()=>({width:document.documentElement.scrollWidth,viewport:innerWidth,
+    cell:document.querySelector('#inventory-grid .item-cell').getBoundingClientRect().width,
+    slot:document.querySelector('.equipment-slot').getBoundingClientRect().width}));
+  expect(layout.width).toBeLessThanOrEqual(layout.viewport);expect(layout.cell).toBeGreaterThanOrEqual(44);expect(layout.slot).toBeGreaterThanOrEqual(44);
+  await page.screenshot({path:'/workspace/artifacts/screenshots/v05-mobile-inventory.png'});
+  expect(errors).toEqual([]);await context.close();
 });

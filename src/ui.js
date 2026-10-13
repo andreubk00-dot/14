@@ -1,3 +1,4 @@
+import { inventoryItems, EQUIPMENT_SLOTS } from './inventory.js';
 import { HOTBAR_ITEMS, hotbarItem } from './hotbar.js';
 import { RESOURCES, RECIPES, CONTRACTS, bagWeight, capacity, total, craftStatus, contractStatus, productionInfo, objective, weapon } from './game.js';
 import { LOCATIONS } from './world.js';
@@ -12,7 +13,7 @@ const escape = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', 
 export class UI {
   constructor(root, state, actions) {
     this.state = state; this.actions = actions; this.panel = null; this.category = 'tools'; this.root = root;
-    this.cache = new Map(); this.search = ''; this.onlyAvailable = false; this.returnFocus = null; this.inventoryView = 'bag'; this.hotbarEditSlot = 0;
+    this.cache = new Map(); this.search = ''; this.onlyAvailable = false; this.returnFocus = null; this.inventoryView = 'bag'; this.hotbarEditSlot = 0; this.selectedItem = null;
     root.innerHTML = `
       <div id="world" aria-label="Игровой район"></div>
       <div class="cinematic-overlay"></div>
@@ -52,7 +53,8 @@ export class UI {
       const action = button.dataset.action;
       if (action === 'close') this.close();
       else if (action === 'category') { this.category = button.dataset.category; this.renderPanel(true); }
-      else if (action === 'inventory-tab') { this.inventoryView = button.dataset.view; this.renderPanel(true); }
+      else if (action === 'select-item') { this.selectedItem = button.dataset.id; this.renderPanel(); }
+      else if (action === 'inventory-tab') { this.inventoryView = button.dataset.view; this.selectedItem=null; this.renderPanel(true); }
       else if (action === 'available-filter') { this.onlyAvailable = !this.onlyAvailable; this.renderPanel(true); }
       else if (action === 'toggle-quest') { this.state.settings.questExpanded = !this.state.settings.questExpanded; this.update(); this.actions('hud-change'); }
       else if (action === 'toggle-minimap') { this.state.settings.minimapExpanded = !this.state.settings.minimapExpanded; this.update(); this.actions('hud-change'); }
@@ -110,7 +112,7 @@ export class UI {
   renderHotbar() {
     const state = this.state, choice = hotbarItem(state, state.hotbar[state.hotbarSelected]);
     const selected = choice && (choice.slot !== 'weapon' && choice.id !== 'pipe' || state.equipment.weapon === choice.id) ? choice : hotbarItem(state, state.equipment.weapon);
-    this.setHTML('hotbar', `<div class="hotbar-heading"><span>${selected ? `${recipeIcon(selected.id, 22)} ${selected.name}` : 'Быстрый доступ'}</span><button data-action="inventory" aria-label="Открыть рюкзак">${icon('bag', 22)} ${Number(bagWeight(state).toFixed(1))}/${capacity(state)}</button></div><div class="hotbar-slots">${state.hotbar.map((id, index) => {
+    this.setHTML('hotbar', `<div class="hotbar-heading"><span>${selected ? `${recipeIcon(selected.id, 22)} ${selected.name}` : weapon(state).name}</span><button data-action="inventory" aria-label="Открыть рюкзак">${icon('bag', 22)} ${Number(bagWeight(state).toFixed(1))}/${capacity(state)}</button></div><div class="hotbar-slots">${state.hotbar.map((id, index) => {
       const item = hotbarItem(state, id), active = index === state.hotbarSelected && item && !item.supply && (item.slot !== 'weapon' && item.id !== 'pipe' || state.equipment.weapon === id);
       return `<button class="hotbar-slot ${active ? 'active' : ''} ${item && !item.available ? 'unavailable' : ''}" data-action="hotbar-use" data-index="${index}" aria-label="${index + 1}: ${item ? item.name : 'Пустая ячейка'}${item?.count !== null && item ? `, ${item.count}` : ''}" aria-pressed="${!!active}" title="${item ? item.name : 'Назначить в инвентаре'} · ${index + 1}"><kbd>${index + 1}</kbd>${item ? recipeIcon(item.id, 36) : icon('add', 30)}${item?.count !== null && item ? `<b class="hotbar-count">${item.count}</b>` : ''}${item && !item.available && !item.supply ? `<span class="hotbar-lock">${icon('lock', 13)}</span>` : ''}</button>`;
     }).join('')}</div>`);
@@ -134,7 +136,7 @@ export class UI {
   }
   context(target) {
     const element = document.getElementById('context'); element.hidden = !target;
-    if (target) this.setHTML('context', `<button data-action="interact"><span class="context-icon">${icon(({ node: target.entity?.requires || ({ scrap: 'metal', herbs: target.entity?.originalLoot?.seeds ? 'seeds' : 'herbs', wood: 'wood', tree: 'axe', ore: 'pick', crate: 'chest', electronics: 'wire', cloth: 'cloth' })[target.entity?.type] || 'bag', station: 'craft', storage: 'chest', bed: 'bed', fish: 'rod', grave: 'bag', production: target.entity?.id || 'parts', water: 'water', orders: 'board', helper: 'herbs' })[target.type], 21)}</span><kbd>E</kbd><span>${target.label}</span>${target.hint ? `<small>${target.hint}</small>` : ''}</button>`);
+    if (target) this.setHTML('context', `<button data-action="interact"><span class="context-icon">${recipeIcon(({ node: target.entity?.requires || ({ scrap: 'metal', herbs: target.entity?.originalLoot?.seeds ? 'seeds' : 'herbs', wood: 'wood', tree: 'axe', ore: 'pick', crate: 'chest', electronics: 'wire', cloth: 'cloth' })[target.entity?.type] || 'bag', station: 'craft', storage: 'chest', bed: 'bed', fish: 'rod', grave: 'bag', production: target.entity?.id || 'parts', water: 'water', orders: 'board', helper: 'herbs' })[target.type], 21)}</span><kbd>E</kbd><span>${target.label}</span>${target.hint ? `<small>${target.hint}</small>` : ''}</button>`);
   }
   progress(label, ratio) {
     const element = document.getElementById('task-progress'); element.hidden = !label;
@@ -149,6 +151,7 @@ export class UI {
   open(panel, category) {
     this.returnFocus = document.activeElement;
     if (this.panel !== panel) { this.search = ''; this.onlyAvailable = false; }
+    if(this.panel!==panel) this.selectedItem=null;
     this.panel = panel;
     if (category) this.category = category;
     document.getElementById('panel-backdrop').hidden = false; document.getElementById('panel').hidden = false;
@@ -167,7 +170,8 @@ export class UI {
     const element = document.getElementById('panel'), state = this.state;
     const headers = {
       craft: ['МАСТЕРСКАЯ', 'Станция рецептов', 'Создавай то, что поможет идти дальше.'],
-      inventory: ['ТВОИ НАХОДКИ', 'Рюкзак и снаряжение', 'Снаряжение остаётся с тобой. Добычу храни дома.'],
+      inventory: ['СНАРЯЖЕНИЕ И ДОБЫЧА', 'Инвентарь', ''],
+      storage: ['УБЕЖИЩЕ', 'Хранилище', 'Запасы для рецептов и будущих вылазок.'],
       build: ['МЕСТО, КОТОРОЕ ТЫ СОЗДАЁШЬ', 'Обустройство', 'Выбери предмет, затем размести его в убежище.'],
       map: ['ШЕСТЬ МЕСТ. ОДНА ИСТОРИЯ.', 'Карта района', 'Выбери точку на карте — персонаж проложит путь.'],
       journal: ['ПЕРВАЯ ГЛАВА', 'Дневник возвращения', 'Маленькие шаги возвращают жизнь в большой мир.'],
@@ -176,7 +180,7 @@ export class UI {
       orders: ['РАЙОН СТАНОВИТСЯ ЖИВЫМ', 'Заказы соседей', 'Передавай материалы дома. Награда сразу отправится на склад.'],
     };
     const [eyebrow, title, subtitle] = headers[this.panel];
-    element.className = `panel ${this.panel === 'map' ? 'wide-panel' : ''}`;
+    element.className = `panel ${this.panel === 'map' || this.panel === 'inventory' ? 'wide-panel' : ''}`;
     let body = '';
     if (this.panel === 'craft' || this.panel === 'build') {
       const isBuild = this.panel === 'build';
@@ -199,16 +203,12 @@ export class UI {
       if (isBuild) body += this.productionOverview();
     }
     if (this.panel === 'inventory') {
-      const w = weapon(state), defense = RECIPES.find(r => r.id === state.equipment.armor)?.defense || 0;
-      body = `<nav class="category-tabs inventory-tabs">${[['bag', 'bag', 'С собой'], ['stash', 'home', 'На складе'], ['gear', 'shield', 'Снаряжение'], ['hotbar', 'hotbar', 'Хотбар']].map(([id, glyph, name]) => `<button data-action="inventory-tab" data-view="${id}" class="${this.inventoryView === id ? 'active' : ''}">${icon(glyph, 20)}<span>${name}</span></button>`).join('')}</nav>`;
-      if (this.inventoryView === 'bag') {
-        body += `<div class="section-title"><h3>Добыча в рюкзаке</h3><span>${bagWeight(state)} / ${capacity(state)} веса</span></div>${this.resourceGrid(state.bag)}<button class="primary full-width" data-action="deposit" ${!(state.x >= -27 && state.x <= -6 && state.z >= 5 && state.z <= 27) ? 'disabled' : ''}>${icon('home', 18)} Сложить добычу дома</button><p class="panel-note">Снаряжение и расходники не занимают место в рюкзаке.</p><div class="section-title"><h3>Расходники</h3></div><div class="supplies"><button data-action="use-medkit" ${!state.medkits || state.health >= 100 ? 'disabled' : ''}>${icon('medkit', 18)} Аптечка <b>${state.medkits}</b></button><button data-action="use-meal" ${!state.meals || (state.health >= 100 && state.stamina >= 100) ? 'disabled' : ''}>${icon('meal', 18)} Уха <b>${state.meals}</b></button><button data-action="use-tea" ${!state.teas || (state.health >= 100 && state.stamina >= 100) ? 'disabled' : ''}>${icon('water', 18)} Чай <b>${state.teas}</b></button><span>${icon('ammo', 18)} Заряды <b>${state.ammo}</b></span></div>`;
-      }
-      if (this.inventoryView === 'stash') body += `<div class="section-title"><h3>Запасы убежища</h3><span>Без ограничения</span></div>${this.resourceGrid(state.stash)}<p class="panel-note">Материалы со склада автоматически используются для рецептов и заказов дома.</p>${this.productionOverview()}`;
-      if (this.inventoryView === 'hotbar') body += this.hotbarEditor();
-      if (this.inventoryView === 'gear') {
-        body += `<div class="equipment-card"><div class="eyebrow">${recipeIcon(w.id, 17)} ЭКИПИРОВАНО</div><h3>${w.name}</h3><div class="equipment-stats"><div><b>${w.damage}</b><small>Урон</small></div><div><b>${w.range} м</b><small>Дальность</small></div><div><b>${Math.round(defense * 100)}%</b><small>Защита</small></div></div></div><div class="section-title"><h3>Изготовленное снаряжение</h3></div><div class="gear-list">${[ { id: 'pipe', name: 'Стальная труба', slot: 'weapon', desc: 'Простой инструмент для ближнего боя.' }, ...RECIPES.filter(r => r.slot && state.owned.includes(r.id)) ].map(r => `<article class="gear-row"><span class="recipe-icon">${recipeIcon(r.id, 26)}</span><div><strong>${r.name}</strong><p>${r.desc}</p></div>${r.slot === 'tool' ? `<span class="passive-badge">${icon('check', 14)} В наборе</span>` : `<button class="craft-button" data-action="equip" data-id="${r.id}" ${Object.values(state.equipment).includes(r.id) ? 'disabled' : ''}>${Object.values(state.equipment).includes(r.id) ? 'Надето' : 'Надеть'}</button>`}</article>`).join('')}</div>`;
-      }
+      body = `<nav class="category-tabs inventory-tabs"><button data-action="inventory-tab" data-view="bag" class="${this.inventoryView !== 'hotbar' ? 'active' : ''}">${icon('bag',22)} Предметы</button><button data-action="inventory-tab" data-view="hotbar" class="${this.inventoryView === 'hotbar' ? 'active' : ''}">${icon('hotbar',22)} Хотбар</button></nav>`;
+      if(this.inventoryView === 'hotbar') body += this.hotbarEditor();
+      else body += this.inventoryWindow();
+    }
+    if (this.panel === 'storage') {
+      body = `<div class="storage-actions"><button class="primary" data-action="deposit">${icon('bag',22)} Сложить добычу</button><button class="secondary" data-action="inventory">${icon('bag',22)} Рюкзак</button></div>${this.itemGrid(inventoryItems(state,true),'storage-grid')}${this.itemDetails(true)}`;
     }
     if (this.panel === 'helper') {
       const recruited = state.owned.includes('helper');
@@ -230,7 +230,7 @@ export class UI {
       ].map(([id, name, desc], i) => `<div class="story-step ${state.owned.includes(id) ? 'complete' : ''}"><span>${state.owned.includes(id) ? '✓' : `0${i + 1}`}</span><div><h3>${name}</h3><p>${desc}</p></div></div>`).join('')}</div>${state.chapterComplete ? '<div class="radio-message"><div class="eyebrow">ВХОДЯЩИЙ СИГНАЛ · 104.6</div><p>«Если кто-нибудь слышит… У нас есть семена. И свободное место за столом. Мы у водонапорной башни».</p><small>Конец первой главы. Теперь можно наладить воду и помочь соседям.</small></div>' : ''}<div class="section-title"><h3>Твоя история в цифрах</h3></div><div class="stats-grid"><div><strong>${state.gathered}</strong><span>ресурсов найдено</span></div><div><strong>${state.trips}</strong><span>добычи сдано</span></div><div><strong>${state.placed.length}</strong><span>предметов дома</span></div><div><strong>${state.kills}</strong><span>дронов отключено</span></div></div><div class="section-title"><h3>Рыбацкая коллекция</h3><span>${state.fishCollection.length} / 4</span></div><div class="collection-list">${['Речной окунь', 'Серебряный карась', 'Лунная форель', 'Перламутровая раковина'].map(name => `<div class="${state.fishCollection.includes(name) ? 'found' : ''}">${recipeIcon(({ 'Речной окунь': 'fish-perch', 'Серебряный карась': 'fish-crucian', 'Лунная форель': 'fish-trout', 'Перламутровая раковина': 'shell' })[name], 24)}<span>${state.fishCollection.includes(name) ? name : 'Неизвестная находка'}</span></div>`).join('')}</div>`;
     }
     if (this.panel === 'settings') body = `<div class="settings-row"><div><h3>Звуки района</h3><p>Ветер, шаги, инструменты и вода.</p></div><button class="toggle ${state.settings.sound ? 'on' : ''}" data-action="sound" aria-label="Переключить звук"><i></i></button></div><div class="settings-row"><div><h3>Качество графики</h3><p>Мягкие тени и свечение источников света.</p></div><button class="secondary" data-action="quality">${state.settings.quality === 'high' ? 'Высокое' : 'Экономное'}</button></div><div class="settings-row"><div><h3>Сохранение</h3><p id="save-note">Хранится только в этом браузере.</p></div><button class="secondary" data-action="save">Сохранить</button></div><button class="secondary full-width" data-action="export-save">Скачать сохранение</button><label class="import-save secondary full-width">Загрузить сохранение<input id="import-save" type="file" accept="application/json,.json"></label><div class="controls-table"><h3>Управление</h3><p><kbd>WASD / стрелки</kbd> Движение</p><p><kbd>ЛКМ по земле</kbd> Идти к точке</p><p><kbd>E</kbd> Сбор / действие / подсечка</p><p><kbd>Пробел</kbd> Атака / рыбалка</p><p><kbd>Shift</kbd> Бег</p><p><kbd>Q</kbd> Аптечка</p><p><kbd>R</kbd> Повернуть предмет при строительстве</p><p><kbd>Esc</kbd> Закрыть меню / отменить</p><p><kbd>Колесо мыши</kbd> Масштаб</p></div><div class="credits"><strong>Модели: KayKit / Kay Lousberg и Kenney · CC0</strong><p>Персонаж KayKit в капюшоне, растительность, дроны и бластеры. Архитектура и эффекты созданы для игры.</p></div><button class="danger-button" data-action="reset">Начать новую историю…</button>`;
-    element.innerHTML = `<header class="panel-header"><div class="eyebrow">${eyebrow}</div><button class="icon-button" data-action="close" aria-label="Закрыть меню">${icon('close')}</button><div class="panel-title"><span class="panel-title-icon">${icon(({ craft: 'craft', inventory: 'bag', build: 'build', map: 'map', journal: 'book', settings: 'settings', orders: 'board', helper: 'herbs' })[this.panel], 27)}</span><h2>${title}</h2></div><p>${subtitle}</p></header><div class="panel-body">${body}</div><footer class="panel-footer">${icon('clock', 14)} Игра на паузе <span>ESC — закрыть</span></footer>`;
+    element.innerHTML = `<header class="panel-header"><div class="eyebrow">${eyebrow}</div><button class="icon-button" data-action="close" aria-label="Закрыть меню">${icon('close')}</button><div class="panel-title"><span class="panel-title-icon">${icon(({ craft: 'craft', inventory: 'bag', storage: 'chest', build: 'build', map: 'map', journal: 'book', settings: 'settings', orders: 'board', helper: 'herbs' })[this.panel], 27)}</span><h2>${title}</h2></div>${subtitle ? `<p>${subtitle}</p>` : ''}</header><div class="panel-body">${body}</div><footer class="panel-footer">${icon('clock', 14)} Игра на паузе <span>ESC — закрыть</span></footer>`;
     element.querySelector('.panel-body').scrollTop = scroll;
     if (this.panel === 'map') {
       const canvas = document.getElementById('large-map'); this.renderMap(canvas, true);
@@ -242,6 +242,31 @@ export class UI {
       });
     }
     if (this.panel === 'settings') document.getElementById('import-save').addEventListener('change', event => this.actions('import-save', { file: event.target.files[0] }));
+  }
+  inventoryWindow() {
+    const state=this.state, items=inventoryItems(state), home=state.x>=-27&&state.x<=-6&&state.z>=5&&state.z<=27;
+    return `<div class="inventory-layout"><section class="equipment-column"><h3>Экипировка</h3><div class="equipment-grid">${Object.entries(EQUIPMENT_SLOTS).map(([slot,label])=>{
+      const id=state.equipment[slot], name=id==='pipe'?'Стальная труба':RECIPES.find(r=>r.id===id)?.name;
+      return `<button class="equipment-slot ${id?'filled':''} ${id&&this.selectedItem===id?'selected':''}" data-action="${id?'select-item':'inventory-tab'}" ${id?`data-id="${id}"`:'data-view="bag"'} aria-label="${label}: ${name||'не надето'}"><span>${label}</span>${id?recipeIcon(id,60):icon(({weapon:'sword',armor:'shield',bag:'bag',boots:'boots'})[slot],32)}<small>${name||'Свободно'}</small></button>`;
+    }).join('')}</div><div class="equipment-summary"><span>${icon('sword',20)} ${weapon(state).damage} урона</span><span>${icon('shield',20)} ${Math.round((RECIPES.find(r=>r.id===state.equipment.armor)?.defense||0)*100)}% защиты</span></div></section><section class="pack-column"><div class="inventory-weight"><h3>Рюкзак</h3><span>${Number(bagWeight(state).toFixed(2))} / ${capacity(state)}</span></div>${this.itemGrid(items,'inventory-grid')}${home?'<button class="secondary storage-link" data-action="storage">Открыть склад убежища →</button>':''}</section></div>${this.itemDetails(false)}`;
+  }
+  itemGrid(items,id) {
+    const cells=Math.max(24,Math.ceil(items.length/6)*6);
+    return `<div id="${id}" class="item-grid" role="group" aria-label="${id==='storage-grid'?'Ячейки склада':'Ячейки рюкзака'}">${Array.from({length:cells},(_,i)=>{
+      const item=items[i];
+      return item?`<button class="item-cell ${this.selectedItem===item.id?'selected':''}" data-action="select-item" data-id="${item.id}" aria-label="${item.name}, ${item.count}" aria-pressed="${this.selectedItem===item.id}" title="${item.name}">${recipeIcon(item.id,58)}<b>${item.count}</b></button>`:'<div class="item-cell empty" aria-hidden="true"></div>';
+    }).join('')}</div>`;
+  }
+  itemDetails(storage) {
+    const state=this.state, equipped=Object.entries(state.equipment).find(([,id])=>id&&id===this.selectedItem);
+    const item=inventoryItems(state,storage).find(r=>r.id===this.selectedItem)||(!storage&&equipped?{...(this.selectedItem==='pipe'?{id:'pipe',name:'Стальная труба',desc:'Надёжное оружие ближнего боя.'}:RECIPES.find(r=>r.id===this.selectedItem)),kind:'gear',count:1}:null);
+    if(!item) return '<div class="item-details empty-details">Выбери предмет, чтобы увидеть описание и действия.</div>';
+    let actions='';
+    if(storage) actions=`<button class="secondary" data-action="withdraw" data-id="${item.id}" data-count="1">Взять 1</button><button class="secondary" data-action="withdraw" data-id="${item.id}" data-count="${item.count}">Взять всё</button>`;
+    else if(equipped) actions=`<button class="secondary" data-action="unequip" data-slot="${equipped[0]}">Снять</button>`;
+    else if(item.kind==='gear'&&item.slot!=='tool') actions=`<button class="primary" data-action="equip" data-id="${item.id}">Надеть</button>`;
+    else if(['medkit','meal','tea'].includes(item.id)) actions=`<button class="primary" data-action="use-${item.id}">Использовать</button>`;
+    return `<section class="item-details"><div class="item-portrait">${recipeIcon(item.id,72)}</div><div><h3>${item.name}</h3><p>${item.desc||'Материал для создания и развития убежища.'}</p>${item.id==='pipe'?'<small>13 урона · 2.4 м</small>':''}<div class="item-actions">${actions}</div></div></section>`;
   }
   productionOverview() {
     const producers = this.state.placed.map(p => ({ item: p, info: productionInfo(this.state, p) })).filter(p => p.info);

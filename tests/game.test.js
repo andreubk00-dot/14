@@ -224,3 +224,39 @@ test('Reel indicator cannot jump over the input zone during a slow visible frame
   }
   assert.equal(fishingFrameDelta(-1, 'reel'), 0);
 });
+
+import { inventoryItems, equipItem, unequipItem, withdrawResource } from '../src/inventory.js';
+import { isInsideBuilding, fadeOpacity } from '../src/roofs.js';
+import { ART_IDS, itemArt } from '../src/item-art.js';
+test('Cell inventory separates equipped items, carried stacks and shelter storage', () => {
+  const s=freshState(); s.owned=['axe','vest']; s.equipment.armor='vest'; s.bag={wood:4};
+  const items=inventoryItems(s); assert.ok(items.some(i=>i.id==='axe')); assert.ok(!items.some(i=>i.id==='vest'||i.id==='pipe'));
+  assert.equal(items.find(i=>i.id==='wood').count,4); assert.deepEqual(inventoryItems(s,true).map(i=>i.kind),['resource','resource','resource']);
+  unequipItem(s,'armor'); assert.ok(inventoryItems(s).some(i=>i.id==='vest')); assert.ok(s.owned.includes('vest'));
+});
+test('Equipment changes preserve items and forbid reducing capacity below carried weight', () => {
+  const s=freshState(); s.owned=['bag2','bag','pistol']; s.equipment.bag='bag2'; s.bag={wood:45};
+  const before=structuredClone(s); assert.equal(unequipItem(s,'bag').ok,false); assert.equal(equipItem(s,'bag').ok,false); assert.deepEqual(s,before);
+  s.bag={wood:20}; assert.equal(unequipItem(s,'bag').ok,true); assert.equal(capacity(s),26);
+  assert.equal(unequipItem(s,'weapon').ok,true); assert.equal(weaponForTest(s).id,'unarmed');
+  assert.equal(validateSave(JSON.parse(JSON.stringify(s))).equipment.weapon,null);
+  assert.equal(equipItem(s,'pistol').ok,true); assert.equal(equipItem(s,'armor').ok,false);
+});
+import { weapon as weaponForTest } from '../src/game.js';
+test('Storage withdrawal is atomic, respects weight and requires being home', () => {
+  const s=freshState(); s.stash.wood=10; s.bag.wood=25;
+  const before=structuredClone(s); assert.equal(withdrawResource(s,'wood',2).ok,false); assert.deepEqual(s,before);
+  assert.equal(withdrawResource(s,'wood',1).ok,true); assert.equal(s.bag.wood,26); assert.equal(s.stash.wood,9);
+  s.x=20; assert.equal(withdrawResource(s,'wood',1).ok,false); assert.equal(s.stash.wood,9);
+});
+test('Roof boundaries and fades are smooth and independent of simulation frame rate', () => {
+  const b={x:13,z:4,w:10,d:8}; assert.equal(isInsideBuilding(b,13,4),true); assert.equal(isInsideBuilding(b,20,4),false);
+  const fade=hz=>{let value=1;for(let i=0;i<hz;i++) value=fadeOpacity(value,.035,1/hz);return value;};
+  assert.ok(Math.abs(fade(30)-fade(120))<1e-9); assert.ok(fade(60)<.04); assert.ok(fadeOpacity(.035,1,.1)>.035);
+});
+test('Every item and crafting recipe has painted, coloured artwork', () => {
+  for(const id of [...RECIPES.map(r=>r.id),'pipe','wood','metal','wire','parts','cloth','herbs','seeds','fish','pearl','water']) {
+    assert.ok(ART_IDS.includes(id),id); assert.match(itemArt(id),/fill="#[a-f0-9]{6}"/);
+  }
+  assert.notEqual(itemArt('vest'),itemArt('armor')); assert.notEqual(itemArt('bag'),itemArt('bag2'));
+});

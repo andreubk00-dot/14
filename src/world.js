@@ -1,3 +1,4 @@
+import { isInsideBuilding, fadeOpacity } from './roofs.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -61,7 +62,7 @@ export class World {
         gl_FragColor=vec4(c,1.);}`,
     });
     this.composer.addPass(this.grade);
-    this.colliders = []; this.nodes = []; this.enemies = []; this.floating = []; this.lights = [];
+    this.buildings = []; this.colliders = []; this.nodes = []; this.enemies = []; this.floating = []; this.lights = [];
     this.pickables = []; this.fogs = []; this.mixers = []; this.placedGroups = [];
     this.raycaster = new THREE.Raycaster(); this.mouse = new THREE.Vector2();
     this.plane = new THREE.Plane(Y, 0); this.time = 0;
@@ -76,7 +77,7 @@ export class World {
     const excluded = new Set([this.genIndicator, this.towerIndicator, this.water, this.destination, this.selectionRing,
       this.homeLamp.glow, this.homeLamp.spill, ...this.lights.flatMap(l => [l.glow, l.spill])]);
     this.scene.traverse(mesh => {
-      if (!mesh.isMesh || excluded.has(mesh) || this.pickables.includes(mesh) || mesh.material.isShaderMaterial || mesh.material.transparent) return;
+      if (mesh.userData.cutaway || !mesh.isMesh || excluded.has(mesh) || this.pickables.includes(mesh) || mesh.material.isShaderMaterial || mesh.material.transparent) return;
       let parent = mesh;
       while (parent) { if (parent === this.bridgeGroup || parent === this.solarRoof) return; parent = parent.parent; }
       const key = mesh.material.uuid;
@@ -216,6 +217,80 @@ export class World {
     for (const x of [-0.4, 0.4]) this.box(x * s, 0.45 * s, 0.53 * s, 0.1 * s, 0.85 * s, 0.06, '#b2a17a', group);
     return group;
   }
+  createRoof(x,z,w,d,h,shade) {
+    const group = new THREE.Group(); group.position.set(x,0,z); this.scene.add(group);
+    const angle = 0.22, half = (d+0.8)/2;
+    for (const side of [-1,1]) {
+      const roof = this.box(0,h+half*Math.sin(angle)/2+0.22,side*half/2,w+0.9,0.18,half/Math.cos(angle),shade,group);
+      roof.rotation.x = side*angle;
+      for(let xx=-w/2;xx<=w/2;xx+=1.2) {
+        const seam=this.box(xx,roof.position.y+0.11,roof.position.z,0.035,0.025,half/Math.cos(angle),'#91a298',group); seam.rotation.x=roof.rotation.x;
+      }
+    }
+    group.updateMatrixWorld(true);
+    const batches=new Map();
+    for(const mesh of [...group.children]) {
+      const key=mesh.material.uuid;
+      if(!batches.has(key)) batches.set(key,{material:mesh.material,parts:[],meshes:[]});
+      const batch=batches.get(key); batch.parts.push(mesh.geometry.clone().applyMatrix4(mesh.matrix)); batch.meshes.push(mesh);
+    }
+    for(const batch of batches.values()) {
+      const geometry=mergeGeometries(batch.parts); batch.parts.forEach(p=>p.dispose());
+      if(!geometry) continue;
+      for(const mesh of batch.meshes) { group.remove(mesh); mesh.geometry.dispose(); }
+      const merged=new THREE.Mesh(geometry,batch.material); merged.castShadow=true; merged.receiveShadow=true; group.add(merged);
+    }
+    return group;
+  }
+  registerBuilding(x,z,w,d,roof,structures) {
+    const roofMeshes=[], wallMeshes=[], copies=new Map();
+    const mark=(mesh,list)=>{
+      if(!mesh.isMesh) return;
+      mesh.userData.cutaway=true;
+      const key=`${list===roofMeshes?'roof':'wall'}:${mesh.material.uuid}`;
+      if(!copies.has(key)) copies.set(key,mesh.material.clone());
+      mesh.material=copies.get(key);
+      mesh.material.transparent=true; mesh.material.depthWrite=false; mesh.renderOrder=2;
+      list.push(mesh);
+    };
+    roof.traverse(mesh=>mark(mesh,roofMeshes));
+    for(const object of structures) object.traverse(mesh=>{
+      if(mesh.isMesh && (mesh===object || mesh.position.y>0.8)) mark(mesh,wallMeshes);
+    });
+    const batches=new Map(), mergedWalls=[];
+    for(const mesh of wallMeshes) {
+      mesh.updateMatrix();
+      const key=`${mesh.parent.uuid}:${mesh.material.uuid}`;
+      if(!batches.has(key)) batches.set(key,[]); batches.get(key).push(mesh);
+    }
+    for(const meshes of batches.values()) {
+      if(meshes.length===1) { mergedWalls.push(meshes[0]); continue; }
+      const parts=meshes.map(mesh=>mesh.geometry.clone().applyMatrix4(mesh.matrix)), geometry=mergeGeometries(parts);
+      parts.forEach(p=>p.dispose());
+      if(!geometry) { mergedWalls.push(...meshes); continue; }
+      const parent=meshes[0].parent, merged=new THREE.Mesh(geometry,meshes[0].material);
+      merged.userData.cutaway=true; merged.castShadow=true; merged.receiveShadow=true; merged.renderOrder=2;
+      for(const mesh of meshes) { parent.remove(mesh); mesh.geometry.dispose(); }
+      parent.add(merged); mergedWalls.push(merged);
+    }
+    wallMeshes.splice(0,wallMeshes.length,...mergedWalls);
+    const building={x,z,w,d,roofMeshes,wallMeshes,inside:isInsideBuilding({x,z,w,d},this.state.x,this.state.z)};
+    for(const mesh of roofMeshes) mesh.material.opacity=building.inside?0.035:1;
+    for(const mesh of wallMeshes) mesh.material.opacity=building.inside?0.13:1;
+    this.buildings.push(building);
+  }
+  updateRoofs(dt) {
+    for(const b of this.buildings) {
+      b.inside=isInsideBuilding(b,this.state.x,this.state.z);
+      const updated=new Set();
+      for(const [meshes,target] of [[b.roofMeshes,b.inside?0.035:1],[b.wallMeshes,b.inside?0.13:1]]) {
+        for(const mesh of meshes) {
+          if(!updated.has(mesh.material)) { mesh.material.opacity=fadeOpacity(mesh.material.opacity,target,dt); updated.add(mesh.material); }
+          mesh.castShadow=!b.inside;
+        }
+      }
+    }
+  }
   building(x, z, w, d, h, shade, sign) {
     const group = new THREE.Group(); group.position.set(x, 0, z); this.scene.add(group);
     this.box(0, 0.13, 0, w + 0.3, 0.25, d + 0.3, '#77786d', group);
@@ -229,24 +304,25 @@ export class World {
       this.box(xx, h * 0.65, -d / 2 + 0.24, 0.07, 1.4, 0.07, '#b1ab91', group);
       this.box(xx, h * 0.65, -d / 2 + 0.24, 1.25, 0.07, 0.07, '#b1ab91', group);
     }
-    this.box(0, h + 0.14, -d * 0.35, w + 0.55, 0.27, d * 0.4, '#53615a', group);
+
     this.box(0, h - 0.2, d / 2, w + 0.3, 0.18, 0.65, '#6f7567', group);
     if (sign) this.label(sign, 0, h - 0.95, d / 2 + 0.19, w * 0.73, '#ccbe98', '#46594c', group);
     this.collider(x, z - d / 2, w, 0.6); this.collider(x - w / 2, z, 0.6, d);
     this.collider(x + w / 2, z - d * 0.15, 0.6, d * 0.7);
     this.collider(x - w * 0.3, z + d / 2, w * 0.4, 0.6); this.collider(x + w * 0.3, z + d / 2, w * 0.4, 0.6);
     for (let i = 0; i < 8; i++) this.box(rng() * (w - 1) - w / 2 + 0.5, 0.32, rng() * (d - 1) - d / 2 + 0.5, 0.2 + rng() * 0.35, 0.13, 0.2 + rng() * 0.35, '#8b8975', group);
+    const roof = this.createRoof(x, z, w, d, h, '#566d65');
+    this.registerBuilding(x,z,w,d,roof,[group]);
     return group;
   }
   buildHome() {
     const x = -18, z = 15;
     this.box(x, 0.09, z, 12, 0.2, 9, '#827b63');
     // Open cutaway walls keep the interior legible from the isometric camera.
-    this.box(x, 1.8, z - 4.5, 12, 3.6, 0.25, '#8c8d76'); this.collider(x, z - 4.5, 12, 0.5);
-    this.box(x - 6, 1.8, z, 0.25, 3.6, 9, '#777c6b'); this.collider(x - 6, z, 0.5, 9);
+    const backWall = this.box(x, 1.8, z - 4.5, 12, 3.6, 0.25, '#8c8d76'); this.collider(x, z - 4.5, 12, 0.5);
+    const sideWall = this.box(x - 6, 1.8, z, 0.25, 3.6, 9, '#777c6b'); this.collider(x - 6, z, 0.5, 9);
     for (let xx = -23; xx < -12; xx += 1) this.box(xx, 0.205, z, 0.04, 0.015, 9, '#655f4e');
-    this.box(x, 3.7, z - 3.5, 12.6, 0.25, 2.7, '#4a6056');
-    for (let xx = -24; xx <= -12; xx += 0.55) this.box(xx, 3.85, z - 3.5, 0.045, 0.06, 2.7, '#6c7b6b');
+    this.homeRoof = this.createRoof(x,z,12,9,3.6,'#4a6056');
     // Roof beams, worn paint and climbing plants give the cutaway shelter a lived-in silhouette.
     for (const xx of [-23.8, -18, -12.2]) this.box(xx, 2, 10.6, 0.14, 3.6, 0.2, '#66725e');
     this.box(-18, 1.25, 10.67, 11.5, 0.035, 0.035, '#a6a27f');
@@ -299,6 +375,7 @@ export class World {
       this.box(-22 + i * 3.3, 3.99, 11.5, 2.5, 0.12, 1.8, '#344b59', this.solarRoof);
       for (let j = 0; j < 4; j++) this.box(-23 + i * 3.3 + j * 0.65, 4.057, 11.5, 0.025, 0.012, 1.7, '#879990', this.solarRoof);
     }
+    this.registerBuilding(x,z,12,9,this.homeRoof,[backWall,sideWall,this.solarRoof]);
   }
   buildMarket() {
     this.building(13, 4, 10, 8, 5, '#8b8974', 'ПРОДУКТЫ');
@@ -570,7 +647,9 @@ export class World {
   }
   updateEquipment() {
     this.renderDirty = true;
+    this.playerLight.intensity = this.state.owned.includes('lantern') && this.state.lanternOn !== false ? 3.5 : 0;
     this.weaponRoot.clear(); const id = this.state.equipment.weapon;
+    if (!id) return;
     if (id === 'pistol' || id === 'carbine') {
       if (!this.assets) return;
       const model = this.assets[id === 'pistol' ? 'blaster' : 'blaster-repeater'].scene.clone();
@@ -721,7 +800,7 @@ export class World {
     this.scene.add(line); this.effects ||= []; this.effects.push({ mesh: line, life: 0.15, max: 0.15 }); this.impact(tx, 1.1, tz);
   }
   update(dt, moving, focus = true) {
-    this.time += dt;
+    this.time += dt; this.updateRoofs(dt);
     const player = this.player;
     if (focus) {
       const desired = new THREE.Vector3(this.state.x + 1, 0, this.state.z - 1);

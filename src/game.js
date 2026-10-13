@@ -99,7 +99,8 @@ export function validateSave(input) {
   for (const slot of Object.keys(state.equipment)) {
     const id = input.equipment?.[slot];
     const recipe = RECIPES.find(r => r.id === id);
-    if (id === 'pipe' && slot === 'weapon') state.equipment.weapon = 'pipe';
+    if (id === null) state.equipment[slot] = null;
+    else if (id === 'pipe' && slot === 'weapon') state.equipment.weapon = 'pipe';
     else if (state.owned.includes(id) && recipe?.slot === slot) state.equipment[slot] = id;
   }
   for (const key of ['x', 'z']) if (Number.isFinite(input[key])) state[key] = Math.max(-43, Math.min(43, input[key]));
@@ -218,7 +219,7 @@ export function deposit(state) {
   if (amount) state.trips++;
   return amount;
 }
-export function weapon(state) { return RECIPES.find(r => r.id === state.equipment.weapon) || DEFAULT_WEAPON; }
+export function weapon(state) { if (state.equipment.weapon === null) return { id: 'unarmed', name: 'Без оружия', damage: 5, range: 1.6, cooldown: 0.75 }; return RECIPES.find(r => r.id === state.equipment.weapon) || DEFAULT_WEAPON; }
 export function takeDamage(state, amount) {
   const defense = RECIPES.find(r => r.id === state.equipment.armor)?.defense || 0;
   state.health = Math.max(0, state.health - amount * (1 - defense));

@@ -1,3 +1,4 @@
+import { itemArt } from './item-art.js';
 const paths = {
   home: '<path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-7h6v7"/>',
   craft: '<path d="m14 4 6 6M3 21l10-10M12 3l9 9M15 7l-3 3M3 3l5 5-2 2-5-5M10 12l9 9 2-2-9-9"/>',
@@ -91,8 +92,8 @@ Object.assign(paths, {
 export function icon(name, size = 20) {
   return `<svg class="ui-icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.info}</svg>`;
 }
-export const resourceIcon = (id, size = 20) => icon(id, size);
+export const resourceIcon = (id, size = 20) => itemArt(id, size) || icon(id, size);
 const recipeIcons = { pipe: 'pipe', axe: 'axe', pick: 'pick', cutter: 'cutter', rod: 'rod', rod2: 'rod2', spear: 'spear', pistol: 'pistol', carbine: 'carbine', vest: 'vest', armor: 'armor', bag: 'bag', bag2: 'bag2', boots: 'boots', lantern: 'lantern', medkit: 'medkit', meal: 'meal', ammo: 'ammo', generator: 'generator', bridge: 'bridge', lamp: 'lamp', bed: 'bed', garden: 'garden', chest: 'chest', sofa: 'sofa', planter: 'planter', rug: 'rug', radio: 'radio', pump: 'pump', purifier: 'purifier', recycler: 'recycler', solar: 'solar', tea: 'tea', helper: 'helper', seedbed: 'seedbed' };
 export const ITEM_ICON_IDS = Object.keys(recipeIcons);
-export const recipeIcon = (id, size = 24) => icon(recipeIcons[id] || id, size);
+export const recipeIcon = (id, size = 24) => itemArt(id, size) || icon(recipeIcons[id] || id, size);
 export const categoryIcon = id => icon(({ tools: 'axe', weapons: 'sword', gear: 'shield', supplies: 'medkit', shelter: 'home' })[id], 18);
