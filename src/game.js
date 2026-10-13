@@ -19,6 +19,11 @@ export const RESOURCES = {
   water: { name: 'Чистая вода', icon: 'water', color: '#84bfc7', weight: 0.5 },
 };
 export const RECIPES = [
+ {id:'scoutcoat',name:'Куртка разведчика',category:'gear',desc:'12% защиты · скорость +8% · дистанция обнаружения −25%. Для обхода патрулей.',cost:{cloth:9,herbs:3,parts:2},slot:'armor',defense:.12,speedMultiplier:1.08,visibilityMultiplier:.75},
+ {id:'hauler',name:'Грузовая рама',category:'gear',desc:'Вместимость 70 · скорость −16%. Для больших партий добычи.',cost:{wood:8,metal:7,cloth:8},requires:'bag',slot:'bag',capacity:70,speedMultiplier:.84},
+ {id:'raincatcher',name:'Дождевой накопитель',category:'shelter',desc:'Фильтрует дождевую воду во дворе. До 6 воды; сбор вручную.',cost:{wood:6,metal:4,cloth:2},placeable:true},
+ {id:'dryrack',name:'Сушилка для улова',category:'shelter',desc:'2 рыбы и 1 трава → 2 порции еды за 100 секунд. Загрузка и сбор вручную.',cost:{wood:8,cloth:3,wire:2},placeable:true},
+ {id:'gearrack',name:'Стеллаж комплектов',category:'shelter',desc:'Сохрани два комплекта экипировки и быстро меняй их дома.',cost:{wood:8,metal:3},placeable:true},
  {id:'dressing',name:'Аптечка из медицинских запасов',category:'supplies',desc:'Аптечка из уцелевших материалов клиники. Восстанавливает 45 здоровья; использование Q.',cost:{medicine:1,cloth:1},repeatable:true},
  {id:'lure',name:'Многоразовая блесна',category:'tools',desc:'Привлекает форель. Выбирается у воды; не расходуется.',cost:{metal:3,wire:2,pearl:1},requires:'rod',slot:'tool'},
  {id:'fishmeal',name:'Рыба, запечённая с овощами',category:'supplies',desc:'Две порции походной еды из улова и урожая.',cost:{fish:2,vegetables:2,wood:1},repeatable:true},
@@ -41,7 +46,7 @@ export const RECIPES = [
   { id: 'pistol', name: 'Сигнальный бластер', category: 'weapons', desc: 'Дальность 11 м · урон 19 · расходует заряды.', cost: { metal: 12, parts: 4, wire: 3 }, slot: 'weapon', damage: 19, range: 11, cooldown: 0.48, icon: '⌁' },
   { id: 'carbine', name: 'Импульсный карабин', category: 'weapons', desc: 'Дальность 15 м · урон 30 · расходует заряды.', cost: { metal: 20, parts: 8, wire: 6, pearl: 2 }, requires: 'generator', slot: 'weapon', damage: 30, range: 15, cooldown: 0.32, icon: '⌁' },
   { id: 'vest', name: 'Рабочий жилет', category: 'gear', desc: 'Снижает входящий урон на 25%.', cost: { cloth: 6, metal: 3 }, slot: 'armor', defense: 0.25, icon: '▣' },
-  { id: 'armor', name: 'Пластинчатая куртка', category: 'gear', desc: 'Снижает урон на 45%. Для дальних вылазок.', cost: { cloth: 10, metal: 12, parts: 3 }, requires: 'vest', slot: 'armor', defense: 0.45, icon: '▣' },
+  { id: 'armor', name: 'Пластинчатая куртка', category: 'gear', desc: 'Защита 45% · скорость −10%. Для опасных мест.', cost: { cloth: 10, metal: 12, parts: 3 }, requires: 'vest', slot: 'armor', defense: 0.45, speedMultiplier:.9, icon: '▣' },
   { id: 'bag', name: 'Рюкзак сборщика', category: 'gear', desc: 'Вместимость 40 вместо 26. Больше находок за один путь.', cost: { cloth: 7, wood: 2 }, slot: 'bag', capacity: 40, icon: '▤' },
   { id: 'bag2', name: 'Экспедиционный рюкзак', category: 'gear', desc: 'Вместимость 60. Для долгих походов.', cost: { cloth: 12, metal: 4, parts: 2 }, requires: 'bag', slot: 'bag', capacity: 60, icon: '▤' },
   { id: 'boots', name: 'Походные ботинки', category: 'gear', desc: 'Скорость движения +18%.', cost: { cloth: 5, metal: 2 }, slot: 'boots', icon: '⌑' },
@@ -83,7 +88,7 @@ export const FISH = [
 export const HOME = { x: -16, z: 16 };
 export function freshState() {
   return {
-    openedGates:[],packedFurniture:[],fishingBait:'none',visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
+    loadouts:[null,null],openedGates:[],packedFurniture:[],fishingBait:'none',visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
     version: 1, x: HOME.x + 1, z: HOME.z + 2, health: 100, stamina: 100,
     stash: { wood: 3, metal: 2, cloth: 2 }, bag: {}, owned: [],
     equipment: { weapon: 'pipe', armor: null, bag: null, boots: null },
@@ -99,6 +104,8 @@ function cleanFurniture(p,elapsed) {
  const item={id:p.id,x:p.x,z:p.z,rotation:Number.isFinite(p.rotation)?p.rotation:0,harvested:Number.isFinite(p.harvested)?Math.min(elapsed,Math.max(0,p.harvested)):elapsed};
  if(['lamp','foundlamp','recordplayer'].includes(p.id))item.enabled=p.id==='recordplayer'?p.enabled===true:p.enabled!==false;
  if(p.id==='cropbed'){item.crop=Object.hasOwn(CROPS,p.crop)?p.crop:null;item.plantedAt=item.crop&&Number.isFinite(p.plantedAt)?Math.max(0,Math.min(elapsed,p.plantedAt)):null;if(Number.isFinite(p.rainGrowth)&&p.rainGrowth>0)item.rainGrowth=Math.min(p.rainGrowth,10000);}
+ if(p.id==='raincatcher')item.rainWater=Number.isFinite(p.rainWater)?Math.max(0,Math.min(6,p.rainWater)):0;
+ if(p.id==='dryrack')item.dryingAt=Number.isFinite(p.dryingAt)?Math.max(0,Math.min(elapsed,p.dryingAt)):null;
  return item;
 }
 export function validateSave(input) {
@@ -156,6 +163,7 @@ export function validateSave(input) {
     for (const resource of Object.keys(RESOURCES)) if (Number.isFinite(d.loot[resource]) && d.loot[resource] > 0) loot[resource] = Math.min(100000, Math.floor(d.loot[resource]));
     return { id: d.id.slice(0, 80), x: Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, d.x)), z: Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, d.z)), loot };
   }).filter(d => Object.keys(d.loot).length);
+  state.loadouts=[0,1].map(i=>{const p=input.loadouts?.[i];if(!p||typeof p!=='object')return null;const e={};for(const slot of Object.keys(state.equipment)){const id=p[slot];e[slot]=id==='pipe'&&slot==='weapon'?'pipe':state.owned.includes(id)&&RECIPES.some(r=>r.id===id&&r.slot===slot)?id:null;}return e;});
   state.fishCollection = (Array.isArray(input.fishCollection) ? input.fishCollection : []).filter(name => FISH.some(f => f.name === name));
   if (input.grave && Number.isFinite(input.grave.x) && Number.isFinite(input.grave.z)) {
     const loot = {};
@@ -314,6 +322,8 @@ export function deliverContract(state, id) {
 }
 export function productionInfo(state,item) {
   if(item.id==='cropbed') return cropInfo(state,item);
+  if(item.id==='raincatcher'){const n=Math.floor(item.rainWater||0);return {loot:{water:n},remaining:n?0:1,waitingForRain:!n,name:`Собрать воду · ${n}`};}
+  if(item.id==='dryrack')return {loot:{},mealOutput:2,needsLoading:!Number.isFinite(item.dryingAt),remaining:Number.isFinite(item.dryingAt)?Math.max(0,100-(state.elapsed-item.dryingAt)):1,name:'Забрать 2 порции еды'};
   const recipes = {
     seedbed: { interval: 120, loot: { herbs: 6 }, name: 'Собрать редкие травы' },
     garden: { interval: 90, loot: { herbs: 3 }, name: 'Собрать травы' },
@@ -330,7 +340,10 @@ export function productionInfo(state,item) {
 export function harvestProduction(state, item) {
   const info = productionInfo(state, item);
   if (!info) return { ok: false, reason: 'Нет производства' };
+  if(info.needsLoading)return {ok:false,reason:'Сначала загрузи улов'};
+  if(info.waitingForRain)return {ok:false,reason:'Накопитель ожидает дождь'};
   if (info.remaining > 0) return { ok: false, reason: `До готовности ${Math.ceil(info.remaining)} сек.` };
+  if(info.mealOutput){state.meals+=info.mealOutput;item.dryingAt=null;item.harvested=state.elapsed;return {ok:true,received:{},mealOutput:info.mealOutput};}
   const weight = Object.entries(info.loot).reduce((n, [id, count]) => n + RESOURCES[id].weight * count, 0);
   // Fees can free bag space, but readiness is atomic: nothing is spent until output fits.
   const freed = info.cost ? Object.entries(info.cost).reduce((n, [id, count]) => n + Math.max(0, count - (state.stash[id] || 0)) * RESOURCES[id].weight, 0) : 0;
@@ -340,7 +353,7 @@ export function harvestProduction(state, item) {
   let received;
   if(toStash) { for(const [id,n] of Object.entries(info.loot)) state.stash[id]=(state.stash[id]||0)+n;received={...info.loot}; }
   else received=collect(state,info.loot).received;
-  item.harvested=state.elapsed;
+  item.harvested=state.elapsed;if(item.id==='raincatcher')item.rainWater=Math.max(0,item.rainWater-Math.floor(item.rainWater));
   if(item.id==='cropbed') {item.crop=null;item.plantedAt=null;delete item.rainGrowth;}
   return {ok:true,received,toStash};
 }
@@ -408,11 +421,25 @@ export function packFurniture(state,index) {
 export function unpackFurniture(state,index,x,z,rotation,obstacles=[]) {
  const saved=state.packedFurniture[index];if(!(state.x>=-27&&state.x<=-6&&state.z>=5&&state.z<=27)||!saved||state.placed.length>=70||!placementAllowed({...saved,x,z,rotation},obstacles,state.placed))return false;
  const {packedAt,...item}=saved,paused=Math.max(0,state.elapsed-packedAt);
- item.harvested+=paused;if(Number.isFinite(item.plantedAt))item.plantedAt+=paused;
+ item.harvested+=paused;if(Number.isFinite(item.dryingAt))item.dryingAt+=paused;if(Number.isFinite(item.plantedAt))item.plantedAt+=paused;
  Object.assign(item,{x,z,rotation});state.placed.push(item);state.packedFurniture.splice(index,1);return true;
 }
 export function updateRainCrops(state,dt,isInside) {
  const rain=weatherAt(state.elapsed).rain;if(!rain||!Number.isFinite(dt)||dt<=0)return false;
+ for(const p of state.placed)if(p.id==='raincatcher'&&!isInside(p.x,p.z))p.rainWater=Math.min(6,(p.rainWater||0)+dt*rain/35);
  for(const p of state.placed)if(p.id==='cropbed'&&p.crop&&!isInside(p.x,p.z))p.rainGrowth=Math.min(10000,(p.rainGrowth||0)+dt*rain*.25);
  return true;
+}
+
+export function startDrying(state,item){
+ if(!state.placed.includes(item)||item.id!=='dryrack'||Number.isFinite(item.dryingAt))return {ok:false,reason:'Сушилка уже занята'};
+ if(!spend(state,{fish:2,herbs:1}))return {ok:false,reason:'Нужно 2 рыбы и 1 трава'};
+ item.dryingAt=state.elapsed;return {ok:true};
+}
+export function saveLoadout(state,index){if(![0,1].includes(index)||!state.placed.some(p=>p.id==='gearrack')||state.x<-27||state.x>-6||state.z<5||state.z>27)return false;state.loadouts[index]={...state.equipment};return true;}
+export function applyLoadout(state,index){
+ const e=state.loadouts[index];if(!e||!state.placed.some(p=>p.id==='gearrack')||state.x<-27||state.x>-6||state.z<5||state.z>27)return {ok:false,reason:'Комплект доступен у стеллажа дома'};
+ for(const [slot,id] of Object.entries(e))if(id!==null&&!(id==='pipe'&&slot==='weapon')&&!RECIPES.some(r=>r.id===id&&r.slot===slot&&state.owned.includes(id)))return {ok:false,reason:'Снаряжение недоступно'};
+ const limit=RECIPES.find(r=>r.id===e.bag)?.capacity||26;if(bagWeight(state)>limit)return {ok:false,reason:'Сначала разгрузи рюкзак'};
+ state.equipment={...e};state.hotbarSelected=state.hotbar.indexOf(e.weapon);return {ok:true};
 }

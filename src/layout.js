@@ -1,6 +1,6 @@
 // Geometry shared by movement, furnishing previews and district checks.
 export const FURNITURE = {
-  fishtrophy:[.8,.15],foundlamp:[.8,.8],armchair:[1.4,1.3],recordplayer:[1.2,.75],wallclock:[.8,.15],cropbed:[2,1.6],bouquet:[.6,.6],lamp:[1.2,.5], bed:[1.5,2.3], garden:[2,1.6], seedbed:[2,1.6],
+  raincatcher:[1.2,1.2],dryrack:[2.1,1.1],gearrack:[1.8,.7],fishtrophy:[.8,.15],foundlamp:[.8,.8],armchair:[1.4,1.3],recordplayer:[1.2,.75],wallclock:[.8,.15],cropbed:[2,1.6],bouquet:[.6,.6],lamp:[1.2,.5], bed:[1.5,2.3], garden:[2,1.6], seedbed:[2,1.6],
   chest:[1.32,1.4], sofa:[2.6,1.25], planter:[1,1], rug:[2.2,1.6],
   purifier:[1.7,1], recycler:[1.6,1.3],
 };
@@ -28,6 +28,7 @@ export function placementAllowed(item,obstacles,placed,ignore=-1) {
   const rect=footprint(item),c=Math.abs(Math.cos(rect.rotation)),s=Math.abs(Math.sin(rect.rotation));
   const ex=(rect.w*c+rect.d*s)/2,ez=(rect.w*s+rect.d*c)/2;
   if(rect.x-ex < -25 || rect.x+ex > -7 || rect.z-ez < 7 || rect.z+ez > 25) return false;
+  if(item.id==='raincatcher'&&overlaps(rect,{x:-18,z:15,w:12,d:9},.1))return false;
   // Keep doors, the yard gate and the approach to each interaction clear.
   const passages=[{x:-18,z:19.5,w:2.4,d:2.2},{x:-12,z:16,w:2.2,d:2.4},{x:-8.7,z:20,w:2,d:3},{x:-21,z:14.6,w:2.2,d:1},{x:-13.5,z:18.5,w:1.4,d:1},{x:-22,z:19,w:1.8,d:1}];
   if([...obstacles.filter(o=>!o.disabled),...passages].some(o=>overlaps(rect,o,.12))) return false;

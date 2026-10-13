@@ -244,7 +244,7 @@ test('Expanded garden, helper assignments and smooth movement work in the playab
   });
   expect(result.distance).toBeGreaterThan(3.8); expect(result.distance).toBeLessThan(4.2);
   expect(result.stopped).toBe(0); expect(result.helper).toBe(true); expect(result.output).toBeGreaterThanOrEqual(3);
-  expect(result.nodes).toBe(6); expect(result.nursery).toBe(true); expect(result.path).toBeGreaterThan(0);
+  expect(result.nodes).toBe(7); expect(result.nursery).toBe(true); expect(result.path).toBeGreaterThan(0);
   await page.keyboard.press('KeyM');
   await expect(page.locator('#panel')).toContainText('Заброшенный сад');
 });
@@ -362,7 +362,7 @@ test('Roofs fade on entering each building and restore outside without changing 
     g.state.x=5;g.state.z=4;for(let i=0;i<60;i++)w.updateRoofs(1/60);
     return {glazing:w.buildings.find(b=>b.x===-42).roofMeshes.find(m=>m.material.userData.baseOpacity<1).material.opacity,count,geometries,transition,inside,wall,outside:b.roofMeshes[0].material.opacity,collision:before===w.blocked(8,4)};
   });
-  expect(result.glazing).toBeCloseTo(.5);expect(result.count).toBe(12); expect(result.geometries.every(n=>n>=2)).toBe(true);
+  expect(result.glazing).toBeCloseTo(.5);expect(result.count).toBe(14); expect(result.geometries.every(n=>n>=2)).toBe(true);
   expect(result.transition).toBeGreaterThan(.035); expect(result.transition).toBeLessThan(1);
   expect(result.inside).toBeLessThan(.04);expect(result.wall).toBeLessThan(.14);expect(result.outside).toBeGreaterThan(.99);expect(result.collision).toBe(true);
 });
@@ -432,7 +432,7 @@ test('District audit: entrances, solid walls, repaired bridge, loot access and s
   expect(audit.solar).toBeCloseTo(-.22);expect(audit.lamp).toEqual([-18,0,10.85]);
   expect(audit.repaired).toBe(1);expect(audit.savedProduction).toBe(321);expect(audit.legal).toBe(true);
   expect(audit.noLeakedLight).toBe(true);expect(audit.outsideDepth).toBe(true);expect(audit.insideDepth).toBe(true);
-  expect(audit.nodeCount).toBe(64);expect(audit.roofCounts.length).toBe(12);expect(audit.roofCounts.every(n=>n>=2)).toBe(true);
+  expect(audit.nodeCount).toBe(72);expect(audit.roofCounts.length).toBe(14);expect(audit.roofCounts.every(n=>n>=2)).toBe(true);
 });
 
 test('Solid containers disappear after collection and wait for the player before restoring',async({page})=>{
@@ -620,7 +620,7 @@ test('Rain and distinct architecture preserve sheltered interiors, canopy cutawa
   g.state.x=34;g.state.z=53;w.updateRoofs(1);const outside=canopy.material.opacity>.98;
   return {rainy,under,outside,shelter:w.sheltered(27,54.8),exposed:!w.sheltered(28,57),fish:!w.blocked(28,55.2),water:w.blocked(30,59),buildings:w.buildings.length,gates:w.gates.length};
  });
- expect(audit.rainy&&audit.under&&audit.outside&&audit.shelter&&audit.exposed&&audit.fish&&audit.water).toBe(true);expect(audit.buildings).toBe(12);expect(audit.gates).toBe(2);
+ expect(audit.rainy&&audit.under&&audit.outside&&audit.shelter&&audit.exposed&&audit.fish&&audit.water).toBe(true);expect(audit.buildings).toBe(14);expect(audit.gates).toBe(2);
 });
 
 
@@ -636,4 +636,28 @@ test('Legacy positions in newly locked rooms recover outside without losing equi
 
 test('Map routes to the accessible entrance of a discovered locked building',async({page})=>{
  await start(page,{visited:['home','salvage']});await page.keyboard.press('KeyM');await page.locator('.location-list [data-id="salvage"]').click();const route=await page.evaluate(()=>{const g=window.__quietDistrict;return {length:g.path.length,last:g.path.at(-1),valid:g.path.every(p=>!g.world.blocked(p.x,p.z)),opened:g.state.openedGates};});expect(route.length).toBeGreaterThan(0);expect(route.last).toEqual({x:51,z:-44});expect(route.valid).toBe(true);expect(route.opened).toEqual([]);
+});
+
+test('Rain collector and dryer work through real interactions and preserve their saved batches',async({page})=>{
+ test.setTimeout(180000);await start(page,{x:-17,z:21.8,elapsed:200,stash:{fish:2,herbs:1},placed:[{id:'dryrack',x:-17,z:23,rotation:0,harvested:0,dryingAt:null},{id:'raincatcher',x:-13,z:23,rotation:0,harvested:0,rainWater:3.4}]});
+ await page.keyboard.press('KeyE');await expect(page.locator('#panel')).toContainText('Сушилка для улова');await page.locator('[data-action="load-dryer"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.stash.fish)).toBe(0);await page.keyboard.press('Escape');
+ await page.evaluate(()=>{const g=window.__quietDistrict;g.state.elapsed=g.state.placed[0].dryingAt+101;});await page.keyboard.press('KeyE');await page.locator('[data-action="harvest-dryer"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.meals)).toBe(2);await page.keyboard.press('Escape');
+ await jump(page,-13,21.8);await page.keyboard.press('KeyE');expect(await page.evaluate(()=>window.__quietDistrict.state.bag.water)).toBe(3);expect(await page.evaluate(()=>window.__quietDistrict.state.placed[1].rainWater)).toBeLessThan(1);
+});
+test('Loadout station restores equipment atomically and rejects a smaller bag while carrying loot',async({page})=>{
+ test.setTimeout(150000);await start(page,{x:-16,z:13,owned:['hauler','scoutcoat','armor'],placed:[{id:'gearrack',x:-16,z:12,rotation:0,harvested:0}]});
+ await page.keyboard.press('KeyE');await page.locator('[data-action="save-loadout"][data-index="0"]').click();
+ await page.evaluate(()=>{const g=window.__quietDistrict;g.state.equipment.armor='scoutcoat';g.state.equipment.bag='hauler';});await page.locator('[data-action="save-loadout"][data-index="1"]').click();
+ await page.evaluate(()=>window.__quietDistrict.state.bag.wood=30);await page.locator('[data-action="apply-loadout"][data-index="0"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.equipment.bag)).toBe('hauler');
+ await page.evaluate(()=>window.__quietDistrict.state.bag={});await page.locator('[data-action="apply-loadout"][data-index="0"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.equipment.armor)).toBe(null);await page.locator('[data-action="apply-loadout"][data-index="1"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.equipment.armor)).toBe('scoutcoat');
+});
+test('Drone warnings can be escaped and cover prevents both attack directions',async({page})=>{
+ await start(page,{x:8,z:-3,owned:['pistol'],equipment:{weapon:'pistol',armor:null,bag:null,boots:null},ammo:10});
+ const result=await page.evaluate(()=>{const g=window.__quietDistrict;g.visibilityPaused=true;const e=g.world.enemies[0];e.x=8;e.z=-4;e.alert=3;e.cooldown=0;e.windup=0;e.lastSeen={x:8,z:-3};const health=g.state.health;g.updateEnemies(.2);const warned=e.windup>0&&g.state.health===health;g.state.z=-1;g.updateEnemies(.2);const escaped=e.windup===0;g.state.x=8;g.state.z=-3;e.x=8;e.z=-4;const wall=g.world.collider(8,-3.5,2,.16);const ammo=g.state.ammo,enemyHealth=e.health;g.attackCooldown=0;g.attack(e);g.updateEnemies(1);const cover=g.state.ammo===ammo&&e.health===enemyHealth&&g.state.health===health;wall.disabled=true;return {warned,escaped,cover};});
+ expect(result.warned&&result.escaped&&result.cover).toBe(true);
+});
+test('High quality reflections share a live target, update with the camera and throttle extra renders',async({page})=>{
+ test.setTimeout(150000);const errors=[];page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});await start(page,{x:0,z:17,owned:['generator']});
+ const result=await page.evaluate(()=>{const g=window.__quietDistrict,w=g.world;g.visibilityPaused=true;w.setQuality('high');let captures=0;const original=w.mirrors.capture.onBeforeRender;w.mirrors.capture.onBeforeRender=(...args)=>{captures++;return original.apply(w.mirrors.capture,args);};w.update(.016,false,true);const first=[...w.mirrors.projection.elements],one=captures;w.update(.02,false,true);const throttled=captures===one;w.cameraCenter.x+=2;w.update(.2,false,true);const changed=w.mirrors.projection.elements.some((n,i)=>Math.abs(n-first[i])>1e-6);const shared=w.mirrors.surfaces.every(m=>m.material.uniforms.reflection.value===w.mirrors.capture.getRenderTarget().texture);w.setQuality('low');w.update(.2,false,true);return {one,throttled,changed,shared,surfaces:w.mirrors.surfaces.length,disabled:w.mirrors.surfaces.every(m=>m.material.uniforms.strength.value===0),hidden:!w.mirrors.capture.visible};});
+ expect(result.one).toBe(1);expect(result.throttled&&result.changed&&result.shared&&result.disabled&&result.hidden).toBe(true);expect(result.surfaces).toBeGreaterThan(20);expect(errors).toEqual([]);
 });

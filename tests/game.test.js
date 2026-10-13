@@ -440,3 +440,27 @@ test('Room access follows shared building bounds and clinic materials craft the 
 test('Packed save sanitizer ignores malformed records and unknown bait without changing valid growth',()=>{
  const s=freshState();s.elapsed=100;s.fishingBait='toString';s.packedFurniture=[null,0,{id:'unknown',x:-16,z:23},{id:'cropbed',x:-16,z:23,harvested:10,rotation:0,crop:'herbs',plantedAt:20,rainGrowth:4,packedAt:50}];const clean=validateSave(s);assert.equal(clean.fishingBait,'none');assert.equal(clean.packedFurniture.length,1);assert.equal(clean.packedFurniture[0].packedAt,50);assert.equal(clean.packedFurniture[0].plantedAt,20);assert.equal(clean.packedFurniture[0].rainGrowth,4);assert.equal(consumeBait(s,'toString'),false);
 });
+
+import {startDrying,saveLoadout,applyLoadout} from '../src/game.js';
+import {gearProfile,segmentHitsRect,droneSees,attackCharge} from '../src/survival.js';
+test('Rain collector stores only exposed rainfall and retains water when a harvest cannot fit',()=>{
+ const s=freshState();s.elapsed=200;s.placed=[{id:'raincatcher',x:-16,z:23,rotation:0,harvested:0},{id:'raincatcher',x:-16,z:12,rotation:0,harvested:0}];updateRainCrops(s,200,(_x,z)=>z<20);assert.ok(s.placed[0].rainWater>5);assert.equal(s.placed[1].rainWater,undefined);s.bag={wood:26};const amount=s.placed[0].rainWater;assert.equal(harvestProduction(s,s.placed[0]).ok,false);assert.equal(s.placed[0].rainWater,amount);s.bag={};assert.equal(harvestProduction(s,s.placed[0]).received.water,5);assert.ok(s.placed[0].rainWater<1);assert.equal(validateSave(s).placed[0].rainWater,s.placed[0].rainWater);
+});
+test('Dryer consumes one batch, pauses while packed and pays its food output only once',()=>{
+ const s=freshState();s.stash={fish:2,herbs:1};const rack={id:'dryrack',x:-16,z:23,rotation:0,harvested:0};s.placed=[rack];assert.equal(startDrying(s,rack).ok,true);assert.equal(startDrying(s,rack).ok,false);assert.equal(s.stash.fish,0);s.elapsed=60;assert.equal(packFurniture(s,0),true);s.elapsed=260;const loaded=validateSave(s);assert.equal(unpackFurniture(loaded,0,-16,23,0),true);assert.equal(productionInfo(loaded,loaded.placed[0]).remaining,40);assert.equal(harvestProduction(loaded,loaded.placed[0]).ok,false);loaded.elapsed+=40;assert.equal(harvestProduction(loaded,loaded.placed[0]).mealOutput,2);assert.equal(loaded.meals,2);assert.equal(harvestProduction(loaded,loaded.placed[0]).ok,false);
+});
+test('Loadouts restore atomically and cannot discard an over-capacity bag',()=>{
+ const s=freshState();s.owned=['scoutcoat','hauler','armor'];s.placed=[{id:'gearrack',x:-16,z:12,rotation:0,harvested:0}];assert.equal(saveLoadout(s,0),true);s.equipment.armor='armor';s.equipment.bag='hauler';assert.equal(saveLoadout(s,1),true);s.bag.wood=30;const before={...s.equipment};assert.equal(applyLoadout(s,0).ok,false);assert.deepEqual(s.equipment,before);s.bag={};assert.equal(applyLoadout(s,0).ok,true);assert.equal(s.equipment.bag,null);assert.equal(applyLoadout(s,1).ok,true);assert.equal(capacity(s),70);assert.deepEqual(validateSave(s).loadouts,s.loadouts);
+});
+test('Equipment has clear speed, protection and detection trade-offs',()=>{
+ const s=freshState();s.equipment.armor='scoutcoat';assert.ok(gearProfile(s,RECIPES).speed>1);assert.equal(gearProfile(s,RECIPES).visibility,.75);s.equipment.armor='armor';s.equipment.bag='hauler';assert.ok(gearProfile(s,RECIPES).speed<.8);assert.equal(capacity(s),70);assert.equal(RECIPES.find(r=>r.id==='armor').defense,.45);
+});
+test('Cover intersections follow thin and rotated walls without blocking a clear doorway',()=>{
+ assert.equal(segmentHitsRect(-2,0,2,0,{x:0,z:0,w:.16,d:3}),true);assert.equal(segmentHitsRect(-2,2,2,2,{x:0,z:0,w:.16,d:3}),false);assert.equal(segmentHitsRect(-2,0,2,0,{x:0,z:0,w:.16,d:3,rotation:Math.PI/4}),true);
+});
+test('Drone vision respects cones, distance, cover and low-visibility equipment',()=>{
+ const e={x:0,z:0,kind:'guardian',facing:0,alert:0};assert.equal(droneSees(e,{x:0,z:4},true),true);assert.equal(droneSees(e,{x:0,z:-4},true),false);assert.equal(droneSees(e,{x:0,z:4},false),false);assert.equal(droneSees(e,{x:0,z:5},true,.75),false);e.kind='scout';assert.equal(droneSees(e,{x:0,z:7},true),true);
+});
+test('Attacks give a warning window and cancel when the player leaves range or uses cover',()=>{
+ const e={kind:'guardian',cooldown:0,windup:0};assert.equal(attackCharge(e,.3,true,true),false);assert.ok(e.windup>0);assert.equal(attackCharge(e,.3,true,false),false);assert.equal(e.windup,0);assert.equal(attackCharge(e,.9,true,true),true);assert.ok(e.cooldown>1);assert.equal(attackCharge(e,1,true,true),false);
+});

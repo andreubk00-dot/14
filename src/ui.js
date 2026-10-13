@@ -1,3 +1,4 @@
+import {gearProfile} from './survival.js';
 import {BAITS,FISHING_SPOTS,gameHour,weatherAt} from './expedition.js';
 import { CROPS, FINDS, MEMORIES, cropInfo } from './homelife.js';
 import { LOCATIONS, WORLD_LIMIT, ROADS, mapPoint } from './district.js';
@@ -132,7 +133,7 @@ export class UI {
   }
   context(target) {
     const element = document.getElementById('context'); element.hidden = !target;
-    if (target) this.setHTML('context', `<button data-action="interact"><span class="context-icon">${recipeIcon(({ node: target.entity?.find||target.entity?.requires || ({ scrap: 'metal', herbs: target.entity?.originalLoot?.seeds ? 'seeds' : 'herbs', wood: 'wood', tree: 'axe', ore: 'pick', crate: 'chest', electronics: 'wire', cloth: 'cloth' })[target.entity?.type] || 'bag', station: 'craft', storage: 'chest', bed: 'bed', fish: 'rod', grave: 'bag', production: target.entity?.id || 'parts', water: 'water', orders: 'board', helper:'herbs',gate:target.entity?.tool,garden:'cropbed',note:'book','furniture-toggle':target.entity?.id })[target.type], 21)}</span><kbd>E</kbd><span>${target.label}</span>${target.hint ? `<small>${target.hint}</small>` : ''}</button>`);
+    if (target) this.setHTML('context', `<button data-action="interact"><span class="context-icon">${recipeIcon(({ node: target.entity?.find||target.entity?.requires || ({ scrap: 'metal', herbs: target.entity?.originalLoot?.seeds ? 'seeds' : 'herbs', wood: 'wood', tree: 'axe', ore: 'pick', crate: 'chest', electronics: 'wire', cloth: 'cloth' })[target.entity?.type] || 'bag', station: 'craft', storage: 'chest', bed: 'bed', fish: 'rod', grave: 'bag', production: target.entity?.id || 'parts', water: 'water', orders: 'board', helper:'herbs',dryer:'dryrack',loadouts:'gearrack',gate:target.entity?.tool,garden:'cropbed',note:'book','furniture-toggle':target.entity?.id })[target.type], 21)}</span><kbd>E</kbd><span>${target.label}</span>${target.hint ? `<small>${target.hint}</small>` : ''}</button>`);
   }
   progress(label, ratio) {
     const element = document.getElementById('task-progress'); element.hidden = !label;
@@ -167,6 +168,8 @@ export class UI {
     const headers = {
       craft: ['МАСТЕРСКАЯ', 'Станция рецептов', 'Создавай то, что поможет идти дальше.'],
       inventory: ['СНАРЯЖЕНИЕ И ДОБЫЧА', 'Инвентарь', ''],
+      dryer:['ЗАПАСЫ ДЛЯ ВЫЛАЗКИ','Сушилка для улова','Загрузи рыбу и траву. Готовая еда появится после цикла.'],
+      loadouts:['ПОДГОТОВКА','Комплекты экипировки','Сохрани текущую экипировку в один из двух комплектов.'],
       fishing:['У ВОДЫ','Наживка и место','Расходуемые наживки берутся из рюкзака. Каждая тратится один раз при забросе.'],
       garden:['ПОСАДКИ','Посадочная грядка','Выбери культуру. После урожая грядка освободится для новой посадки.'],
       note:['СЛЕДЫ ПРОШЛОГО','Найденная запись',''],
@@ -200,6 +203,7 @@ export class UI {
       }).join('')}</div>`;
       if (isBuild && state.placed.length) body += `<div class="section-title"><h3>Уже дома</h3><span>Можно переставить</span></div><div class="owned-items">${state.placed.map((p, index) => `<div class="furniture-row">${recipeIcon(p.id,36)}<span>${RECIPES.find(r=>r.id===p.id).name}</span><button class="secondary" data-action="move-furniture" data-index="${index}" ${!nearHome?'disabled':''}>Переставить</button><button class="text-button" data-action="pack-furniture" data-index="${index}" ${!nearHome?'disabled':''}>На склад</button></div>`).join('')}</div>`;
       if(isBuild)body+=this.packedOverview();
+      if(isBuild&&state.placed.some(p=>p.id==='gearrack'))body+='<button class="secondary full-width" data-action="loadouts">Открыть комплекты экипировки</button>';
       if (isBuild) body += this.productionOverview();
       if(isBuild) body+=`<div class="furniture-controls">${state.placed.map((p,index)=>['lamp','foundlamp','recordplayer'].includes(p.id)?`<button class="secondary" data-action="toggle-furniture" data-index="${index}" ${!nearHome?'disabled':''}>${recipeIcon(p.id,26)} ${p.enabled?'Выключить':'Включить'} · ${RECIPES.find(r=>r.id===p.id).name}</button>`:'').join('')}</div>`;
     }
@@ -213,6 +217,8 @@ export class UI {
     }
     if(this.panel==='note') {const note=MEMORIES.find(n=>n.id===this.noteId);body=note?`<article class="found-note"><h3>${note.name}</h3><p>${note.text}</p><small>Запись сохранена в дневнике.</small></article>`:'<p>Запись не найдена.</p>';}
     if(this.panel==='fishing') {const spot=FISHING_SPOTS.find(p=>Math.hypot(p.x-state.x,p.z-state.z)<3);body=`<p class="panel-note">${spot?spot.name+' · '+spot.desc:'Подойди к причалу или заводи.'} ${gameHour(state.elapsed)>=20||gameHour(state.elapsed)<6?'Ночь: форель подходит ближе к берегу.':'День: активнее обычная рыба.'}</p><div class="recipe-list">${Object.entries(BAITS).map(([id,b])=>{const available=!b.tool||state.owned.includes(b.tool),count=b.resource?state.bag[b.resource]||0:null;return `<article class="recipe-card"><div class="recipe-top">${recipeIcon(id==='none'?'rod':id,40)}<div><h3>${b.name}</h3><p>${b.desc}${count!==null?' · в рюкзаке: '+count:''}</p></div></div><button class="secondary" data-action="select-bait" data-id="${id}" ${!available||count===0?'disabled':''}>${state.fishingBait===id?'Выбрано':'Выбрать'}</button></article>`;}).join('')}</div>`;}
+    if(this.panel==='dryer'){const item=state.placed[this.dryerIndex],info=item?productionInfo(state,item):null;body=!info?'<p>Сушилка не найдена.</p>':info.needsLoading?`<div class="crop-status">${recipeIcon('dryrack',64)}<h3>Подготовить запас еды</h3><p>2 рыбы и 1 трава → 2 порции за 100 секунд.</p><div class="costs">${costHTML(state,{fish:2,herbs:1})}</div><button class="primary full-width" data-action="load-dryer" data-index="${this.dryerIndex}" ${total(state,'fish')<2||total(state,'herbs')<1?'disabled':''}>Загрузить улов</button></div>`:`<div class="crop-status">${recipeIcon('meal',64)}<h3>${info.remaining?'Улов сушится':'Еда готова'}</h3><p>${info.remaining?'До готовности: '+Math.ceil(info.remaining)+' сек.':'Две порции для следующей вылазки.'}</p><button class="primary full-width" data-action="harvest-dryer" data-index="${this.dryerIndex}" ${info.remaining?'disabled':''}>Забрать еду</button></div>`;}
+    if(this.panel==='loadouts')body=this.loadoutWindow();
     if(this.panel==='garden') body=this.gardenWindow();
     if (this.panel === 'helper') {
       const recruited = state.owned.includes('helper');
@@ -239,7 +245,7 @@ export class UI {
     const nearbyFish=FISHING_SPOTS.some(p=>Math.hypot(p.x-state.x,p.z-state.z)<3),selectedBait=BAITS[state.fishingBait];
     const canCast=nearbyFish&&state.owned.includes('rod')&&(!selectedBait.tool||state.owned.includes(selectedBait.tool))&&(!selectedBait.resource||state.bag[selectedBait.resource]>0);
     const footer=this.panel==='fishing'?`<button class="primary full-width" data-action="cast-selected" ${canCast?'':'disabled'}>Забросить удочку ${icon('arrow',18)}</button>`:`${icon('clock',14)} Игра на паузе <span>ESC — закрыть</span>`;
-    element.innerHTML = `<header class="panel-header"><div class="eyebrow">${eyebrow}</div><button class="icon-button" data-action="close" aria-label="Закрыть меню">${icon('close')}</button><div class="panel-title"><span class="panel-title-icon">${icon(({ craft: 'craft', inventory: 'bag', storage: 'chest', build: 'build', map: 'map', journal: 'book', settings: 'settings', fishing:'rod',garden:'herbs',note:'book',orders: 'board', helper: 'herbs' })[this.panel], 27)}</span><h2>${title}</h2></div>${subtitle ? `<p>${subtitle}</p>` : ''}</header><div class="panel-body">${body}</div><footer class="panel-footer">${footer}</footer>`;
+    element.innerHTML = `<header class="panel-header"><div class="eyebrow">${eyebrow}</div><button class="icon-button" data-action="close" aria-label="Закрыть меню">${icon('close')}</button><div class="panel-title"><span class="panel-title-icon">${icon(({ craft: 'craft', inventory: 'bag', storage: 'chest', build: 'build', map: 'map', journal: 'book', settings: 'settings', dryer:'dryrack',loadouts:'gearrack',fishing:'rod',garden:'herbs',note:'book',orders: 'board', helper: 'herbs' })[this.panel], 27)}</span><h2>${title}</h2></div>${subtitle ? `<p>${subtitle}</p>` : ''}</header><div class="panel-body">${body}</div><footer class="panel-footer">${footer}</footer>`;
     element.querySelector('.panel-body').scrollTop = scroll;
     if (this.panel === 'map') {
       const canvas = document.getElementById('large-map'); this.renderMap(canvas, true);
@@ -256,7 +262,7 @@ export class UI {
     return `<div class="inventory-layout"><section class="equipment-column"><h3>Экипировка</h3><div class="equipment-grid">${Object.entries(EQUIPMENT_SLOTS).map(([slot,label])=>{
       const id=state.equipment[slot], name=id==='pipe'?'Стальная труба':RECIPES.find(r=>r.id===id)?.name;
       return `<button class="equipment-slot ${id?'filled':''} ${id&&this.selectedItem===id?'selected':''}" data-action="${id?'select-item':'inventory-tab'}" ${id?`data-id="${id}"`:'data-view="bag"'} aria-label="${label}: ${name||'не надето'}"><span>${label}</span>${id?recipeIcon(id,60):icon(({weapon:'sword',armor:'shield',bag:'bag',boots:'boots'})[slot],32)}<small>${name||'Свободно'}</small></button>`;
-    }).join('')}</div><div class="equipment-summary"><span>${icon('sword',20)} ${weapon(state).damage} урона</span><span>${icon('shield',20)} ${Math.round((RECIPES.find(r=>r.id===state.equipment.armor)?.defense||0)*100)}% защиты</span></div></section><section class="pack-column"><div class="inventory-weight"><h3>Рюкзак</h3><span>${Number(bagWeight(state).toFixed(2))} / ${capacity(state)}</span></div>${this.itemGrid(items,'inventory-grid')}${home?'<button class="secondary storage-link" data-action="storage">Открыть склад убежища →</button>':''}</section></div>${this.itemDetails(false)}`;
+    }).join('')}</div><div class="equipment-summary"><span>${icon('sword',20)} ${weapon(state).damage} урона</span><span>${icon('shield',20)} ${Math.round((RECIPES.find(r=>r.id===state.equipment.armor)?.defense||0)*100)}% защиты</span><span>${icon('boots',20)} Скорость ${Math.round(gearProfile(state,RECIPES).speed*(state.equipment.boots==='boots'?1.18:1)*100)}%</span></div></section><section class="pack-column"><div class="inventory-weight"><h3>Рюкзак</h3><span>${Number(bagWeight(state).toFixed(2))} / ${capacity(state)}</span></div>${this.itemGrid(items,'inventory-grid')}${home?'<button class="secondary storage-link" data-action="storage">Открыть склад убежища →</button>':''}</section></div>${this.itemDetails(false)}`;
   }
   itemGrid(items,id) {
     const cells=Math.max(24,Math.ceil(items.length/6)*6);
@@ -278,6 +284,10 @@ export class UI {
     else if(['medkit','meal','tea'].includes(item.id)) actions=`<button class="primary" data-action="use-${item.id}">Использовать</button>`;
     return `<section class="item-details"><div class="item-portrait">${recipeIcon(item.id,72)}</div><div><h3>${item.name}</h3><p>${item.desc||'Материал для создания и развития убежища.'}</p>${item.kind==='find'?`<small>Вес: ${FINDS[item.id].weight} · находка для дома</small>`:item.id==='pipe'?'<small>13 урона · 2.4 м</small>':''}<div class="item-actions">${actions}</div></div></section>`;
   }
+  loadoutWindow(){
+    const s=this.state,rack=s.placed.some(p=>p.id==='gearrack');if(!rack)return '<p class="panel-note">Размести стеллаж комплектов в убежище.</p>';
+    return `<div class="recipe-list">${s.loadouts.map((e,index)=>`<article class="recipe-card"><h3>Комплект ${index+1}</h3><div class="haul-items">${e?Object.values(e).filter(Boolean).map(id=>`<span>${recipeIcon(id,36)} ${id==='pipe'?'Стальная труба':RECIPES.find(r=>r.id===id)?.name}</span>`).join(''):'<p>Комплект пока пуст.</p>'}</div><div class="storage-actions"><button class="secondary" data-action="save-loadout" data-index="${index}">Сохранить текущий</button><button class="primary" data-action="apply-loadout" data-index="${index}" ${!e?'disabled':''}>Надеть комплект</button></div></article>`).join('')}</div>`;
+  }
   gardenWindow() {
     const state=this.state,item=state.placed[this.gardenIndex],info=item?cropInfo(state,item):null;
     if(!item||item.id!=='cropbed') return '<p>Грядка не найдена.</p>';
@@ -296,7 +306,7 @@ export class UI {
   productionOverview() {
     const producers = this.state.placed.map(p => ({ item: p, info: productionInfo(this.state, p) })).filter(p => p.info);
     if (!producers.length) return '';
-    return `<div class="section-title"><h3>Производство дома</h3><span>${producers.length} станций</span></div><div class="production-list">${producers.map(({ item, info }) => `<div>${recipeIcon(item.id, 23)}<div><strong>${RECIPES.find(r => r.id === item.id).name}</strong><small>${info.remaining ? `До готовности: ${Math.ceil(info.remaining)} сек.` : 'Готово — подойди и нажми E'}</small></div><span class="${info.remaining ? '' : 'ready'}">${icon(info.remaining ? 'clock' : 'check', 18)}</span></div>`).join('')}</div>`;
+    return `<div class="section-title"><h3>Производство дома</h3><span>${producers.length} станций</span></div><div class="production-list">${producers.map(({ item, info }) => `<div>${recipeIcon(item.id, 23)}<div><strong>${RECIPES.find(r => r.id === item.id).name}</strong><small>${info.needsLoading?'Загрузить улов':info.waitingForRain?'Ожидает дождь':info.remaining ? `До готовности: ${Math.ceil(info.remaining)} сек.` : 'Готово — подойди и нажми E'}</small></div><span class="${info.remaining ? '' : 'ready'}">${icon(info.remaining ? 'clock' : 'check', 18)}</span></div>`).join('')}</div>`;
   }
   confirm(title, message, label = 'Продолжить') {
     return new Promise(resolve => {

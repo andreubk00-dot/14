@@ -12,6 +12,11 @@ const shell = path('M12 40Q0 8 32 7Q64 8 52 40L40 56H24Z','#c6a4b8')+line(18,18,
 const station = c => rect(8,23,48,33,c,4)+rect(14,10,36,15,dark)+rect(19,15,26,5,steel)+rect(14,32,20,17,dark)+circle(24,40,5,gold)+rect(39,31,11,5,steel)+rect(39,42,11,5,steel)+rect(13,56,7,4,dark)+rect(44,56,7,4,dark);
 const bed = rect(8,31,48,20,wood)+rect(10,23,44,16,'#7daa8a',4)+rect(12,20,13,16,'#eae0c2',3)+path('M29 24H53V45H29Z','#9fbd91')+rect(8,49,5,9,dark)+rect(51,49,5,9,dark);
 const art = {
+ raincatcher: rect(15,24,34,32,'#83a89c',6)+rect(11,20,42,9,steel)+path('M11 20L22 8H42L53 20Z',gold)+circle(32,37,7,'#486f69')+rect(40,46,14,6,gold),
+ dryrack: rect(8,10,5,48,wood)+rect(51,10,5,48,wood)+rect(8,10,48,5,gold)+rect(12,31,40,4,steel)+rect(12,49,40,4,steel)+[23,40].map(x=>path(`M${x} 17Q${x+13} 27 ${x} 38Q${x-13} 27 ${x} 17`,'#a8beb0')).join(''),
+ gearrack: rect(6,8,5,49,dark)+rect(53,8,5,49,dark)+[10,32,55].map(y=>rect(6,y,52,4,wood)).join('')+rect(15,16,15,13,'#b9c3a4')+rect(35,39,15,13,'#89aba8'),
+ scoutcoat: path('M18 10L28 6H36L46 10L57 31L48 37L44 25V58H20V25L16 37L7 31Z','#8fa386')+rect(29,9,6,45,gold)+rect(21,31,8,12,'#556d5c')+rect(36,31,8,12,'#556d5c'),
+ hauler: rect(11,5,5,53,steel)+rect(48,5,5,53,steel)+rect(11,12,42,5,dark)+rect(11,48,42,5,dark)+rect(17,20,30,24,wood)+line(19,20,44,44,gold)+line(44,20,19,44,gold),
  medicine: rect(10,8,26,45,'#d7d5bf',4)+rect(14,12,18,36,'#efead7')+rect(18,16,10,13,'#bc7e71')+rect(18,34,10,10,'#94b7ad')+rect(37,27,18,28,'#89a69d',4)+rect(41,21,10,8,steel)+line(41,41,51,41,'#eee7ce',3)+line(46,36,46,46,'#eee7ce',3),
  dressing: rect(9,18,46,35,'#cd9d80',5)+rect(15,10,20,10,dark)+rect(13,24,38,24,'#ebdcca')+rect(27,28,10,18,'#86aaa2')+rect(23,32,18,10,'#86aaa2')+rect(44,39,13,16,'#b5c1ab')+line(47,43,54,43,dark,2),
  lure: path('M32 5Q53 25 32 43Q13 25 32 5',gold)+circle(32,24,7,steel)+line(32,43,32,52,dark,3)+path('M32 50Q48 62 48 44L44 49',steel),

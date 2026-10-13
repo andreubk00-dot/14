@@ -1,3 +1,5 @@
+import {DistrictReflections} from './reflections.js';
+import {DRONE_TYPES,segmentHitsRect} from './survival.js';
 import {gridPath} from './navigation.js';
 import { GATES, gateForPoint, weatherAt } from './expedition.js';
 import { FINDS, MEMORIES, SCENES, machineKind, cropInfo } from './homelife.js';
@@ -15,7 +17,6 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { HOME, productionInfo } from './game.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { Reflector } from 'three/addons/objects/Reflector.js';
 
 const rand = seed => { let n = seed; return () => { n = (n * 1664525 + 1013904223) >>> 0; return n / 4294967296; }; };
 const rng = rand(1472);
@@ -62,7 +63,7 @@ export class World {
         gl_FragColor=vec4(c,1.);}`,
     });
     this.composer.addPass(this.grade);
-    this.canopies=[];this.gates=[];this.memories=MEMORIES;this.buildings = []; this.colliders = []; this.nodes = []; this.enemies = []; this.floating = []; this.lights = [];
+    this.canopies=[];this.mirrors=null;this.gates=[];this.memories=MEMORIES;this.buildings = []; this.colliders = []; this.nodes = []; this.enemies = []; this.floating = []; this.lights = [];
     this.pickables = []; this.fogs = []; this.mixers = []; this.placedGroups = [];
     this.raycaster = new THREE.Raycaster(); this.mouse = new THREE.Vector2();
     this.plane = new THREE.Plane(Y, 0); this.time = 0;
@@ -164,15 +165,10 @@ export class World {
     for (let z = -39; z < 41; z += 7) this.box(0, 0.048, z, 0.09, 0.008, 2.1, '#a19b7c');
     for (const x of [-4.25, 4.25]) { this.box(x, 0.1, 0, 0.4, 0.18, 126, '#777b70'); }
     for (let z = -34; z < 35; z += 14) this.lamp(z % 3 ? -4.3 : 4.3, z, 5.2, z > -10);
+    this.mirrors=new DistrictReflections(this);this.reflection=this.mirrors.capture;
     for (let i = 0; i < 19; i++) this.puddle(rng() * 7 - 3.5, rng() * 78 - 39, 0.9 + rng() * 2.5, 0.5 + rng());
-    this.reflection = new Reflector(new THREE.CircleGeometry(1, 40), { clipBias: 0.003, textureWidth: 384, textureHeight: 384, color: '#68847b' });
-    this.reflection.rotation.x = -Math.PI / 2; this.reflection.scale.set(2.5, 1.15, 1); this.reflection.position.set(-0.8, 0.06, 17);
-    this.reflection.material.uniforms.time = { value: 0 };
-    this.reflection.material.vertexShader = this.reflection.material.vertexShader.replace('varying vec4 vUv;', 'varying vec4 vUv; varying vec2 vLocal;').replace('vUv = textureMatrix', 'vLocal = position.xy; vUv = textureMatrix');
-    this.reflection.material.fragmentShader = this.reflection.material.fragmentShader.replace('varying vec4 vUv;', 'varying vec4 vUv; varying vec2 vLocal; uniform float time;').replace('vec4 base = texture2DProj( tDiffuse, vUv );', 'vec4 uv = vUv; uv.x += sin(vLocal.y * 14.0 + time * 0.6) * 0.0015 * uv.w; vec4 base = texture2DProj(tDiffuse, uv);').replace('gl_FragColor = vec4( blendOverlay( base.rgb, color ), 1.0 );', 'vec3 water = mix(vec3(0.08, 0.13, 0.12), base.rgb, 0.55); float edge = 1.0 - smoothstep(0.65, 1.0, length(vLocal)); gl_FragColor = vec4(water, edge * 0.8);');
-    this.reflection.material.transparent = true; this.reflection.material.depthWrite = false;
-    this.scene.add(this.reflection);
-    this.buildHome(); this.buildMarket(); this.buildDepot(); this.furnishExpeditions(); this.buildOutskirts(); this.buildScenes(); this.buildExpandedDistrict(); this.buildPond(); this.buildTower();
+    this.mirrors.surface(-.8,17,2.5,1.15);this.mirrors.surface(-18,23,2,1);
+    this.buildHome(); this.buildMarket(); this.buildDepot(); this.furnishExpeditions(); this.buildOutskirts(); this.buildScenes(); this.buildExpandedDistrict(); this.buildNewQuarter(); this.buildPond(); this.buildTower();
     // Treelines frame the district, leaving the traversable paths readable.
     for (let i = 0; i < 180; i++) {
       const x = rng() * 126 - 63, z = rng() * 126 - 63;
@@ -195,6 +191,7 @@ export class World {
     this.selectionRing.rotation.x = -Math.PI / 2; this.selectionRing.position.y = 0.12; this.selectionRing.visible = false; this.scene.add(this.selectionRing);
   }
   puddle(x, z, w, d) {
+    if(this.mirrors)return this.mirrors.surface(x,z,w,d);
     const geometry = new THREE.CircleGeometry(1, 24);
     const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: '#67837e', roughness: 0.1, metalness: 0.65, transparent: true, opacity: 0.42 }));
     mesh.rotation.x = -Math.PI / 2; mesh.scale.set(w, d, 1); mesh.position.set(x, 0.052, z); this.scene.add(mesh);
@@ -517,6 +514,26 @@ export class World {
     for(let i=0;i<20;i++){const back=i>=10,t=(this.time*.6+i*.117)%1,angle=i*2.4,x=(back?30:23)+Math.sin(angle)*(back?5:6),z=(back?59:-24)+Math.cos(angle)*(back?2.3:4.5);matrix.compose(v.set(x,.065,z),q,new THREE.Vector3(1+t*4,1,1+t*4));this.rainRipples.setMatrixAt(i,matrix);}this.rainRipples.instanceMatrix.needsUpdate=true;
     for(const material of this.wetMaterials||[])material.roughness=material.userData.dryRoughness-strength*.24;
   }
+  partition(building,x,z,w,d,h=2.8) {
+    const mesh=this.wall(x,z,w,d,h,'#999780');this.cutawayDetail(mesh,building);return mesh;
+  }
+  buildNewQuarter() {
+    this.building(26,36,12,8,3.8,'#a09579','КАФЕ У САДА',{roofStyle:'hip',pitch:.34,signOffset:.3});
+    const cafe=this.buildings.at(-1);this.canopy(26,41.1,13,2.2,2.9,'#a59170');this.box(26,.025,41.1,13,.05,2.2,'#928667');
+    this.partition(cafe,28.5,34.5,.18,3.8);this.box(30.5,.7,34.5,2.2,1.4,2,'#7d897b');this.collider(30.5,34.5,2.2,2);
+    this.box(30.5,1.46,34.5,2.3,.12,2.1,'#b8b59f');this.cylinder(30.1,1.58,34.5,.23,.1,'#475a50');
+    for(const z of [34.5,38]){this.box(23,.76,z,1.5,.14,1.2,'#ac966f');this.collider(23,z,1.5,1.2);for(const x of [21.8,24.2]){this.box(x,.4,z,.6,.12,.7,'#87947b');this.box(x,.95,z-.28,.6,1,.12,'#87947b');this.collider(x,z,.6,.7);}}
+    this.building(-52,-20,8,10,5.4,'#718685','ПОДСТАНЦИЯ',{pitch:.06,roofColor:'#9ba49b',signOffset:.35});
+    const station=this.buildings.at(-1);this.partition(station,-52.92,-21,5.84,.18,3.8);
+    // A clear door-sized break on the eastern side connects the switch room.
+    for(const x of [-54.5,-52.5]){this.box(x,1.2,-23,1,2.4,1.2,'#7a9086');this.collider(x,-23,1,1.2);this.box(x,1.7,-22.36,.6,.2,.04,'#c9b77e');}
+    this.canopy(-52,-13.9,9,2.2,3.2,'#718581');
+    this.lamp(-46.5,-14,3.8,true);this.lamp(19.5,42,3.7,true);
+    const clinic=this.buildings.find(b=>b.x===-49);this.partition(clinic,-48,32,.16,3,2.5);
+    const residence=this.buildings.find(b=>b.x===15);this.partition(residence,18,18.5,.16,3,2.8);
+    this.box(11.6,.7,18.5,1.3,1.4,1.2,'#8f826b');this.collider(11.6,18.5,1.3,1.2);this.box(11.6,1.46,18.5,1.4,.12,1.3,'#b9ac8b');
+    for(const [x,z,w,d]of [[19,38,2,1],[-47,-16,2.4,1.2],[24,43,2.2,.8],[-12,20.5,1.5,.7]])this.mirrors.surface(x,z,w,d);
+  }
   buildOutskirts() {
     this.building(-49,32,10,9,4.6,'#92978a','КЛИНИКА');
     this.building(51,12,14,10,4.8,'#74857e','РЕМОНТ ТЕХНИКИ');
@@ -602,7 +619,7 @@ export class World {
       vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
       fragmentShader: `uniform float time;uniform vec3 colorA;uniform vec3 colorB;varying vec2 vUv;
         void main(){vec2 p=vUv*22.;float wave=sin(p.x*2.+p.y*.7+time*.65)*sin(p.y*3.-time*.4);float streak=pow(max(0.,sin(p.x*3.+p.y*4.+wave+time*.3)),18.);
-        float edge=smoothstep(.5,.44,length(vUv-.5));vec3 c=mix(colorA,colorB,.35+wave*.12)+vec3(.22,.19,.12)*streak;gl_FragColor=vec4(c,edge*.94);}`,
+        float edge=smoothstep(.5,.44,length(vUv-.5));vec3 c=mix(colorA,colorB,.35+wave*.12)+vec3(.025,.023,.018)*streak;gl_FragColor=vec4(c,edge*.94);}`,
       transparent: true, side: THREE.DoubleSide,
     });
     this.water = new THREE.Mesh(pondGeometry, this.waterMaterial); this.water.rotation.x = -Math.PI / 2; this.water.position.set(23, 0.055, -24); this.water.scale.set(1, 0.85, 1); this.scene.add(this.water);
@@ -619,6 +636,7 @@ export class World {
     const backwater=new THREE.Mesh(new THREE.CircleGeometry(7,48),this.waterMaterial);backwater.rotation.x=-Math.PI/2;backwater.position.set(30,.055,59);backwater.scale.set(1,.55,1);this.scene.add(backwater);
     for(let x=25.5;x<29.5;x+=.4)this.box(x,.09,55.2,.34,.12,2,'#978967');
     this.marker(28,.9,55.2,'#87c5be');
+    this.mirrors.surface(23,-24,9.5,9.5*.85,true);this.mirrors.surface(30,59,7,7*.55,true);
     this.createRain();
     this.label('ЗАТОПЛЕННЫЙ ПРИЧАЛ', 13, 2.0, -14, 3.5, '#c7c4a6'); this.box(13, 0.9, -14.1, 0.07, 1.8, 0.07, '#77765f');
   }
@@ -721,6 +739,14 @@ export class World {
       ['crate','Продукты у навеса',30,54,{vegetables:3,herbs:2}],
       ['wood','Доски у двора',-53,49,{wood:6}],
       ['scrap','Старая техника у склада',59,-47,{metal:4,wire:2},null,null,'appliance'],
+      ['crate','Кладовая кафе',26,34,{vegetables:4,herbs:3}],
+      ['crate','Банки и ткань кухни',30,38,{water:3,cloth:3}],
+      ['wood','Доски у террасы',20,44,{wood:5}],
+      ['herbs','Зелень у кафе',34,40,{herbs:4,seeds:2}],
+      ['electronics','Щит подстанции',-54,-18,{wire:6,parts:4}],
+      ['crate','Монтажные запасы',-50,-23,{parts:4,metal:4}],
+      ['scrap','Снятый генератор',-54,-11,{metal:6,parts:3},null,null,'motor'],
+      ['crate','Ящик ремонтной бригады',-46,-24,{cloth:3,medicine:1}],
     ];
     definitions.forEach(([type, name, x, z, loot, requires, find, machine], i) => {
       const group = new THREE.Group(); group.position.set(x,this.furnitureElevation(x,z),z); this.scene.add(group);
@@ -751,13 +777,17 @@ export class World {
     });
   }
   createEnemies() {
-    for (const [i, [x, z]] of [[8, -4], [26, 11], [-11, -18], [-22, -24], [50,20], [56,12]].entries()) {
+    for (const [i, [x, z]] of [[8, -4], [26, 11], [-11, -18], [-22, -24], [50,20], [56,12],[-47,-21],[-56,-13]].entries()) {
       const group = new THREE.Group(); group.position.set(x, 1, z); this.scene.add(group);
       const core = this.box(0, 0, 0, 0.65, 0.35, 0.65, '#646f67', group);
       this.box(0, 0, 0.34, 0.35, 0.07, 0.05, '#e39b6b', group, new THREE.MeshStandardMaterial({ color: '#e39b6b', emissive: '#db7847', emissiveIntensity: 2 }));
       const deadAt = this.state.droneDeaths[`drone-${i}`] ?? -1;
-      const enemy = { id: `drone-${i}`, x, z, originX: x, originZ: z, health: deadAt >= 0 && this.state.elapsed - deadAt < 180 ? 0 : 52, maxHealth: 52, group, core, cooldown: 0, deadAt, seed: rng() * 10 };
-      group.traverse(mesh => { mesh.userData.enemy = enemy; if (mesh.isMesh) this.pickables.push(mesh); }); this.enemies.push(enemy);
+      const kind=[0,5,7].includes(i)?'scout':'guardian';
+      const enemy = {kind,facing:0,alert:0,windup:0,patrolIndex:0, id: `drone-${i}`, x, z, originX: x, originZ: z, health: deadAt >= 0 && this.state.elapsed - deadAt < 180 ? 0 : 52, maxHealth: 52, group, core, cooldown: 0, deadAt, seed: rng() * 10 };
+      group.traverse(mesh => { mesh.userData.enemy = enemy; if (mesh.isMesh) this.pickables.push(mesh); }); const type=DRONE_TYPES[kind],vertices=[0,0,0];for(let a=-type.angle/2;a<=type.angle/2+.001;a+=type.angle/24)vertices.push(Math.sin(a)*type.vision,0,Math.cos(a)*type.vision);
+      const geo=new THREE.BufferGeometry(),indices=[];geo.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));for(let j=1;j<vertices.length/3-1;j++)indices.push(0,j+1,j);geo.setIndex(indices);geo.computeVertexNormals();
+      enemy.cone=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:kind==='scout'?'#9ab6ac':'#c6a875',transparent:true,opacity:.06,depthWrite:false,side:THREE.DoubleSide}));enemy.cone.position.set(x,.058,z);this.scene.add(enemy.cone);
+      enemy.warning=new THREE.Mesh(new THREE.RingGeometry(.65,.74,32),new THREE.MeshBasicMaterial({color:'#f2a36b',transparent:true,opacity:.8,depthWrite:false}));enemy.warning.rotation.x=-Math.PI/2;enemy.warning.visible=false;this.scene.add(enemy.warning);this.enemies.push(enemy);
     }
   }
   addDrop(drop) {
@@ -909,6 +939,7 @@ export class World {
     }
   }
   onRoad(x,z,margin=0) {return [...ROADS,...SCENES,...this.canopies].some(r=>Math.abs(x-r.x)<r.w/2+margin&&Math.abs(z-r.z)<r.d/2+margin);}
+  canSee(ax,az,bx,bz){return !this.colliders.some(r=>!r.disabled&&(r.w>.45||r.d>.45)&&segmentHitsRect(ax,az,bx,bz,r))&&!this.state.placed.some(p=>!['rug','wallclock','fishtrophy'].includes(p.id)&&segmentHitsRect(ax,az,bx,bz,solidFootprint(p)));}
   blocked(x, z, radius = 0.3) {
     if (x < -WORLD_LIMIT || x > WORLD_LIMIT || z < -WORLD_LIMIT || z > WORLD_LIMIT) return true;
     if(Math.pow((x-30)/6.8,2)+Math.pow((z-59)/3.7,2)<1&&!(x>=25.2&&x<=29.5&&z<56.2))return true;
@@ -964,6 +995,13 @@ export class World {
     const group = new THREE.Group();
     if (id === 'lamp') {
       group.userData.fixture={...this.lamp(0,0,3,!ghost,group),base:15};
+    } else if(id==='raincatcher') {
+      this.cylinder(0,.6,0,.48,1.2,'#819a90',group,12);this.cylinder(0,1.22,0,.54,.12,'#b5b99f',group,12);this.cylinder(0,1.3,0,.4,.035,'#4c716d',group,12);this.box(0,.3,.52,.12,.12,.18,'#b4ad86',group);
+    } else if(id==='dryrack') {
+      for(const x of [-.9,.9]){this.box(x,.9,0,.12,1.8,.9,'#9d8760',group);this.box(0,1.8,0,2.1,.12,1.1,'#bdac80',group);}
+      for(const y of [.55,1.15]){this.box(0,y,0,1.8,.08,1,'#66786b',group);for(const x of [-.55,0,.55])this.box(x,y+.1,0,.35,.12,.45,'#a8b9a4',group);}
+    } else if(id==='gearrack') {
+      for(const x of [-.8,.8])this.box(x,1,0,.12,2,.7,'#827959',group);for(const y of [.15,1,1.9])this.box(0,y,0,1.8,.1,.7,'#a4956c',group);this.box(-.4,1.35,0,.5,.6,.35,'#a6ac89',group);this.box(.4,.55,0,.5,.6,.35,'#8b9f92',group);
     } else if(id==='fishtrophy') {
       this.box(0,1.8,0,.85,.5,.07,'#a88e65',group);this.box(0,1.8,.055,.6,.22,.06,'#89b4b3',group);const tail=this.box(-.33,1.8,.055,.15,.18,.06,'#92bcbd',group);tail.rotation.z=Math.PI/4;this.box(.23,1.85,.095,.04,.04,.015,'#314a46',group);
     } else if(id==='foundlamp') {
@@ -1077,11 +1115,12 @@ export class World {
       this.limbs[i].rotation.x = THREE.MathUtils.lerp(this.limbs[i].rotation.x, target, Math.min(1, dt * 12));
     }
     this.waterMaterial.uniforms.time.value = this.time;
-    this.reflection.material.uniforms.time.value = this.time;
+
     for (const fog of this.fogs) fog.position.x = fog.userData.originX + Math.sin(this.time * 0.035 + fog.userData.phase) * 4;
     const pos = this.motes.geometry.attributes.position;
     for (let i = 0; i < pos.count; i++) { pos.setX(i, this.moteOrigins[i * 3] + Math.sin(this.time * 0.16 + this.motePhases[i]) * 0.6); pos.setY(i, this.moteOrigins[i * 3 + 1] + Math.sin(this.time * 0.25 + this.motePhases[i]) * 0.4); }
     pos.needsUpdate = true;
+    for(const e of this.enemies){const near=Math.hypot(e.x-this.state.x,e.z-this.state.z)<13&&e.health>0;e.cone.visible=near;e.cone.position.set(e.x,.058,e.z);e.cone.rotation.y=e.facing;e.cone.material.opacity=e.alert>0?.1:.04;e.warning.visible=near&&e.windup>0;e.warning.position.set(e.x,.065,e.z);e.warning.scale.setScalar(1+(e.windup||0));}
     for (const enemy of this.enemies) { enemy.group.position.set(enemy.x, 1.2 + Math.sin(this.time * 2 + enemy.seed) * 0.13, enemy.z); enemy.group.visible = enemy.health > 0; }
     this.stationIcon.material.opacity = 0.4 + Math.sin(this.time * 2) * 0.14;
     for (const { item, group } of this.placedGroups) if (['garden', 'seedbed'].includes(item.id)) {
@@ -1105,6 +1144,7 @@ export class World {
     this.sun.intensity = (1.3 + night * 1.7)*(1-weather.rain*.35); this.ambient.intensity = (1.55 + night * .55)*(1-weather.rain*.12);
     this.scene.fog.density = 0.016 + (1 - night) * 0.005+weather.rain*.006;
     this.player.visible = focus;
+    this.mirrors.update(this.time,this.camera,this.state.settings.quality!=='low',this.renderDirty);
     this.renderDirty = false;
     if (this.state.settings.quality === 'low') this.renderer.render(this.scene, this.camera); else this.composer.render();
   }
@@ -1115,6 +1155,6 @@ export class World {
     this.renderer.setSize(width, height); this.composer.setSize(width, height);
   }
   zoom(delta) { this.viewSize = THREE.MathUtils.clamp(this.viewSize + delta * 0.025, 23, 52); this.resize(); }
-  setQuality(quality) { this.state.settings.quality = quality; this.renderer.setPixelRatio(quality === 'low' ? 1 : Math.min(devicePixelRatio, 1.7)); this.renderer.shadowMap.enabled = quality !== 'low'; if (this.reflection) this.reflection.visible = quality !== 'low'; this.resize(); }
+  setQuality(quality) { this.state.settings.quality = quality; this.renderer.setPixelRatio(quality === 'low' ? 1 : Math.min(devicePixelRatio, 1.7)); this.renderer.shadowMap.enabled = quality !== 'low'; if(this.reflection)this.reflection.visible=false;this.renderDirty=true; this.resize(); }
   location() { return LOCATIONS.reduce((best, location) => Math.hypot(this.state.x - location.x, this.state.z - location.z) < Math.hypot(this.state.x - best.x, this.state.z - best.z) ? location : best); }
 }

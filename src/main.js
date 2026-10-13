@@ -1,3 +1,5 @@
+import {DRONE_TYPES,gearProfile,droneSees,attackCharge} from './survival.js';
+import {startDrying,saveLoadout,applyLoadout} from './game.js';
 import { GATES,FISHING_SPOTS,BAITS,gameHour,weatherAt,gateForPoint } from './expedition.js';
 import {openGate,consumeBait,packFurniture,unpackFurniture,updateRainCrops} from './game.js';
 import { CROPS, FINDS, MEMORIES, dismantleInfo } from './homelife.js';
@@ -149,7 +151,7 @@ class QuietDistrict {
     if (action === 'panel-open') { this.motion.reset(); this.path = []; this.target = null; this.job = null; this.keys.clear(); this.touchMovement = { x: 0, z: 0 }; this.ui.progress(null); this.cancelFishing(); return; }
     if (action === 'panel-close') { this.keys.clear(); return; }
     if (this.ui.pendingConfirm) return;
-    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders', 'helper', 'storage', 'garden'].includes(action)) {
+    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders', 'helper', 'storage', 'garden','dryer','loadouts'].includes(action)) {
       if (action === 'storage' && !this.atHome()) { this.ui.toast('Подойди к хранилищу в убежище.'); return; }
       this.cancelBuild(); this.cancelFishing();
       if (this.ui.panel === action) this.ui.close(); else this.ui.open(action);
@@ -180,6 +182,14 @@ class QuietDistrict {
       const result=action==='plant-crop'?plantCrop(this.state,item,data.id):harvestProduction(this.state,item);if(!result.ok)this.ui.toast(result.reason);else {this.audio.collect();this.world.renderDirty=true;}this.changed();return;
     }
     if(action==='toggle-furniture') {const p=this.state.placed[Number(data.index)];if(!p||!this.atHome()||!['lamp','foundlamp','recordplayer'].includes(p.id))return;p.enabled=!p.enabled;this.world.renderDirty=true;this.world.syncFurniture();this.changed();return;}
+    if(action==='load-dryer'||action==='harvest-dryer'){
+      const item=this.state.placed[Number(data.index)];if(!item||!this.atHome()||Math.hypot(item.x-this.state.x,item.z-this.state.z)>3)return;
+      const result=action==='load-dryer'?startDrying(this.state,item):harvestProduction(this.state,item);if(!result.ok)this.ui.toast(result.reason);else this.ui.toast(result.mealOutput?'Готово: 2 порции походной еды.':'Улов загружен.','success');this.changed();return;
+    }
+    if(action==='save-loadout'||action==='apply-loadout'){
+      const index=Number(data.index);if(action==='save-loadout'){if(saveLoadout(this.state,index))this.ui.toast('Комплект сохранён.','success');}
+      else {const result=applyLoadout(this.state,index);if(!result.ok)this.ui.toast(result.reason);else {this.world.updateEquipment();this.ui.toast('Комплект надет.','success');}}this.changed();return;
+    }
     if(action==='pack-furniture') {
       this.cancelBuild();const index=Number(data.index),entry=this.world.placedGroups[index];
       if(!this.atHome()||!packFurniture(this.state,index)) {this.ui.toast('Нельзя убрать последнюю кровать приглашённого помощника или переполнить склад мебели.');return;}
@@ -370,9 +380,11 @@ class QuietDistrict {
     if (s.grave) add('grave', s.grave.x, s.grave.z, 'Вернуть оставленный рюкзак', 'Твои ресурсы', s.grave);
     for (const p of s.placed) {
       const info = productionInfo(s, p);
+      if(p.id==='dryrack')add('dryer',p.x,p.z,'Сушилка для улова',info.needsLoading?'Загрузить рыбу':info.remaining?`До готовности: ${Math.ceil(info.remaining)} сек.`:'Еда готова',p);
+      if(p.id==='gearrack')add('loadouts',p.x,p.z,'Стеллаж комплектов','Выбрать снаряжение',p);
       if(p.id==='cropbed') add('garden',p.x,p.z,'Посадочная грядка',info?info.remaining?`Растёт: ${Math.ceil(info.remaining)} сек.`:'Урожай готов':'Выбрать посадки',p);
       if(['lamp','foundlamp','recordplayer'].includes(p.id)) add('furniture-toggle',p.x,p.z,p.id==='recordplayer'?(p.enabled?'Выключить проигрыватель':'Включить проигрыватель'):(p.enabled?'Погасить свет':'Включить свет'),'Обустройство убежища',p);
-      if (info&&p.id!=='cropbed') add('production', p.x, p.z, RECIPES.find(r => r.id === p.id).name, info.remaining ? `До готовности: ${Math.ceil(info.remaining)} сек.` : info.name, p);
+      if (info&&!['cropbed','dryrack'].includes(p.id)) add('production', p.x, p.z, RECIPES.find(r => r.id === p.id).name, info.waitingForRain?'Ожидает дождь':info.remaining ? `До готовности: ${Math.ceil(info.remaining)} сек.` : info.name, p);
       if (p.id === 'bed') add('bed', p.x, p.z, 'Отдохнуть', 'Восстановить здоровье полностью', p);
       if (p.id === 'chest') add('storage', p.x, p.z, 'Открыть хранилище', 'Склад убежища', p);
     }
@@ -385,6 +397,8 @@ class QuietDistrict {
     const target = this.nearestInteraction();
     if (!target) { this.ui.toast('Подойди ближе к находке или рабочей станции.'); return; }
     this.path = []; this.target = null; this.world.destination.visible = false;
+    if(target.type==='dryer'){this.ui.dryerIndex=this.state.placed.indexOf(target.entity);this.ui.open('dryer');return;}
+    if(target.type==='loadouts'){this.ui.open('loadouts');return;}
     if(target.type==='gate') {if(!this.state.owned.includes(target.entity.tool)){this.ui.toast('Нужен '+RECIPES.find(r=>r.id===target.entity.tool).name);return;}this.job={type:'gate',gate:target.entity,elapsed:0,duration:target.entity.duration,label:'Открываем проход…'};return;}
     if(target.type==='note') {if(!this.state.notes.includes(target.entity.id))this.state.notes.push(target.entity.id);this.ui.noteId=target.entity.id;this.ui.open('note');this.save(false);return;}
     if(target.type==='garden') {this.ui.gardenIndex=this.state.placed.indexOf(target.entity);this.ui.open('garden');return;}
@@ -458,6 +472,7 @@ class QuietDistrict {
     const s = this.state, w = weapon(s), ranged = ['pistol', 'carbine'].includes(w.id);
     target ||= this.world.enemies.filter(e => e.health > 0 && Math.hypot(e.x - s.x, e.z - s.z) <= w.range).sort((a, b) => Math.hypot(a.x - s.x, a.z - s.z) - Math.hypot(b.x - s.x, b.z - s.z))[0];
     if (!target || Math.hypot(target.x - s.x, target.z - s.z) > w.range) { this.ui.toast('В пределах досягаемости нет противника.'); return; }
+    if(!this.world.canSee(s.x,s.z,target.x,target.z)){this.ui.toast('Укрытие перекрывает удар.');return;}
     if (ranged && !s.ammo) { this.ui.toast('Нет зарядов. Создай их на станции или возьми трубу.'); return; }
     if (ranged) s.ammo--;
     this.attackCooldown = w.cooldown;
@@ -480,29 +495,23 @@ class QuietDistrict {
     this.ui.update();
   }
   updateEnemies(dt) {
-    for (const enemy of this.world.enemies) {
-      if (enemy.health <= 0) {
-        if (this.state.elapsed - enemy.deadAt > 180) { enemy.health = enemy.maxHealth; enemy.x = enemy.originX; enemy.z = enemy.originZ; delete this.state.droneDeaths[enemy.id]; }
-        continue;
-      }
-      enemy.cooldown -= dt;
-      const distance = Math.hypot(enemy.x - this.state.x, enemy.z - this.state.z), fromHome = Math.hypot(enemy.x - enemy.originX, enemy.z - enemy.originZ);
-      let dx = 0, dz = 0;
-      if (distance < 6.2 && fromHome < 10) {
-        dx = this.state.x - enemy.x; dz = this.state.z - enemy.z;
-        if (distance < 1.6 && enemy.cooldown <= 0) {
-          enemy.cooldown = 1.25; this.ui.damage(); this.audio.hit();
-          if (takeDamage(this.state, 11)) { this.die(); return; }
-        }
-      } else if (fromHome > 0.4) { dx = enemy.originX - enemy.x; dz = enemy.originZ - enemy.z; }
-      const length = Math.hypot(dx, dz);
-      if (length > 1.25 || (distance >= 6.2 && length > 0.4)) {
-        const speed = distance < 6.2 ? 1.85 : 1.1;
-        const nx = enemy.x + dx / length * speed * dt, nz = enemy.z + dz / length * speed * dt;
-        if (!this.world.blocked(nx, enemy.z)) enemy.x = nx;
-        if (!this.world.blocked(enemy.x, nz)) enemy.z = nz;
-        enemy.group.rotation.y = Math.atan2(dx, dz);
-      }
+    const visibility=gearProfile(this.state,RECIPES).visibility;
+    for(const e of this.world.enemies){
+      const type=DRONE_TYPES[e.kind]||DRONE_TYPES.guardian;
+      if(e.health<=0){e.windup=0;if(this.state.elapsed-e.deadAt>180){e.health=e.maxHealth;e.x=e.originX;e.z=e.originZ;e.alert=0;delete this.state.droneDeaths[e.id];}continue;}
+      e.cooldown=Math.max(0,e.cooldown-dt);const distance=Math.hypot(e.x-this.state.x,e.z-this.state.z),leash=Math.hypot(e.x-e.originX,e.z-e.originZ);
+      const sight=distance<type.vision*visibility&&this.world.canSee(e.x,e.z,this.state.x,this.state.z),seen=leash<10&&droneSees(e,this.state,sight,visibility);
+      if(seen){e.alert=3;e.lastSeen={x:this.state.x,z:this.state.z};}else e.alert=Math.max(0,(e.alert||0)-dt);
+      if(attackCharge(e,dt,distance<1.7,sight&&leash<10)){this.ui.damage();this.audio.hit();if(takeDamage(this.state,type.damage)){this.die();return;}}
+      let target;
+      if(e.alert>0&&leash<10)target=e.lastSeen;
+      else {const a=e.patrolIndex*Math.PI/2;target={x:e.originX+Math.sin(a)*2.2,z:e.originZ+Math.cos(a)*2.2};if(this.world.blocked(target.x,target.z)||Math.hypot(e.x-target.x,e.z-target.z)<.35){e.patrolIndex=(e.patrolIndex+1)%4;continue;}}
+      if(!target||e.windup>0)continue;
+      const dx=target.x-e.x,dz=target.z-e.z,length=Math.hypot(dx,dz);if(length<(e.alert>0?1.3:.2))continue;
+      const speed=e.alert>0?type.speed:type.patrolSpeed,nx=e.x+dx/length*speed*dt,nz=e.z+dz/length*speed*dt,oldX=e.x,oldZ=e.z;
+      if(!this.world.blocked(nx,e.z,.35))e.x=nx;if(!this.world.blocked(e.x,nz,.35))e.z=nz;
+      e.facing=Math.atan2(dx,dz);e.group.rotation.y=e.facing;
+      if(Math.hypot(e.x-oldX,e.z-oldZ)<.001){e.stuck=(e.stuck||0)+dt;if(e.stuck>.7){e.patrolIndex=(e.patrolIndex+1)%4;e.alert=0;e.stuck=0;}}else e.stuck=0;
     }
   }
   die() {
@@ -574,6 +583,7 @@ class QuietDistrict {
     if (distance > 0.08 && this.job) { this.job = null; this.ui.progress(null); }
     const result = this.motion.update(dt, dx, dz, this.state.stamina,
       this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'), this.state.equipment.boots === 'boots');
+    const profile=gearProfile(this.state,RECIPES);result.x*=profile.speed;result.z*=profile.speed;
     this.state.stamina = result.stamina; this.world.running = result.running;
     if (!manual && this.path.length && Math.hypot(result.x, result.z) > distance) {
       const ratio = distance / Math.hypot(result.x, result.z); result.x *= ratio; result.z *= ratio;
