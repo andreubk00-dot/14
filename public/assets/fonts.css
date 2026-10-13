@@ -1,0 +1,6 @@
+/* System fonts keep the build self-contained and support Cyrillic offline. */
+@font-face {
+  font-family: 'District Sans';
+  src: local('Inter'), local('Segoe UI'), local('Arial');
+  font-display: swap;
+}
