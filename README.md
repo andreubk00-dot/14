@@ -4,6 +4,12 @@
 
 ## Запуск
 
+### Без установки
+
+Скачай `releases/quiet-district-one-file.zip`, извлеки единственный HTML-файл и открой его в браузере. Node.js, сервер и интернет для игры не нужны. Все модели и текстуры встроены в файл. Можно также открыть размещённый HTML по браузерной ссылке.
+
+### Разработка
+
 Требуется Node.js 22.12+ (в облачной среде используется Node.js 24).
 
 ```sh
@@ -18,6 +24,7 @@ npm run dev -- --port 5173
 npm test         # правила крафта, добычи, сохранения и развития
 npm run test:e2e # полноценные браузерные сценарии
 npm run build   # production-сборка в dist/
+npm run build:standalone # автономный HTML в releases/quiet-district.html
 npm run preview # локальная проверка production-сборки
 npm start       # production-сборка через сервер Node.js, порт 8080
 ```

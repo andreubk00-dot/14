@@ -457,7 +457,8 @@ export class World {
     let completed = 0;
     await Promise.all(names.map(async name => {
       const folder = ['character', 'grass', 'grass-small'].includes(name) ? 'nature/' : '';
-      const asset = await loader.loadAsync(`/assets/models/${folder}${name}.glb`);
+      const source = globalThis.__quietAssets?.[name] || `/assets/models/${folder}${name}.glb`;
+      const asset = await loader.loadAsync(source);
       this.assets[name] = asset; onProgress?.(++completed / names.length);
     }));
     this.fallback.visible = false;
