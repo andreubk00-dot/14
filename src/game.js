@@ -1,5 +1,6 @@
 export const SAVE_KEY = 'quiet-district-save-v1';
 export const RESOURCES = {
+  seeds: { name: 'Семена', icon: 'herbs', color: '#b5c68b', weight: 0.25 },
   wood: { name: 'Дерево', icon: '▥', color: '#b89368', weight: 1 },
   metal: { name: 'Металл', icon: '⬡', color: '#a3b8bb', weight: 1 },
   wire: { name: 'Провод', icon: '⌁', color: '#dfaa65', weight: 0.5 },
@@ -11,6 +12,8 @@ export const RESOURCES = {
   water: { name: 'Чистая вода', icon: 'water', color: '#84bfc7', weight: 0.5 },
 };
 export const RECIPES = [
+  { id: 'helper', name: 'Пригласить садовницу Ладу', category: 'shelter', desc: 'Нужны радиостанция и удобная кровать. Лада собирает готовую продукцию выбранного типа на склад.', cost: { cloth: 6, fish: 3, water: 3 }, requires: 'radio', fixed: true },
+  { id: 'seedbed', name: 'Питомник редких трав', category: 'shelter', desc: 'Семена из заброшенного сада дают 6 трав за 120 секунд. Полив и солнечные панели ускоряют рост.', cost: { seeds: 4, wood: 10, water: 3 }, requires: 'pump', placeable: true },
   { id: 'axe', name: 'Походный топор', category: 'tools', desc: 'Позволяет рубить деревья. Больше дерева с каждой вылазки.', cost: { wood: 3, metal: 4 }, slot: 'tool', icon: '⚒' },
   { id: 'pick', name: 'Шахтёрская кирка', category: 'tools', desc: 'Разбивает залежи металла у старого депо.', cost: { wood: 4, metal: 6 }, slot: 'tool', icon: '⚒' },
   { id: 'cutter', name: 'Болторез', category: 'tools', desc: 'Открывает запертые технические контейнеры.', cost: { metal: 10, parts: 3 }, slot: 'tool', icon: '✂' },
@@ -50,6 +53,7 @@ export const CONTRACTS = [
   { id: 'supper', title: 'Ужин у костра', desc: 'Рыба и свежие травы пригодятся маленькому поселению.', cost: { fish: 3, herbs: 2 }, reward: { wood: 6, metal: 4, cloth: 3 }, cooldown: 120 },
   { id: 'water', title: 'Чистая вода для района', desc: 'Доставь воду людям у водонапорной башни.', cost: { water: 6 }, reward: { metal: 5, parts: 3, wire: 2 }, requires: 'pump', cooldown: 180 },
   { id: 'pearl', title: 'Редкая находка с причала', desc: 'Рыбак обменяет перламутр на технические запасы.', cost: { pearl: 1 }, reward: { parts: 3, wire: 4 }, requires: 'radio', cooldown: 180 },
+  { id: 'seeds', title: 'Возвращение садов', desc: 'Найди семена в заброшенном саду. Соседи помогут с оборудованием.', cost: { seeds: 4 }, reward: { parts: 5, wire: 3, cloth: 4 }, requires: 'radio', cooldown: 240 },
 ];
 export const DEFAULT_WEAPON = { id: 'pipe', name: 'Стальная труба', damage: 13, range: 2.4, cooldown: 0.7 };
 export const FISH = [
@@ -66,7 +70,7 @@ export function freshState() {
     equipment: { weapon: 'pipe', armor: null, bag: null, boots: null },
     ammo: 0, medkits: 1, meals: 0, teas: 0, placed: [], depleted: {}, nodeLoot: {}, droneDeaths: {}, drops: [], contracts: {}, completedOrders: 0, waterCollected: -120,
     elapsed: 0, fishCollection: [], kills: 0, trips: 0, gathered: 0,
-    recovered: false, grave: null, settings: { sound: true, quality: 'high' },
+    helper: { assignment: 'garden', cycles: 0 }, recovered: false, grave: null, settings: { sound: true, quality: 'high' },
     tutorial: true, chapterComplete: false,
   };
 }
@@ -127,6 +131,8 @@ export function validateSave(input) {
     for (const id of Object.keys(RESOURCES)) if (Number.isFinite(input.grave.loot?.[id]) && input.grave.loot[id] > 0) loot[id] = Math.min(100000, Math.floor(input.grave.loot[id]));
     state.grave = { x: Math.max(-43, Math.min(43, input.grave.x)), z: Math.max(-43, Math.min(43, input.grave.z)), loot };
   }
+  if (['garden', 'seedbed', 'purifier', 'recycler', 'rest'].includes(input.helper?.assignment)) state.helper.assignment = input.helper.assignment;
+  if (Number.isFinite(input.helper?.cycles)) state.helper.cycles = Math.floor(Math.max(0, Math.min(100000000, input.helper.cycles)));
   state.tutorial = input.tutorial !== false;
   state.chapterComplete = state.owned.includes('radio');
   state.settings.sound = input.settings?.sound !== false;
@@ -142,6 +148,7 @@ export function capacity(state) {
 export function total(state, id) { return (state.stash[id] || 0) + (state.bag[id] || 0); }
 export function craftStatus(state, recipe) {
   if (!recipe) return { ok: false, reason: 'Неизвестный рецепт' };
+  if (recipe.id === 'helper' && !state.placed.some(p => p.id === 'bed')) return { ok: false, reason: 'Сначала размести удобную кровать для гостя' };
   if (recipe.requires && !state.owned.includes(recipe.requires)) {
     return { ok: false, reason: `Нужно: ${RECIPES.find(r => r.id === recipe.requires)?.name}` };
   }
@@ -235,6 +242,7 @@ export function objective(state) {
   if (!state.owned.includes('radio')) return { title: 'Найди голос в тишине', desc: 'Восстанови радиостанцию и поймай сигнал соседнего района.', recipe: 'radio', number: '03' };
   if (!state.owned.includes('pump')) return { title: 'Вода для нового начала', desc: 'Запусти насос у башни. Обеспечь убежище чистой водой.', recipe: 'pump', number: '04' };
   if (!state.owned.includes('solar')) return { title: 'Дом становится самостоятельным', desc: 'Собери солнечные панели и ускорь своё производство.', recipe: 'solar', number: '05' };
+  if (!state.owned.includes('helper')) return { title: 'В доме появится ещё один голос', desc: 'Обустрой кровать и пригласи Ладу. Семена для питомника ищи в заброшенном саду.', recipe: 'helper', number: '06' };
   return { title: 'Район снова живёт', desc: 'Вода и свет вернулись. Развивай производство и помогай соседям.', number: '✓' };
 }
 export function contractStatus(state, contract) {
@@ -257,13 +265,14 @@ export function deliverContract(state, id) {
 }
 export function productionInfo(state, item) {
   const recipes = {
+    seedbed: { interval: 120, loot: { herbs: 6 }, name: 'Собрать редкие травы' },
     garden: { interval: 90, loot: { herbs: 3 }, name: 'Собрать травы' },
     purifier: { interval: 90, loot: { water: 3 }, name: 'Забрать чистую воду' },
     recycler: { interval: 120, loot: { parts: 2, wire: 1 }, cost: { metal: 3 }, name: 'Переработать лом' },
   };
   const info = recipes[item.id]; if (!info) return null;
   let interval = info.interval;
-  if (item.id === 'garden' && state.owned.includes('pump')) interval *= 0.75;
+  if (['garden', 'seedbed'].includes(item.id) && state.owned.includes('pump')) interval *= 0.75;
   if (state.owned.includes('solar')) interval *= 0.75;
   return { ...info, interval, remaining: Math.max(0, interval - (state.elapsed - item.harvested)) };
 }
@@ -278,4 +287,21 @@ export function harvestProduction(state, item) {
   if (info.cost && !spend(state, info.cost)) return { ok: false, reason: 'Для переработки нужно 3 металла' };
   const result = collect(state, info.loot); item.harvested = state.elapsed;
   return { ok: true, received: result.received };
+}
+
+// One selected production type; fees are taken only from the shelter's stash.
+// Every completed cycle shares the manual harvest timestamp, preventing double output.
+export function updateHelper(state) {
+  if (!state.owned.includes('helper') || state.helper.assignment === 'rest') return 0;
+  let cycles = 0;
+  for (const item of state.placed) {
+    if (item.id !== state.helper.assignment) continue;
+    const info = productionInfo(state, item);
+    if (!info || info.remaining > 0) continue;
+    if (info.cost && Object.entries(info.cost).some(([id, n]) => (state.stash[id] || 0) < n)) continue;
+    for (const [id, n] of Object.entries(info.cost || {})) state.stash[id] -= n;
+    for (const [id, n] of Object.entries(info.loot)) state.stash[id] = Math.min(100000, (state.stash[id] || 0) + n);
+    item.harvested = state.elapsed; cycles++; state.helper.cycles++;
+  }
+  return cycles;
 }

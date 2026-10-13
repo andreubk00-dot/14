@@ -44,6 +44,7 @@ test('Imported models load, node pickup works, and route avoids obstacles', asyn
 });
 
 test('Actual station UI crafts equipment, restores power and advances story', async ({ page }) => {
+  test.setTimeout(150000);
   await start(page, { stash: { wood: 60, metal: 80, cloth: 30, parts: 30, wire: 30, herbs: 10, pearl: 4 } });
   await page.keyboard.press('KeyC');
   await expect(page.locator('.station-status')).toContainText('готова к работе');
@@ -85,30 +86,30 @@ test('Placement through the canvas spends materials and persists across reload',
 });
 
 test('Fishing needs timing, produces loot and updates collection', async ({ page }) => {
+  test.setTimeout(150000);
   await start(page, { x: 19, z: -17, owned: ['rod'] });
   await page.keyboard.press('KeyE');
   await expect(page.locator('#fish-ui')).toContainText('Поплавок качается');
-  // Catch the brief bite within the browser process. Software WebGL can make
-  // Playwright's multi-frame click stability checks outlast the bite window.
+  // Handle the visible bite and all pulls in one browser poll: round trips
+  // through software WebGL can consume the complete reel window.
   await page.waitForFunction(() => {
-    const f = window.__quietDistrict.fish;
-    const ui = document.getElementById('fish-ui');
-    if (f?.phase === 'bite' && !ui.hidden && ui.textContent.includes('Подсекай')) {
-      ui.querySelector('[data-action="fish-action"]').click(); return true;
+    const game = window.__quietDistrict, f = game.fish, ui = document.getElementById('fish-ui');
+    window.__fishingTrace ||= [];
+    if (!f) throw new Error(`Fishing ended before catch: ${JSON.stringify(window.__fishingTrace.slice(-12))}`);
+    const trace = window.__fishingTrace;
+    if (trace.at(-1)?.timer !== f.timer) trace.push({ phase: f.phase, timer: f.timer, needle: f.needle, target: f.target, hits: f.hits });
+    if (f.phase === 'caught') return true;
+    if (f.phase === 'bite' && !ui.hidden && ui.textContent.includes('Подсекай')) {
+      ui.querySelector('[data-action="fish-action"]').click();
+      window.__reelVisible = ui.textContent.includes('Поймай момент');
+    }
+    if (f.phase === 'reel' && Math.abs(f.needle - f.target) < 8) {
+      window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE', bubbles: true }));
+      return f.phase === 'caught';
     }
     return false;
-  }, undefined, { timeout: 20000 });
-  await expect(page.locator('#fish-ui')).toContainText('Поймай момент');
-  // Exercise real timing input: wait for the moving needle to enter the target, then dispatch E synchronously.
-  for (let i = 0; i < 3; i++) {
-    await page.waitForFunction(() => {
-      const game = window.__quietDistrict, f = game.fish;
-      if (f?.phase === 'reel' && Math.abs(f.needle - f.target) < 8) {
-        window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE', bubbles: true })); return true;
-      }
-      return false;
-    }, undefined, { timeout: 15000 });
-  }
+  }, undefined, { timeout: 60000, polling: 16 });
+  expect(await page.evaluate(() => window.__reelVisible)).toBe(true);
   await expect(page.locator('#fish-ui')).toContainText('Ещё один заброс');
   expect(await page.evaluate(() => window.__quietDistrict.state.fishCollection.length)).toBe(1);
   expect(await page.evaluate(() => (window.__quietDistrict.state.bag.fish || 0) + (window.__quietDistrict.state.bag.pearl || 0))).toBeGreaterThan(0);
@@ -145,6 +146,7 @@ test('Mobile layout exposes touch controls, usable menus and no page overflow', 
 });
 
 test('Importing a save replaces the current history without pagehide overwriting it', async ({ page }) => {
+  test.setTimeout(180000);
   // Unlike the other fixtures, this scenario starts without an initialization
   // script so the imported data remains authoritative after navigation.
   await page.goto('/');
@@ -204,4 +206,39 @@ test('Neighbour orders, water restoration and production are playable', async ({
   await page.evaluate(() => window.__quietDistrict.world.move(30, -31));
   await page.keyboard.press('KeyE');
   expect(await page.evaluate(() => window.__quietDistrict.state.bag.water)).toBe(3);
+});
+
+test('Expanded garden, helper assignments and smooth movement work in the playable world', async ({ page }) => {
+  test.setTimeout(150000);
+  await start(page, { owned: ['radio', 'generator', 'pump', 'helper'], placed: [{ id: 'bed', x: -22, z: 20, harvested: 0 }, { id: 'garden', x: -12, z: 23, harvested: 0 }], elapsed: 95 });
+  await page.locator('[data-action="orders"]').first().click();
+  await page.locator('[data-action="helper"]').click();
+  await expect(page.locator('#panel')).toContainText('Лада · садовница');
+  expect(await page.evaluate(async () => {
+    const g = window.__quietDistrict; let updates = 0; const original = g.world.update.bind(g.world);
+    g.world.update = (...args) => { updates++; return original(...args); };
+    for (let i = 0; i < 8; i++) await new Promise(requestAnimationFrame);
+    g.world.update = original; return updates;
+  })).toBeLessThanOrEqual(1);
+  await page.locator('[data-action="helper-assignment"][data-id="rest"]').click();
+  expect(await page.evaluate(() => window.__quietDistrict.state.helper.assignment)).toBe('rest');
+  await page.locator('[data-action="helper-assignment"][data-id="garden"]').click();
+  await page.keyboard.press('Escape');
+  const result = await page.evaluate(() => {
+    const g = window.__quietDistrict;
+    g.path = []; g.target = null; g.job = null; g.world.move(-34, -5); g.motion.reset();
+    const start = { x: g.state.x, z: g.state.z }; g.keys.add('KeyD');
+    for (let i = 0; i < 60; i++) g.movement(1 / 60);
+    g.keys.clear(); const distance = Math.hypot(g.state.x - start.x, g.state.z - start.z);
+    for (let i = 0; i < 30; i++) g.movement(1 / 60);
+    g.tick(1 / 60); g.world.update(1 / 60, false, true);
+    return { distance, stopped: Math.hypot(g.motion.x, g.motion.z), helper: g.world.helperModel.visible,
+      output: g.state.stash.herbs, nodes: g.world.nodes.filter(n => n.originalLoot.seeds).length,
+      nursery: !!g.world.makeFurniture('seedbed').children.length, path: g.world.pathTo(-34, -5).length };
+  });
+  expect(result.distance).toBeGreaterThan(3.8); expect(result.distance).toBeLessThan(4.2);
+  expect(result.stopped).toBe(0); expect(result.helper).toBe(true); expect(result.output).toBeGreaterThanOrEqual(3);
+  expect(result.nodes).toBe(2); expect(result.nursery).toBe(true); expect(result.path).toBeGreaterThan(0);
+  await page.keyboard.press('KeyM');
+  await expect(page.locator('#panel')).toContainText('Заброшенный сад');
 });

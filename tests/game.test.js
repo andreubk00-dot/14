@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { freshState, validateSave, RECIPES, craft, craftStatus, collect, deposit, bagWeight, capacity, place, takeDamage, respawn, catchFish, useSupply, objective, CONTRACTS, deliverContract, contractStatus, productionInfo, harvestProduction } from '../src/game.js';
+import { freshState, validateSave, RECIPES, craft, craftStatus, collect, deposit, bagWeight, capacity, place, takeDamage, respawn, catchFish, useSupply, objective, CONTRACTS, deliverContract, contractStatus, productionInfo, harvestProduction, updateHelper } from '../src/game.js';
 
 test('Crafting deducts combined stash and bag materials exactly once', () => {
   const s = freshState(); s.stash = { wood: 2, metal: 3 }; s.bag = { wood: 3, metal: 1 };
@@ -65,7 +65,10 @@ test('Recipes complete the chapter in order and unlock equipment', () => {
   assert.equal(craft(s, 'carbine').ok, true); assert.equal(s.equipment.weapon, 'carbine');
   craft(s, 'radio'); assert.equal(s.chapterComplete, true); assert.equal(objective(s).recipe, 'pump');
   craft(s, 'pump'); assert.equal(objective(s).recipe, 'solar');
-  craft(s, 'solar'); assert.equal(objective(s).recipe, undefined);
+  craft(s, 'solar'); assert.equal(objective(s).recipe, 'helper');
+  s.placed.push({ id: 'bed', x: -22, z: 20, harvested: 0 });
+  Object.assign(s.stash, { cloth: 6, fish: 3, water: 3 });
+  assert.equal(craft(s, 'helper').ok, true); assert.equal(objective(s).recipe, undefined);
 });
 test('Orders exchange materials atomically and enforce cooldown and home delivery', () => {
   const s = freshState(); s.stash.wood = 16;
@@ -137,4 +140,46 @@ test('Save round trip retains partial loot, dropped rewards and defeated drones'
   assert.deepEqual(restored.nodeLoot, s.nodeLoot);
   assert.deepEqual(restored.droneDeaths, s.droneDeaths);
   assert.deepEqual(restored.drops, s.drops);
+});
+
+import { Locomotion } from '../src/movement.js';
+test('Movement keeps equal travel distance at different frame rates and normalizes diagonals', () => {
+  const run = (hz, dx, dz, sprint = false) => {
+    const motion = new Locomotion(); let x = 0, z = 0, stamina = 100;
+    for (let i = 0; i < hz * 2; i++) { const step = motion.update(1 / hz, dx, dz, stamina, sprint); x += step.x; z += step.z; stamina = step.stamina; }
+    return Math.hypot(x, z);
+  };
+  assert.ok(Math.abs(run(60, 1, 0) - run(120, 1, 0)) < 0.025);
+  assert.ok(Math.abs(run(60, 1, 1) - run(60, 1, 0)) < 0.001);
+  assert.ok(run(60, 1, 0) > 7.8); assert.ok(run(60, 1, 0, true) > 12.8);
+  assert.ok(run(60, 0.5, 0) < run(60, 1, 0) * 0.51);
+});
+test('Sprint exhaustion has recovery hysteresis and stopping is short', () => {
+  const motion = new Locomotion();
+  assert.equal(motion.update(1 / 60, 1, 0, 0, true).running, false);
+  motion.reset();
+  assert.equal(motion.update(1 / 60, 1, 0, 10, true).running, false);
+  assert.equal(motion.update(1 / 60, 1, 0, 22, true).running, true);
+  for (let i = 0; i < 60; i++) motion.update(1 / 60, 1, 0, 100, false);
+  let distance = 0;
+  for (let i = 0; i < 30; i++) distance += motion.update(1 / 60, 0, 0, 100, false).x;
+  assert.ok(distance < 0.11); assert.equal(motion.x, 0);
+});
+test('Helper needs a furnished bed, takes recycler fees only from stash and never duplicates manual harvest', () => {
+  const s = freshState(); s.owned.push('radio'); s.stash = { cloth: 20, fish: 10, water: 10 };
+  const before = structuredClone(s); assert.equal(craft(s, 'helper').ok, false); assert.deepEqual(s, before);
+  s.placed.push({ id: 'bed', x: -20, z: 20, harvested: 0 }); assert.equal(craft(s, 'helper').ok, true);
+  s.placed.push({ id: 'recycler', x: -12, z: 20, harvested: 0 }); s.helper.assignment = 'recycler'; s.elapsed = 121; s.bag.metal = 10;
+  assert.equal(updateHelper(s), 0); assert.equal(s.bag.metal, 10);
+  s.stash.metal = 3; assert.equal(updateHelper(s), 1); assert.equal(s.stash.metal, 0); assert.equal(s.stash.parts, 2);
+  assert.equal(updateHelper(s), 0); assert.equal(harvestProduction(s, s.placed[1]).ok, false);
+  const copy = validateSave(JSON.parse(JSON.stringify(s))); assert.deepEqual(copy.helper, s.helper);
+});
+test('Seed nursery benefits from both upgrades and helper respects rest assignment', () => {
+  const s = freshState(); s.owned = ['helper', 'pump', 'solar']; s.helper.assignment = 'seedbed';
+  s.placed = [{ id: 'seedbed', x: -12, z: 20, harvested: 0 }]; s.elapsed = 68;
+  assert.equal(productionInfo(s, s.placed[0]).interval, 67.5);
+  assert.equal(updateHelper(s), 1); assert.equal(s.stash.herbs, 6);
+  s.elapsed = 140; s.helper.assignment = 'rest'; assert.equal(updateHelper(s), 0);
+  assert.equal(harvestProduction(s, s.placed[0]).ok, true); assert.equal(s.bag.herbs, 6);
 });

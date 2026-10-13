@@ -1,9 +1,10 @@
 import './style.css';
 import './interface.css';
+import { Locomotion } from './movement.js';
 import { World, LOCATIONS } from './world.js';
 import { UI } from './ui.js';
 import { DistrictAudio } from './audio.js';
-import { SAVE_KEY, RESOURCES, RECIPES, HOME, freshState, validateSave, collect, deposit, craft, craftStatus, place, weapon, takeDamage, respawn, useSupply, catchFish, bagWeight, capacity, deliverContract, productionInfo, harvestProduction } from './game.js';
+import { SAVE_KEY, RESOURCES, RECIPES, HOME, freshState, validateSave, collect, deposit, craft, craftStatus, place, weapon, takeDamage, respawn, useSupply, catchFish, bagWeight, capacity, deliverContract, productionInfo, harvestProduction, updateHelper } from './game.js';
 
 class QuietDistrict {
   constructor() {
@@ -13,7 +14,7 @@ class QuietDistrict {
     this.started = false; this.ready = false; this.keys = new Set(); this.path = []; this.target = null;
     this.job = null; this.fish = null; this.build = null; this.pointerPosition = { x: innerWidth / 2, y: innerHeight / 2 };
     this.attackCooldown = 0; this.stepTimer = 0; this.uiTimer = 0; this.saveTimer = 0; this.visibilityPaused = false;
-    this.touchMovement = { x: 0, z: 0 }; this.audio = new DistrictAudio();
+    this.motion = new Locomotion(); this.touchMovement = { x: 0, z: 0 }; this.audio = new DistrictAudio();
     this.ui = new UI(document.getElementById('app'), this.state, (action, data) => this.action(action, data));
     try {
       this.world = new World(document.getElementById('world'), this.state);
@@ -128,10 +129,10 @@ class QuietDistrict {
     if (action === 'reload') { location.reload(); return; }
     if (action === 'start') { this.start(); return; }
     if (!this.started) return;
-    if (action === 'panel-open') { this.path = []; this.target = null; this.job = null; this.keys.clear(); this.touchMovement = { x: 0, z: 0 }; this.ui.progress(null); this.cancelFishing(); return; }
+    if (action === 'panel-open') { this.motion.reset(); this.path = []; this.target = null; this.job = null; this.keys.clear(); this.touchMovement = { x: 0, z: 0 }; this.ui.progress(null); this.cancelFishing(); return; }
     if (action === 'panel-close') { this.keys.clear(); return; }
     if (this.ui.pendingConfirm) return;
-    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders'].includes(action)) {
+    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders', 'helper'].includes(action)) {
       this.cancelBuild(); this.cancelFishing();
       if (this.ui.panel === action) this.ui.close(); else this.ui.open(action);
       return;
@@ -139,6 +140,10 @@ class QuietDistrict {
     if (action === 'craft-objective') { this.ui.open('craft', 'shelter'); return; }
     if (action === 'station-route') {
       this.ui.close(); this.target = { type: 'station', entity: { x: -19.5, z: 13 }, x: -19.5, z: 13 }; this.navigate(-19.5, 13); return;
+    }
+    if (action === 'helper-assignment') {
+      if (this.state.owned.includes('helper') && ['garden', 'seedbed', 'purifier', 'recycler', 'rest'].includes(data.id)) this.state.helper.assignment = data.id;
+      this.changed(); return;
     }
     if (action === 'deliver-order') {
       const result = deliverContract(this.state, data.id);
@@ -198,7 +203,7 @@ class QuietDistrict {
     }
     if (action === 'travel' || action === 'home') {
       const target = LOCATIONS.find(l => l.id === (action === 'home' ? 'home' : data.id));
-      const destination = target.id === 'depot' ? { x: -17, z: -20 } : target.id === 'market' ? { x: 13, z: 5 } : target.id === 'pond' ? { x: 19, z: -17 } : target.id === 'tower' ? { x: 30, z: -31 } : HOME;
+      const destination = target.id === 'depot' ? { x: -17, z: -20 } : target.id === 'market' ? { x: 13, z: 5 } : target.id === 'pond' ? { x: 19, z: -17 } : target.id === 'tower' ? { x: 30, z: -31 } : target.id === 'garden' ? { x: -34, z: -5 } : HOME;
       this.ui.close(); this.target = null; this.navigate(destination.x, destination.z); return;
     }
     if (action === 'map-point') { this.ui.close(); this.target = null; this.navigate(Number(data.x), Number(data.z)); return; }
@@ -231,7 +236,7 @@ class QuietDistrict {
       this.world.createGhost(id); this.updateBuildPreview(); return;
     }
     this.audio.craft(); this.world.applyProgress(); this.world.updateEquipment();
-    if (id === 'generator') { this.ui.toast('В убежище снова горит свет. Ты сделал это.', 'success'); this.ui.region(LOCATIONS[0], true); }
+    if (id === 'generator') { this.ui.toast('В убежище снова горит свет. Ты сделал это.', 'success'); this.ui.region(LOCATIONS.find(l => l.id === 'home'), true); }
     else if (id === 'bridge') this.ui.toast('Мост восстановлен. Депо теперь доступно.', 'success');
     else if (id === 'radio') { this.ui.toast('В тишине появился голос. Первая глава завершена.', 'success'); this.ui.open('journal'); }
     else if (id === 'pump') this.ui.toast('Чистая вода снова доступна. Грядки растут быстрее.', 'success');
@@ -284,6 +289,7 @@ class QuietDistrict {
     add('bed', -22, 17.7, 'Отдохнуть', 'Восстановить здоровье', null, 2);
     add('fish', 19.7, -17, 'Забросить удочку', s.owned.includes('rod') ? 'Рыбалка' : 'Сначала создай удочку', null, 2.8);
     add('orders', -14.5, 12.8, 'Заказы соседей', 'Обмен материалов на награды', null, 2.2);
+    if (s.owned.includes('helper')) add('helper', -18, 21, 'Лада · помощник убежища', 'Выбрать работу', null, 2.4);
     add('water', 30, -31, 'Набрать чистую воду', s.owned.includes('pump') ? 'Водоснабжение восстановлено' : 'Нужно восстановить насос', null, 2.6);
     if (s.grave) add('grave', s.grave.x, s.grave.z, 'Вернуть оставленный рюкзак', 'Твои ресурсы', s.grave);
     for (const p of s.placed) {
@@ -302,6 +308,7 @@ class QuietDistrict {
     if (!target) { this.ui.toast('Подойди ближе к находке или рабочей станции.'); return; }
     this.path = []; this.target = null; this.world.destination.visible = false;
     if (target.type === 'station') { this.ui.open('craft'); return; }
+    if (target.type === 'helper') { this.ui.open('helper'); return; }
     if (target.type === 'orders') { this.ui.open('orders'); return; }
     if (target.type === 'storage') { this.action('deposit'); return; }
     if (target.type === 'fish') { this.startFishing(); return; }
@@ -367,7 +374,8 @@ class QuietDistrict {
     if (ranged && !s.ammo) { this.ui.toast('Нет зарядов. Создай их на станции или возьми трубу.'); return; }
     if (ranged) s.ammo--;
     this.attackCooldown = w.cooldown;
-    this.world.playerVisual.rotation.y = Math.atan2(target.x - s.x, target.z - s.z);
+    this.world.facing = Math.atan2(target.x - s.x, target.z - s.z);
+    this.world.playerVisual.rotation.y = this.world.facing;
     target.health = Math.max(0, target.health - w.damage); this.world.floatingText(`−${w.damage}`, target.x, target.z, '#edbf87');
     if (ranged) { this.world.shot(s.x, s.z, target.x, target.z); this.audio.shoot(); }
     else { this.world.impact(target.x, 1.2, target.z); this.audio.hit(); }
@@ -411,6 +419,7 @@ class QuietDistrict {
     }
   }
   die() {
+    this.motion.reset(); this.keys.clear(); this.touchMovement = { x: 0, z: 0 };
     respawn(this.state); this.path = []; this.target = null; this.job = null; this.cancelFishing(); this.cancelBuild();
     this.world.move(this.state.x, this.state.z); this.ui.progress(null); this.world.destination.visible = false;
     for (const enemy of this.world.enemies) { enemy.x = enemy.originX; enemy.z = enemy.originZ; }
@@ -458,7 +467,7 @@ class QuietDistrict {
   }
   cancelFishing() { this.fish = null; this.ui.fishing(null); }
   movement(dt) {
-    if (this.fish || this.build) return false;
+    if (this.fish || this.build || this.job && !this.keys.size && !Math.hypot(this.touchMovement.x, this.touchMovement.z)) { this.motion.reset(); return false; }
     let screenX = this.touchMovement.x, screenZ = this.touchMovement.z;
     if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) screenZ--;
     if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) screenZ++;
@@ -467,25 +476,32 @@ class QuietDistrict {
     let dx = screenX * 0.754 + screenZ * 0.657, dz = screenZ * 0.754 - screenX * 0.657;
     const manual = Math.hypot(dx, dz) > 0.08;
     if (manual) { this.path = []; this.target = null; this.world.destination.visible = false; }
-    else if (this.path.length) {
-      const point = this.path[0]; dx = point.x - this.state.x; dz = point.z - this.state.z;
-      if (Math.hypot(dx, dz) < 0.22) { this.path.shift(); if (!this.path.length) this.world.destination.visible = false; }
+    else {
+      while (this.path.length && Math.hypot(this.path[0].x - this.state.x, this.path[0].z - this.state.z) < 0.18) this.path.shift();
+      if (this.path.length) { dx = this.path[0].x - this.state.x; dz = this.path[0].z - this.state.z; }
+      else this.world.destination.visible = false;
     }
-    const length = Math.hypot(dx, dz), sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
-    if (length < 0.08) { this.state.stamina = Math.min(100, this.state.stamina + dt * 13); return false; }
-    if (this.job) { this.job = null; this.ui.progress(null); }
-    const running = sprint && this.state.stamina > 2;
-    this.world.running = running;
-    const speed = 3.1 * (this.state.equipment.boots === 'boots' ? 1.18 : 1) * (running ? 1.65 : 1);
-    this.state.stamina = Math.min(100, Math.max(0, this.state.stamina + dt * (running ? -16 : 8)));
+    const distance = Math.hypot(dx, dz);
+    if (!manual && distance > 0) { dx /= distance; dz /= distance; }
+    if (distance > 0.08 && this.job) { this.job = null; this.ui.progress(null); }
+    const result = this.motion.update(dt, dx, dz, this.state.stamina,
+      this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'), this.state.equipment.boots === 'boots');
+    this.state.stamina = result.stamina; this.world.running = result.running;
+    if (!manual && this.path.length && Math.hypot(result.x, result.z) > distance) {
+      const ratio = distance / Math.hypot(result.x, result.z); result.x *= ratio; result.z *= ratio;
+    }
     const oldX = this.state.x, oldZ = this.state.z;
-    const step = Math.min(speed * dt, !manual ? length : Infinity);
-    this.world.move(oldX + dx / length * step, oldZ + dz / length * step);
-    const moved = Math.hypot(this.state.x - oldX, this.state.z - oldZ) > 0.001;
+    this.world.move(oldX + result.x, oldZ + result.z);
+    const moved = Math.hypot(this.state.x - oldX, this.state.z - oldZ) > 0.0001;
+    this.world.moveSpeed = Math.hypot(this.state.x - oldX, this.state.z - oldZ) / dt;
     if (moved) {
-      this.world.playerVisual.rotation.y = Math.atan2(dx, dz); this.stepTimer += dt;
-      if (this.stepTimer > (running ? 0.22 : 0.34)) { this.audio.step(); this.stepTimer = 0; }
-    } else if (this.path.length) { this.path = []; this.world.destination.visible = false; }
+      this.world.facing = Math.atan2(this.state.x - oldX, this.state.z - oldZ); this.stepTimer += dt;
+      if (this.stepTimer > (result.running ? 0.22 : 0.34)) { this.audio.step(); this.stepTimer = 0; }
+      this.blockedTime = 0;
+    } else if (this.path.length) {
+      this.blockedTime = (this.blockedTime || 0) + dt;
+      if (this.blockedTime > 0.4) { this.path = []; this.motion.reset(); this.world.destination.visible = false; }
+    }
     return moved;
   }
   changed() { this.ui.update(); if (this.ui.panel) this.ui.renderPanel(); this.save(false); }
@@ -504,7 +520,8 @@ class QuietDistrict {
     const active = this.started && !this.ui.panel && !this.visibilityPaused;
     let moving = false;
     if (active) {
-      this.state.elapsed += dt; this.attackCooldown = Math.max(0, this.attackCooldown - dt);
+      this.state.elapsed += dt;
+      if (updateHelper(this.state)) this.ui.update(); this.attackCooldown = Math.max(0, this.attackCooldown - dt);
       moving = this.movement(dt); this.updateEnemies(dt); this.updateFishing(dt); this.audio.tick(this.state.elapsed);
       if (this.target) {
         const target = this.target, range = target.type === 'enemy' ? weapon(this.state).range : 2;
@@ -536,8 +553,13 @@ class QuietDistrict {
     // Fixed simulation steps preserve real-time fishing, movement and combat on slower GPUs.
     const elapsed = Math.min(Math.max(0, (time - this.lastFrame) / 1000), 0.5); this.lastFrame = time;
     let remaining = elapsed, moving = false;
-    while (remaining > 0.0001) { const step = Math.min(0.05, remaining); moving = this.tick(step) || moving; remaining -= step; }
-    if (!this.visibilityPaused) { this.world.update(this.ui.panel ? 0 : elapsed, moving, this.started); this.ui.floating(this.world.floating, this.world); }
+    while (remaining > 0.0001) { const step = Math.min(1 / 60, remaining); moving = this.tick(step) || moving; remaining -= step; }
+    if (!this.visibilityPaused) {
+      // A paused scene needs one frame, then only redraws for equipment, lighting or resize changes.
+      if (!this.ui.panel || !this.panelRendered || this.world.renderDirty) this.world.update(this.ui.panel ? 0 : elapsed, moving, this.started);
+      this.panelRendered = !!this.ui.panel;
+      this.ui.floating(this.world.floating, this.world);
+    }
     requestAnimationFrame(this.frame);
   }
 }

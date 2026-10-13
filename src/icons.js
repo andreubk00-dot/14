@@ -60,7 +60,7 @@ const paths = {
 export function icon(name, size = 20) {
   return `<svg class="ui-icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || paths.info}</svg>`;
 }
-export const resourceIcon = (id, size = 20) => icon(id, size);
-const recipeIcons = { axe: 'axe', pick: 'pick', cutter: 'cutter', rod: 'rod', rod2: 'rod', pipe: 'sword', spear: 'sword', pistol: 'gun', carbine: 'gun', vest: 'shield', armor: 'shield', bag: 'bag', bag2: 'bag', boots: 'boots', lantern: 'lantern', medkit: 'medkit', meal: 'meal', ammo: 'ammo', generator: 'generator', bridge: 'bridge', lamp: 'lantern', bed: 'bed', garden: 'herbs', chest: 'chest', sofa: 'sofa', planter: 'leaf', rug: 'rug', radio: 'radio', pump: 'water', purifier: 'water', recycler: 'parts', solar: 'sun', tea: 'water' };
+export const resourceIcon = (id, size = 20) => icon(id === 'seeds' ? 'leaf' : id, size);
+const recipeIcons = { helper: 'herbs', seedbed: 'leaf', axe: 'axe', pick: 'pick', cutter: 'cutter', rod: 'rod', rod2: 'rod', pipe: 'sword', spear: 'sword', pistol: 'gun', carbine: 'gun', vest: 'shield', armor: 'shield', bag: 'bag', bag2: 'bag', boots: 'boots', lantern: 'lantern', medkit: 'medkit', meal: 'meal', ammo: 'ammo', generator: 'generator', bridge: 'bridge', lamp: 'lantern', bed: 'bed', garden: 'herbs', chest: 'chest', sofa: 'sofa', planter: 'leaf', rug: 'rug', radio: 'radio', pump: 'water', purifier: 'water', recycler: 'parts', solar: 'sun', tea: 'water' };
 export const recipeIcon = (id, size = 24) => icon(recipeIcons[id] || 'craft', size);
 export const categoryIcon = id => icon(({ tools: 'axe', weapons: 'sword', gear: 'shield', supplies: 'medkit', shelter: 'home' })[id], 18);

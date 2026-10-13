@@ -21,6 +21,7 @@ const mat = (c, roughness = 0.88, metalness = 0) => {
   return materials.get(id);
 };
 export const LOCATIONS = [
+  { id: 'garden', name: 'Заброшенный сад', subtitle: 'Семена · травы · старые запасы', x: -34, z: -5, color: '#b5c68b' },
   { id: 'home', name: 'Ремонтная станция', subtitle: 'Твоё убежище', x: -17, z: 16, color: '#e6b779' },
   { id: 'market', name: 'Старый квартал', subtitle: 'Ткань · дерево · провод', x: 12, z: 4, color: '#a4b6ae' },
   { id: 'depot', name: 'Заброшенное депо', subtitle: 'Металл · детали · опасность', x: -18, z: -22, color: '#b8a186' },
@@ -173,6 +174,7 @@ export class World {
     // Treelines frame the district, leaving the traversable paths readable.
     for (let i = 0; i < 130; i++) {
       const x = rng() * 87 - 43.5, z = rng() * 87 - 43.5;
+      if (Math.hypot(x + 34, z + 5) < 8) continue;
       if (Math.abs(x) < 6 || Math.abs(z - 3) < 5 || this.blocked(x, z, 2)) continue;
       if (Math.hypot(x + 17, z - 16) < 13 || Math.hypot(x - 20, z + 20) < 12) continue;
       this.tree(x, z, 0.75 + rng() * 0.7);
@@ -182,6 +184,7 @@ export class World {
       if (Math.abs(x) < 5 || Math.abs(z - 3) < 4 || this.blocked(x, z, 1)) continue;
       this.bush(x, z, 0.3 + rng() * 0.5);
     }
+    this.buildGarden();
     this.createNodes(); this.createEnemies(); this.createAtmosphere(); this.buildBridge();
     this.destination = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.37, 32), new THREE.MeshBasicMaterial({ color: '#ecd4a0', transparent: true, opacity: 0.6, depthWrite: false }));
     this.destination.rotation.x = -Math.PI / 2; this.destination.position.y = 0.1; this.destination.visible = false; this.scene.add(this.destination);
@@ -364,6 +367,21 @@ export class World {
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTexture(), color: c, transparent: true, opacity: 0.6, depthWrite: false }));
     sprite.position.set(x, y, z); sprite.scale.set(1.5, 1.5, 1); this.scene.add(sprite); return sprite;
   }
+  buildGarden() {
+    this.box(-34, 0.03, -5, 11, 0.07, 10, '#4e5941');
+    for (const x of [-38, -30]) {
+      for (const z of [-9, -1]) this.box(x, 1.5, z, 0.12, 3, 0.12, '#9c987c');
+      this.box(x, 3, -5, 0.15, 0.15, 8.4, '#9c987c');
+    }
+    for (const z of [-9, -1]) this.box(-34, 3, z, 8.4, 0.15, 0.15, '#9c987c');
+    for (const z of [-7, -3]) {
+      this.box(-34, 0.2, z, 5, 0.4, 1.4, '#887757');
+      this.box(-34, 0.42, z, 4.8, 0.05, 1.2, '#3d4631');
+      for (let x = -36; x <= -32; x++) this.bush(x, z, 0.45);
+    }
+    this.label('ЗАБРОШЕННЫЙ САД', -34, 2.5, 0, 4, '#d7d8b3');
+    this.lamp(-29, -4, 3.5, false);
+  }
   buildTower() {
     const x = 31, z = -35;
     this.box(x, 0.1, z, 6, 0.2, 6, '#7f897b');
@@ -409,6 +427,10 @@ export class World {
       ['electronics', 'Щит у водонапорной башни', 27, -33, { wire: 4, parts: 3 }],
       ['crate', 'Запасы насосной станции', 35, -29, { metal: 6, parts: 4 }, 'cutter'],
       ['herbs', 'Травы у башни', 34, -24, { herbs: 4 }],
+      ['crate', 'Семена в герметичном ящике', -36, -5, { seeds: 3, cloth: 2 }, 'cutter'],
+      ['herbs', 'Уцелевшие посадки', -32, -5, { seeds: 2, herbs: 4 }],
+      ['electronics', 'Система полива сада', -30, -9, { parts: 3, wire: 3 }],
+      ['wood', 'Доски старой теплицы', -38, -2, { wood: 7 }],
     ];
     definitions.forEach(([type, name, x, z, loot, requires], i) => {
       const group = new THREE.Group(); group.position.set(x, 0.16, z); this.scene.add(group);
@@ -508,6 +530,16 @@ export class World {
       this.idleAction?.play(); this.walkAction?.play(); this.walkAction?.setEffectiveWeight(0);
       this.runAction?.play(); this.runAction?.setEffectiveWeight(0);
     }
+    this.helperModel = cloneSkeleton(this.character);
+    this.helperModel.position.set(-18, 0.18, 21); this.helperModel.rotation.y = Math.PI;
+    this.helperModel.traverse(mesh => { if (mesh.isMesh) {
+      mesh.material = mesh.material.clone(); mesh.material.color.multiply(new THREE.Color('#dbc3a0'));
+    } });
+    this.scene.add(this.helperModel);
+    this.helperMixer = new THREE.AnimationMixer(this.helperModel);
+    const helperClip = this.actions?.idle?.getClip();
+    if (helperClip) { this.helperMixer.clipAction(helperClip).play(); this.mixers.push(this.helperMixer); }
+    this.helperModel.visible = this.state.owned.includes('helper');
     const hand = this.character.getObjectByName('handslotr');
     if (hand) { hand.add(this.weaponRoot); this.weaponRoot.position.set(0, 0, 0); }
     for (const enemy of this.enemies) {
@@ -537,6 +569,7 @@ export class World {
     this.updateEquipment();
   }
   updateEquipment() {
+    this.renderDirty = true;
     this.weaponRoot.clear(); const id = this.state.equipment.weapon;
     if (id === 'pistol' || id === 'carbine') {
       if (!this.assets) return;
@@ -552,6 +585,8 @@ export class World {
     this.oneShot = { action, remaining: Math.min(action.getClip().duration, 1.8) };
   }
   applyProgress() {
+    this.renderDirty = true;
+    if (this.helperModel) this.helperModel.visible = this.state.owned.includes('helper');
     const powered = this.state.owned.includes('generator');
     this.homeLight.intensity = powered ? 25 : 0;
     this.homeLamp.light.intensity = powered ? 13 : 0; this.homeLamp.glow.material.emissiveIntensity = powered ? 3 : 0; this.homeLamp.spill.material.opacity = powered ? 0.18 : 0;
@@ -638,7 +673,7 @@ export class World {
     const group = new THREE.Group();
     if (id === 'lamp') {
       this.lamp(0, 0, 3, !ghost, group);
-    } else if (id === 'garden') {
+    } else if (['garden', 'seedbed'].includes(id)) {
       this.box(0, 0.2, 0, 2, 0.4, 1.6, '#8c7a55', group); this.box(0, 0.42, 0, 1.8, 0.06, 1.4, '#4a4b34', group);
       for (let i = 0; i < 6; i++) {
         const plant = this.bush((i % 3 - 1) * 0.5, (Math.floor(i / 3) - 0.5) * 0.6, 0.27, group);
@@ -690,18 +725,27 @@ export class World {
     const player = this.player;
     if (focus) {
       const desired = new THREE.Vector3(this.state.x + 1, 0, this.state.z - 1);
-      this.cameraCenter.lerp(desired, 1 - Math.exp(-dt * 3));
+      this.cameraCenter.lerp(desired, 1 - Math.exp(-dt * 5));
     } else {
       this.cameraCenter.lerp(new THREE.Vector3(-12, 0, 13), 1 - Math.exp(-dt * 1.5));
     }
     this.camera.position.copy(this.cameraCenter).add(new THREE.Vector3(27, 33, 31)); this.camera.lookAt(this.cameraCenter);
-    for (const mixer of this.mixers) mixer.update(dt);
+
     if (this.oneShot) { this.oneShot.remaining -= dt; if (this.oneShot.remaining <= 0) { this.oneShot.action.stop(); this.oneShot = null; } }
     if (this.walkAction) {
       const busy = !!this.oneShot, running = moving && this.running;
-      this.walkAction.setEffectiveWeight(moving && !running ? 1 : 0); this.runAction?.setEffectiveWeight(running ? 1 : 0);
-      this.idleAction?.setEffectiveWeight(!moving && !busy ? 1 : 0);
+      const blend = 1 - Math.exp(-dt * 14);
+      const weight = (action, target) => action?.setEffectiveWeight(THREE.MathUtils.lerp(action.getEffectiveWeight(), target, blend));
+      weight(this.walkAction, moving && !running ? 1 : 0); weight(this.runAction, running ? 1 : 0);
+      this.walkAction.setEffectiveTimeScale(Math.max(0.45, (this.moveSpeed || 0) / 4.1));
+      this.runAction?.setEffectiveTimeScale(Math.max(0.6, (this.moveSpeed || 0) / 6.765));
+      weight(this.idleAction, !moving && !busy ? 1 : 0);
       if (this.oneShot) this.oneShot.action.setEffectiveWeight(moving ? 0.5 : 1);
+    }
+    for (const mixer of this.mixers) mixer.update(dt);
+    if (Number.isFinite(this.facing)) {
+      const delta = Math.atan2(Math.sin(this.facing - this.playerVisual.rotation.y), Math.cos(this.facing - this.playerVisual.rotation.y));
+      this.playerVisual.rotation.y += delta * (1 - Math.exp(-dt * 18));
     }
     if (!this.walkAction && this.character) this.character.position.y = moving ? Math.sin(this.time * 12) * 0.07 : Math.sin(this.time * 2) * 0.015;
     if (!this.walkAction) for (let i = 0; i < (this.limbs?.length || 0); i++) {
@@ -716,7 +760,7 @@ export class World {
     pos.needsUpdate = true;
     for (const enemy of this.enemies) { enemy.group.position.set(enemy.x, 1.2 + Math.sin(this.time * 2 + enemy.seed) * 0.13, enemy.z); enemy.group.visible = enemy.health > 0; }
     this.stationIcon.material.opacity = 0.4 + Math.sin(this.time * 2) * 0.14;
-    for (const { item, group } of this.placedGroups) if (item.id === 'garden') {
+    for (const { item, group } of this.placedGroups) if (['garden', 'seedbed'].includes(item.id)) {
       const growth = 0.4 + Math.min(1, Math.max(0, (this.state.elapsed - item.harvested) / productionInfo(this.state, item).interval)) * 0.6;
       group.traverse(mesh => { if (mesh.userData.gardenPlant) mesh.scale.set(1.4 * growth, 0.8 * growth, 1.1 * growth); });
     }
@@ -733,9 +777,11 @@ export class World {
     this.sun.intensity = 1.3 + night * 1.7; this.ambient.intensity = 1.55 + night * 0.55;
     this.scene.fog.density = 0.016 + (1 - night) * 0.005;
     this.player.visible = focus;
+    this.renderDirty = false;
     if (this.state.settings.quality === 'low') this.renderer.render(this.scene, this.camera); else this.composer.render();
   }
   resize() {
+    this.renderDirty = true;
     const width = this.container.clientWidth, height = this.container.clientHeight, aspect = width / height;
     this.camera.left = -this.viewSize * aspect / 2; this.camera.right = this.viewSize * aspect / 2; this.camera.top = this.viewSize / 2; this.camera.bottom = -this.viewSize / 2; this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height); this.composer.setSize(width, height);
