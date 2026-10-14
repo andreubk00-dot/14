@@ -170,7 +170,7 @@ export class UI {
     const headers = {
       craft: ['МАСТЕРСКАЯ', 'Станция рецептов', 'Создавай то, что поможет идти дальше.'],
       inventory: ['СНАРЯЖЕНИЕ И ДОБЫЧА', 'Инвентарь', ''],
-      architecture:['ТВОЙ ДОМ','Строительство','Полы соединяются с входом. Крыша появляется над закрытым контуром. Разбор возвращает материалы.'],
+      architecture:['ТВОЙ ДОМ','Строительство','Выбери другой тип стены, чтобы заменить её. Полы соединяются с входом. Крыша появляется над закрытым контуром. Разбор возвращает материалы.'],
       station:['ОБУСТРОЙСТВО','Рабочая станция','Улучшения устанавливаются на выбранный объект.'],
       dryer:['ЗАПАСЫ ДЛЯ ВЫЛАЗКИ','Сушилка для улова','Загрузи рыбу и траву. Готовая еда появится после цикла.'],
       loadouts:['ПОДГОТОВКА','Комплекты экипировки','Сохрани текущую экипировку в один из двух комплектов.'],
@@ -212,7 +212,7 @@ export class UI {
       if (isBuild) body += this.productionOverview();
       if(isBuild) body+=`<div class="furniture-controls">${state.placed.map((p,index)=>['lamp','foundlamp','desklamp','homeradio','recordplayer'].includes(p.id)?`<button class="secondary" data-action="toggle-furniture" data-index="${index}" ${!nearHome?'disabled':''}>${recipeIcon(p.id,26)} ${p.enabled?'Выключить':'Включить'} · ${RECIPES.find(r=>r.id===p.id).name}</button>`:'').join('')}</div>`;
     }
-    if(this.panel==='architecture')body=`<div class="recipe-list">${Object.entries(STRUCTURES).map(([id,spec])=>`<article class="recipe-card"><div class="recipe-top">${recipeIcon('build-'+id,42)}<div><h3>${spec.name}</h3><p>${spec.desc}</p></div></div><div class="costs">${costHTML(state,spec.cost)}</div><button class="primary full-width" data-action="structure-select" data-id="${id}" ${Object.entries(spec.cost).some(([r,n])=>total(state,r)<n)?'disabled':''}>${id==='dismantle'?'Выбрать деталь':'Разместить'}</button></article>`).join('')}</div>`;
+    if(this.panel==='architecture')body=`<div class="recipe-list">${Object.entries(STRUCTURES).map(([id,spec])=>`<article class="recipe-card"><div class="recipe-top">${recipeIcon('build-'+id,42)}<div><h3>${spec.name}</h3><p>${spec.desc}</p></div></div><div class="costs">${costHTML(state,spec.cost)}</div><button class="primary full-width" data-action="structure-select" data-id="${id}" >${id==='dismantle'?'Выбрать деталь':'Разместить'}</button></article>`).join('')}</div>`;
     if (this.panel === 'inventory') {
       body = `<nav class="category-tabs inventory-tabs"><button data-action="inventory-tab" data-view="bag" class="${this.inventoryView !== 'hotbar' ? 'active' : ''}">${icon('bag',22)} Предметы</button><button data-action="inventory-tab" data-view="hotbar" class="${this.inventoryView === 'hotbar' ? 'active' : ''}">${icon('hotbar',22)} Хотбар</button></nav>`;
       if(this.inventoryView === 'hotbar') body += this.hotbarEditor();

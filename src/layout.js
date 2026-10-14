@@ -23,39 +23,44 @@ export function circleHitsRect(x,z,radius,rect) {
   const ex=Math.max(Math.abs(lx)-rect.w/2,0),ez=Math.max(Math.abs(lz)-rect.d/2,0);
   return ex*ex+ez*ez<radius*radius || (Math.abs(lx)<rect.w/2 && Math.abs(lz)<rect.d/2);
 }
-export function placementAllowed(item,obstacles,placed,ignore=-1) {
-  if(['wallclock','fishtrophy','wallshelf'].includes(item.id)) {const anchor=clockAnchor(item.x,item.z,item.id);return !!anchor&&Math.hypot(item.x-anchor.x,item.z-anchor.z)<.05&&Math.cos((item.rotation||0)-anchor.rotation)>.99&&placed.every((p,i)=>i===ignore||!['wallclock','fishtrophy','wallshelf'].includes(p.id)||Math.hypot(p.x-item.x,p.z-item.z)>(footprint(p).w+footprint(item).w)/2+.1);}
+export function placementAllowed(item,obstacles,placed,ignore=-1,construction=[]) {
+  if(['wallclock','fishtrophy','wallshelf'].includes(item.id)) {const anchor=clockAnchor(item.x,item.z,item.id,construction);return !!anchor&&Math.hypot(item.x-anchor.x,item.z-anchor.z)<.05&&Math.cos((item.rotation||0)-anchor.rotation)>.99&&placed.every((p,i)=>i===ignore||!['wallclock','fishtrophy','wallshelf'].includes(p.id)||Math.hypot(p.x-item.x,p.z-item.z)>(footprint(p).w+footprint(item).w)/2+.1);}
   const rect=footprint(item),c=Math.abs(Math.cos(rect.rotation)),s=Math.abs(Math.sin(rect.rotation));
   const ex=(rect.w*c+rect.d*s)/2,ez=(rect.w*s+rect.d*c)/2;
-  if(rect.x-ex < -25 || rect.x+ex > -7 || rect.z-ez < 7 || rect.z+ez > 25) return false;
+  if(rect.x-ex < -25 || rect.x+ex > -7 || rect.z-ez < 7 || rect.z+ez > (construction.length?25.5:25)) return false;
   if(item.id==='raincatcher'&&overlaps(rect,{x:-18,z:15,w:12,d:9},.1))return false;
   // Keep doors, the yard gate and the approach to each interaction clear.
   const passages=[{x:-18,z:19.5,w:2.4,d:2.2},{x:-12,z:16,w:2.2,d:2.4},{x:-8.7,z:20,w:2,d:3},{x:-21,z:14.6,w:2.2,d:1},{x:-13.5,z:18.5,w:1.4,d:1},{x:-22,z:19,w:1.8,d:1}];
-  if([...obstacles.filter(o=>!o.disabled),...passages].some(o=>overlaps(rect,o,.12))) return false;
+  const doors=construction.filter(p=>p.id==='door').map(p=>p.axis==='x'?{x:p.x,z:p.z,w:1.2,d:1.5}:{x:p.x,z:p.z,w:1.5,d:1.2});
+  if([...doors,...obstacles.filter(o=>!o.disabled),...passages].some(o=>overlaps(rect,o,.12))) return false;
   return placed.every((p,i)=>i===ignore || item.id==='rug'||['wallclock','fishtrophy','wallshelf'].includes(item.id)||['wallclock','fishtrophy','wallshelf'].includes(p.id) || p.id==='rug' || !overlaps(rect,footprint(p),.15));
 }
-export function repairFurniture(obstacles,placed) {
+export function repairFurniture(obstacles,placed,construction=[]) {
   let moved=0;
   placed.forEach((item,index)=>{
-    if(placementAllowed(item,obstacles,placed,index)) return;
+    if(placementAllowed(item,obstacles,placed,index,construction)) return;
     if(['wallclock','fishtrophy','wallshelf'].includes(item.id)) {
-      const spots=[];for(let x=-23;x<=-13;x+=.5) {const p=clockAnchor(x,10.66,item.id);if(placementAllowed({...item,...p},obstacles,placed,index)) spots.push(p);}
+      const spots=[];for(let x=-23;x<=-13;x+=.5) {const p=clockAnchor(x,10.66,item.id,construction);if(placementAllowed({...item,...p},obstacles,placed,index,construction)) spots.push(p);}
       spots.sort((a,b)=>Math.hypot(a.x-item.x,a.z-item.z)-Math.hypot(b.x-item.x,b.z-item.z));if(spots[0]) {Object.assign(item,spots[0]);moved++;}return;
     }
     const candidates=[];
     for(let x=-24;x<=-8;x++) for(let z=8;z<=24;z++) candidates.push({x,z,distance:Math.hypot(x-item.x,z-item.z)});
     candidates.sort((a,b)=>a.distance-b.distance);
-    const target=candidates.find(p=>placementAllowed({...item,x:p.x,z:p.z},obstacles,placed,index));
+    const target=candidates.find(p=>placementAllowed({...item,x:p.x,z:p.z},obstacles,placed,index,construction));
     if(target) { item.x=target.x;item.z=target.z;moved++; }
   });
   return moved;
 }
 
-export function clockAnchor(x,z,id='wallclock') {
+export function clockAnchor(x,z,id='wallclock',construction=[]) {
  const padding=Math.max(0,(FURNITURE[id]?.[0]||.8)-.8)/2;
  const candidates=[];
  for(const [axis,fixed,start,end,rotation] of [['z',10.66,-23.4,-12.6,0],['x',-23.84,11.2,18.8,Math.PI/2],['z',19.34,-23.4,-19.8,Math.PI],['z',19.34,-16.2,-12.6,Math.PI],['x',-12.16,11.2,14.2,-Math.PI/2],['x',-12.16,17.8,18.8,-Math.PI/2]]) {
   const value=Math.max(start+padding,Math.min(end-padding,axis==='z'?x:z));const p=axis==='z'?{x:value,z:fixed,rotation}:{x:fixed,z:value,rotation};candidates.push(p);
+ }
+ for(const wall of construction.filter(p=>p.id==='wall')){
+  const half=(FURNITURE[id]?.[0]||.8)/2+.1;if(half>=1)continue;
+  for(const side of [-1,1]){const value=Math.max(-1+half,Math.min(1-half,wall.axis==='x'?x-wall.x:z-wall.z));candidates.push(wall.axis==='x'?{x:wall.x+value,z:wall.z+side*.105,rotation:side>0?0:Math.PI}:{x:wall.x+side*.105,z:wall.z+value,rotation:side>0?Math.PI/2:-Math.PI/2});}
  }
  candidates.sort((a,b)=>Math.hypot(x-a.x,z-a.z)-Math.hypot(x-b.x,z-b.z));
  return Math.hypot(x-candidates[0].x,z-candidates[0].z)<=2.2?candidates[0]:null;

@@ -1,4 +1,4 @@
-import {STRUCTURES,buildAllowed,dismantleAllowed,cleanConstruction} from './construction.js';
+import {STRUCTURES,dismantleAllowed,cleanConstruction,replacementPlan} from './construction.js';
 import {STATION_UPGRADES,collectorCapacity,dryingBatch} from './upgrades.js';
 import { GATES, BAITS, fishingProbabilities, weatherAt } from './expedition.js';
 import { FINDS, CROPS, MEMORIES, cropInfo } from './homelife.js';
@@ -245,11 +245,11 @@ export function craft(state, id) {
   if (id === 'radio') state.chapterComplete = true;
   return { ok: true, recipe };
 }
-export function place(state, id, x, z, rotation = 0) {
+export function place(state, id, x, z, rotation = 0,obstacles=[]) {
   const recipe = RECIPES.find(r => r.id === id);
   if (!recipe?.placeable || !craftStatus(state, recipe).ok) return false;
   if (x < -26 || x > -6 || z < 6 || z > 26) return false;
-  if(['wallclock','fishtrophy','wallshelf'].includes(id)&&!placementAllowed({id,x,z,rotation},[],state.placed)) return false;
+  if(!placementAllowed({id,x,z,rotation},obstacles,state.placed,-1,state.construction))return false;
   if(id!=='rug'&&!['wallclock','fishtrophy','wallshelf'].includes(id)&&state.placed.some(p=>p.id!=='rug'&&!['wallclock','fishtrophy','wallshelf'].includes(p.id)&&overlaps(footprint({id,x,z,rotation}),footprint(p),.15))) return false;
   if(recipe.foundOnly) {const stock=state.finds[id]>0?state.finds:state.storedFinds;stock[id]--;} else spend(state,recipe.cost);
   state.placed.push({id,x,z,rotation,harvested:state.elapsed,...(['lamp','foundlamp','desklamp','homeradio','recordplayer'].includes(id)?{enabled:!['recordplayer','homeradio'].includes(id)}:{}),...(id==='cropbed'?{crop:null,plantedAt:null}:{})});
@@ -428,7 +428,7 @@ export function packFurniture(state,index) {
  state.packedFurniture.push({...item,packedAt:state.elapsed});state.placed.splice(index,1);return true;
 }
 export function unpackFurniture(state,index,x,z,rotation,obstacles=[]) {
- const saved=state.packedFurniture[index];if(!(state.x>=-27&&state.x<=-6&&state.z>=5&&state.z<=27)||!saved||state.placed.length>=70||!placementAllowed({...saved,x,z,rotation},obstacles,state.placed))return false;
+ const saved=state.packedFurniture[index];if(!(state.x>=-27&&state.x<=-6&&state.z>=5&&state.z<=27)||!saved||state.placed.length>=70||!placementAllowed({...saved,x,z,rotation},obstacles,state.placed,-1,state.construction))return false;
  const {packedAt,...item}=saved,paused=Math.max(0,state.elapsed-packedAt);
  item.harvested+=paused;if(Number.isFinite(item.dryingAt))item.dryingAt+=paused;if(Number.isFinite(item.plantedAt))item.plantedAt+=paused;
  Object.assign(item,{x,z,rotation});state.placed.push(item);state.packedFurniture.splice(index,1);return true;
@@ -463,9 +463,10 @@ export function upgradeStation(state,item){
 
 export function buildStructure(state,part,obstacles=[]){
  if(state.x<-27||state.x>-6||state.z<5||state.z>27)return {ok:false,reason:'Строительство доступно у убежища'};
- const status=buildAllowed(state,part,obstacles);if(!status.ok)return status;
- if(!spend(state,STRUCTURES[part.id].cost))return {ok:false,reason:'Не хватает материалов'};
- state.construction.push({...part});return {ok:true};
+ const status=replacementPlan(state,part,obstacles);if(!status.ok)return status;
+ if(!spend(state,status.cost))return {ok:false,reason:'Не хватает материалов'};
+ if(status.old)state.construction.splice(state.construction.indexOf(status.old),1,{...part});else state.construction.push({...part});
+ for(const [id,n]of Object.entries(status.refund||{}))state.stash[id]=(state.stash[id]||0)+n;return {ok:true,replaced:!!status.old};
 }
 export function dismantleStructure(state,part){
  if(state.x<-27||state.x>-6||state.z<5||state.z>27)return {ok:false,reason:'Разбор доступен у убежища'};

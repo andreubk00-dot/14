@@ -1,4 +1,4 @@
-import {STRUCTURES,buildAllowed,closedRooms,structureColliders} from './construction.js';
+import {closedRooms,structureColliders,replacementPlan,partKey} from './construction.js';
 import {SpatialIndex} from './spatial.js';
 import {DistrictReflections} from './reflections.js';
 import {DRONE_TYPES,segmentHitsRect} from './survival.js';
@@ -992,7 +992,7 @@ export class World {
     this.playerLight.intensity = this.state.owned.includes('lantern') && this.state.lanternOn !== false ? 3.5 : 0;
   }
   playCharacterAction(name) {
-    const action = this.actions?.[name]; if (!action || action === this.idleAction || action === this.walkAction) return;
+    const action = this.actions?.[name]||(['1h_melee_attack_stab'].includes(name)?this.actions?.['1h_melee_attack_chop']:null); if (!action || action === this.idleAction || action === this.walkAction) return;
     this.oneShot?.action.stop();
     action.reset().setLoop(THREE.LoopOnce, 1); action.clampWhenFinished = true; action.setEffectiveWeight(1).play();
     this.oneShot = { action, remaining: Math.min(action.getClip().duration, 1.8) };
@@ -1019,7 +1019,7 @@ export class World {
       // A restored container must wait until the player leaves its footprint.
       if(visible&&!node.find&&time!==undefined&&node.collider&&circleHitsRect(this.state.x,this.state.z,.3,node.collider)) visible=false;
       if (visible && !node.group.visible && !node.find) {this.state.brokenNodes=this.state.brokenNodes.filter(id=>id!==node.id); node.loot = {...(this.state.nodeLoot[node.id]||cycleLoot(node.id,node.originalLoot,Math.floor(this.state.elapsed/node.respawnTime)))}; this.state.nodeLoot[node.id]={...node.loot}; }
-      node.group.visible=visible;node.marker.visible=visible;const broken=this.state.brokenNodes.includes(node.id);if(node.group.userData.standing){node.group.userData.standing.visible=!broken;node.group.userData.shards.visible=broken;}if(node.stump)node.stump.visible=!visible;if(node.collider)node.collider.disabled=!visible||broken;
+      node.group.visible=visible||!!node.falling;node.marker.visible=visible;const broken=this.state.brokenNodes.includes(node.id);if(node.group.userData.standing){node.group.userData.standing.visible=!broken||!!node.falling;node.group.userData.shards.visible=broken&&!node.falling;}if(node.stump)node.stump.visible=!visible||broken;if(node.collider)node.collider.disabled=!visible||broken;
     }
   }
   onRoad(x,z,margin=0) {return [...ROADS,...SCENES,...this.canopies].some(r=>Math.abs(x-r.x)<r.w/2+margin&&Math.abs(z-r.z)<r.d/2+margin);}
@@ -1031,10 +1031,10 @@ export class World {
     if (Math.pow((x - 23) / 9, 2) + Math.pow((z + 24) / 7.4, 2) < 1 && !(x < 21.5 && z > -18.1)) return true;
     return [...this.collisionIndex.query(x-radius,z-radius,x+radius,z+radius)].some(c => !c.disabled && circleHitsRect(x,z,radius,c)) || this.state.placed.some(p=>p.id!=='rug'&&!['wallclock','fishtrophy','wallshelf'].includes(p.id) && circleHitsRect(x,z,radius,solidFootprint(p)));
   }
-  repairFurniture() { return repairFurniture(this.colliders,this.state.placed); }
+  repairFurniture() { return repairFurniture(this.colliders,this.state.placed,this.state.construction); }
   furnitureElevation(x,z) { return this.buildings.some(b=>isInsideBuilding(b,x,z))||this.state.construction.some(p=>p.id==='floor'&&Math.abs(x-p.x)<=1&&Math.abs(z-p.z)<=1)?.205:.025; }
   canPlace(item,ignore=-1) {
-    if(item.id==='raincatcher'&&this.sheltered(item.x,item.z))return false;return placementAllowed(item,this.colliders,this.state.placed,ignore) && !overlapsPlayer(item,this.state);
+    if(item.id==='raincatcher'&&this.sheltered(item.x,item.z))return false;return placementAllowed(item,this.colliders,this.state.placed,ignore,this.state.construction) && !overlapsPlayer(item,this.state);
   }
   move(x, z) {
     if (!this.blocked(x, this.state.z)) this.state.x = x;
@@ -1072,8 +1072,8 @@ export class World {
   }
   setDestination(x, z) { this.destination.position.set(x, 0.1, z); this.destination.visible = true; }
   addPlaced(item) {
-    const group = this.makeFurniture(item.id); group.position.set(item.x, this.furnitureElevation(item.x,item.z), item.z); group.rotation.y = item.rotation; this.scene.add(group);
-    this.decorateStation(item,group);this.placedGroups.push({ item, group }); return group;
+    const group = this.makeFurniture(item.id,false,item); group.position.set(item.x, this.furnitureElevation(item.x,item.z), item.z); group.rotation.y = item.rotation; this.scene.add(group);
+    this.decorateStation(item,group);this.placedGroups.push({ item, group });this.refreshConstructionLighting(); return group;
   }
   decorateStation(item,group){
     if(item.upgrade!==1)return;
@@ -1083,10 +1083,10 @@ export class World {
     group.userData.stationUpgrade=1;
   }
   refreshStation(item){const entry=this.placedGroups.find(e=>e.item===item);if(entry&&!entry.group.userData.stationUpgrade)this.decorateStation(item,entry.group);this.renderDirty=true;}
-  makeFurniture(id, ghost = false) {
+  makeFurniture(id, ghost = false,item=null) {
     const group = new THREE.Group();
     if (id === 'lamp') {
-      group.userData.fixture={...this.lamp(0,0,3,!ghost,group),base:15};
+      group.userData.fixture={...this.lamp(0,0,2.5,!ghost,group),base:15};
     } else if(id==='raincatcher') {
       this.cylinder(0,.6,0,.48,1.2,'#819a90',group,12);this.cylinder(0,1.22,0,.54,.12,'#b5b99f',group,12);this.cylinder(0,1.3,0,.4,.035,'#4c716d',group,12);this.box(0,.3,.52,.12,.12,.18,'#b4ad86',group);
     } else if(id==='dryrack') {
@@ -1150,7 +1150,11 @@ export class World {
       for (let i = 0; i < 3; i++) this.box(-0.4, 0.4 + i * 0.2, 0.62, 0.35, 0.055, 0.04, '#384f45', group);
     }
     if (ghost) group.traverse(mesh => { if (mesh.isMesh) { mesh.material = mesh.material.clone(); mesh.material.transparent = true; mesh.material.opacity = 0.5; mesh.castShadow = false; } });
-    return group;
+    if(!ghost)this.mergeFurnitureGeometry(group);return group;
+  }
+  mergeFurnitureGeometry(group) {
+    const batches=new Map(),fixture=group.userData.fixture;group.updateMatrixWorld(true);group.traverse(m=>{if(!m.isMesh||m===fixture?.glow||m===fixture?.spill||m.material.transparent)return;let p=m;while(p&&p!==group){if(p.userData.clockMinute||p.userData.clockHour||p.userData.gardenPlant||p.userData.cropLeaf||p.userData.cropFruit)return;p=p.parent;}const key=m.material.uuid;if(!batches.has(key))batches.set(key,[]);batches.get(key).push(m);});
+    for(const meshes of batches.values()){if(meshes.length<2)continue;group.updateMatrixWorld(true);const inverse=new THREE.Matrix4().copy(group.matrixWorld).invert();const pieces=meshes.map(m=>{let g=m.geometry.clone();if(g.index){const old=g;g=g.toNonIndexed();old.dispose();}return g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inverse,m.matrixWorld));});const geometry=mergeGeometries(pieces);pieces.forEach(g=>g.dispose());const mesh=new THREE.Mesh(geometry,meshes[0].material);mesh.castShadow=true;mesh.receiveShadow=true;for(const m of meshes){m.parent.remove(m);m.geometry.dispose();}group.add(mesh);}
   }
   syncFurniture() {
     for(const {item,group} of this.placedGroups) {
@@ -1158,6 +1162,7 @@ export class World {
       const on=item.enabled!==false&&(item.id!=='lamp'||this.state.owned.includes('generator'));
       f.light.intensity=on?f.base:0;f.glow.material.emissiveIntensity=on?2:0;if(f.spill)f.spill.material.opacity=on?.15:0;
     }
+    for(const pane of this.windowGlazing||[]){const on=pane.fixtures?.some(({item})=>item.enabled!==false&&(item.id!=='lamp'||this.state.owned.includes('generator')));pane.mesh.material.emissive.set('#edaf70');pane.mesh.material.emissiveIntensity=on?.65:0;}
   }
   makeResourceNode(group,kind) {
     const standing=new THREE.Group(),shards=new THREE.Group();group.add(standing,shards);group.userData.standing=standing;group.userData.shards=shards;
@@ -1169,10 +1174,10 @@ export class World {
       for(const [x,y,z,r]of [[0,.65,0,.8],[-.6,.4,.15,.5],[.55,.35,-.25,.45]]){const m=new THREE.Mesh(new THREE.DodecahedronGeometry(r,0),mat('#81877b'));m.position.set(x,y,z);m.scale.z=.85;m.castShadow=true;m.receiveShadow=true;standing.add(m);}
       for(let i=0;i<5;i++)this.box((i%3-1)*.35,.1,Math.floor(i/3)*.35-.2,.26,.18,.25,'#8c9081',shards);
     }
-    shards.visible=false;
+    this.mergeFurnitureGeometry(standing);this.mergeFurnitureGeometry(shards);shards.visible=false;
   }
   makeStructurePart(part,parent) {
-    const group=new THREE.Group();group.position.set(part.x,0,part.z);group.rotation.y=part.axis==='z'?Math.PI/2:0;parent.add(group);
+    const group=new THREE.Group();group.userData.structurePart=part;group.position.set(part.x,0,part.z);group.rotation.y=part.axis==='z'?Math.PI/2:0;parent.add(group);
     if(part.id==='floor'){
       this.box(0,.09,0,2,.2,2,'#635d4d',group);
       for(let i=0;i<8;i++)this.box(0,.195,(i-3.5)*.25,1.98,.015,.235,'#998267',group);
@@ -1197,36 +1202,44 @@ export class World {
     for(const p of this.state.construction){this.makeStructurePart(p,root);for(const c of structureColliders(p)){c.construction=true;this.colliders.push(c);this.collisionIndex.add(c);}}
     const floorMeshes=new Set();root.traverse(m=>{if(m.isMesh&&m.position.y<.3)floorMeshes.add(m);});
     const roofMeshes=new Set();for(const room of rooms)for(const t of room.tiles)roofMeshes.add(this.box(t.x,3.04,t.z,2.16,.12,2.16,'#4d605b',root,mat('#4d605b').clone()));
-    root.updateMatrixWorld(true);root.traverse(m=>{if(!m.isMesh)return;const type=roofMeshes.has(m)?'roof':floorMeshes.has(m)?'floor':'wall',key=type+':'+m.material.color.getHexString()+':'+(m.material.userData.baseOpacity??1);if(!batches.has(key))batches.set(key,{type,material:m.material,meshes:[]});batches.get(key).meshes.push(m);});
-    this.constructionWalls=[];this.constructionRoofs=[];
+    root.updateMatrixWorld(true);root.traverse(m=>{if(!m.isMesh)return;const type=roofMeshes.has(m)?'roof':floorMeshes.has(m)?'floor':'wall',key=type+':'+m.material.color.getHexString()+':'+(m.material.userData.baseOpacity??1)+(m.material.userData.baseOpacity===.38?':'+partKey(m.parent.userData.structurePart):'');if(!batches.has(key))batches.set(key,{type,material:m.material,meshes:[]});batches.get(key).meshes.push(m);});
+    this.constructionWalls=[];this.constructionRoofs=[];this.constructionPickables=[];this.windowGlazing=[];
     for(const batch of batches.values()){
-      const pieces=batch.meshes.map(m=>{let g=m.geometry.clone();if(g.index){const old=g;g=g.toNonIndexed();old.dispose();}return g.applyMatrix4(m.matrixWorld);}),geometry=mergeGeometries(pieces);pieces.forEach(g=>g.dispose());
+      let triangle=0;const ranges=[];const pieces=batch.meshes.map(m=>{let g=m.geometry.clone();if(g.index){const old=g;g=g.toNonIndexed();old.dispose();}const start=triangle;triangle+=g.attributes.position.count/3;ranges.push({start,end:triangle,part:m.parent.userData.structurePart});return g.applyMatrix4(m.matrixWorld);}),geometry=mergeGeometries(pieces);pieces.forEach(g=>g.dispose());
       const material=batch.material.clone();material.transparent=batch.type!=='floor'||material.transparent;material.userData.baseOpacity=batch.material.userData.baseOpacity??1;
-      const mesh=new THREE.Mesh(geometry,material);mesh.castShadow=true;mesh.receiveShadow=true;root.add(mesh);
+      const mesh=new THREE.Mesh(geometry,material);mesh.castShadow=true;mesh.receiveShadow=true;mesh.userData.partRanges=ranges;root.add(mesh);
       for(const m of batch.meshes){m.parent.remove(m);m.geometry.dispose();m.material.dispose();}
-      if(batch.type==='wall')this.constructionWalls.push(mesh);if(batch.type==='roof')this.constructionRoofs.push(mesh);
+      if(batch.type!=='roof')this.constructionPickables.push(mesh);if(material.userData.baseOpacity===.38)this.windowGlazing.push({mesh,part:ranges[0].part});if(batch.type==='wall')this.constructionWalls.push(mesh);if(batch.type==='roof')this.constructionRoofs.push(mesh);
     }
     this.shelterIndex=new SpatialIndex();for(const r of [...this.buildings,...this.canopies])this.shelterIndex.add(r,.25);for(const room of rooms)for(const t of room.tiles)this.shelterIndex.add({...t,w:2.16,d:2.16});
     for(const {item,group}of this.placedGroups)group.position.y=this.furnitureElevation(item.x,item.z);
-    this.updateConstructionRoofs(1);this.renderDirty=true;
+    this.updateConstructionRoofs(1);this.refreshConstructionLighting();this.renderDirty=true;
   }
   updateConstructionRoofs(dt) {
     const inside=this.buildings.some(b=>b.x===-18&&b.z===15&&isInsideBuilding(b,this.state.x,this.state.z))||this.state.construction.some(p=>p.id==='floor'&&Math.abs(p.x-this.state.x)<1&&Math.abs(p.z-this.state.z)<1);
     for(const [meshes,target]of [[this.constructionWalls,inside?.13:1],[this.constructionRoofs,inside?.035:1]])for(const m of meshes||[]){m.material.opacity=fadeOpacity(m.material.opacity,target*(m.material.userData.baseOpacity??1),dt);m.material.depthWrite=m.material.opacity>.98;m.castShadow=!inside&&(m.material.userData.baseOpacity??1)>.8;}
   }
   canBuildStructure(part) {
-    const result=buildAllowed(this.state,part,this.colliders);if(!result.ok)return result;
-    if(Object.entries(STRUCTURES[part.id].cost).some(([id,n])=>(this.state.bag[id]||0)+(this.state.stash[id]||0)<n))return {ok:false,reason:'Недостаточно материалов'};return result;
+    const result=replacementPlan(this.state,part,this.colliders);if(!result.ok)return result;
+    if(Object.entries(result.cost||{}).some(([id,n])=>(this.state.bag[id]||0)+(this.state.stash[id]||0)<n))return {ok:false,reason:'Недостаточно материалов'};return result;
   }
-  createStructureGhost(id) {this.removeGhost();this.ghost=new THREE.Group();this.ghost.userData.structureId=null;this.scene.add(this.ghost);return this.ghost;}
+  structureUnderPointer() {
+    for(const hit of this.raycaster.intersectObjects(this.constructionPickables||[],false)){const range=hit.object.userData.partRanges.find(r=>hit.faceIndex>=r.start&&hit.faceIndex<r.end);if(range?.part)return range.part;}return null;
+  }
+  refreshConstructionLighting() {
+    for(const pane of this.windowGlazing||[]){const rooms=this.constructionRooms.filter(r=>r.boundaries.some(e=>e.x===pane.part.x&&e.z===pane.part.z&&e.axis===pane.part.axis));pane.fixtures=this.placedGroups.filter(({item,group})=>group.userData.fixture&&rooms.some(room=>room.tiles.some(t=>Math.abs(t.x-item.x)<=1&&Math.abs(t.z-item.z)<=1)));}
+    this.syncFurniture();this.renderDirty=true;
+  }
+  createStructureGhost(id) {this.removeGhost();this.freezeBuildCamera=true;this.ghost=new THREE.Group();this.ghost.userData.structureId=null;this.scene.add(this.ghost);return this.ghost;}
   updateStructureGhost(part,valid) {
     const ghost=this.ghost;if(!ghost)return;ghost.visible=!!part;if(!part)return;
     if(ghost.userData.structureId!==part.id){while(ghost.children.length){const c=ghost.children[0];c.traverse(m=>{if(m.isMesh){m.geometry.dispose();m.material.dispose();}});ghost.remove(c);}this.makeStructurePart({id:part.id,x:0,z:0,axis:'x'},ghost);ghost.traverse(m=>{if(m.isMesh){m.material.transparent=true;m.material.opacity=.45;m.material.depthWrite=false;m.castShadow=false;}});ghost.userData.structureId=part.id;}
     ghost.position.set(part.x,0,part.z);ghost.rotation.y=part.axis==='z'?Math.PI/2:0;ghost.traverse(m=>{if(m.isMesh)m.material.color.set(valid?'#81d6ad':'#ed886e');});
   }
 
-  createGhost(id) { this.removeGhost(); this.ghost = this.makeFurniture(id, true); this.scene.add(this.ghost); return this.ghost; }
+  createGhost(id) { this.removeGhost();this.freezeBuildCamera=true; this.ghost = this.makeFurniture(id, true); this.scene.add(this.ghost); return this.ghost; }
   removeGhost() {
+    this.freezeBuildCamera=false;
     if (this.ghost) {
       const descendants = new Set(); this.ghost.traverse(child => { descendants.add(child); if (child.isMesh) { child.geometry.dispose(); if (Array.isArray(child.material)) child.material.forEach(m => m.dispose()); else child.material.dispose(); } });
       this.lights = this.lights.filter(entry => !descendants.has(entry.light));
@@ -1236,6 +1249,59 @@ export class World {
   floatingText(text, x, z, c = '#e6cc98', icons = []) {
     this.floating.push({ text, x, z, icons, color: c, life: 1.6, y: 1.6 });
   }
+  ensureHitEffects() {
+    if(this.debris)return;
+    this.debrisParticles=[];this.debrisMatrix=new THREE.Matrix4();this.debrisScale=new THREE.Vector3();this.debrisQuaternion=new THREE.Quaternion();this.debrisPosition=new THREE.Vector3();
+    this.debris=new THREE.InstancedMesh(new THREE.BoxGeometry(.07,.07,.07),new THREE.MeshStandardMaterial({color:'#ffffff',roughness:.9}),128);this.debris.instanceMatrix.setUsage(THREE.DynamicDrawUsage);this.debris.frustumCulled=false;this.debris.count=0;this.scene.add(this.debris);
+    const positions=[];for(let i=0;i<20;i++){const a=-1.1+i/20*2.2,b=-1.1+(i+1)/20*2.2;for(const [r,t]of [[.78,a],[1,a],[1,b],[.78,a],[1,b],[.78,b]])positions.push(Math.sin(t)*r,0,Math.cos(t)*r);}
+    const geometry=new THREE.BufferGeometry();geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));this.swingTrail=new THREE.Mesh(geometry,new THREE.MeshBasicMaterial({color:'#e6d9b5',transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide}));this.swingTrail.visible=false;this.scene.add(this.swingTrail);
+    this.thrustTrail=new THREE.Mesh(new THREE.BoxGeometry(.065,.065,1),this.swingTrail.material.clone());this.thrustTrail.visible=false;this.scene.add(this.thrustTrail);
+    this.muzzleFlash=new THREE.Sprite(new THREE.SpriteMaterial({map:this.glowTexture(),color:'#ffd897',transparent:true,depthWrite:false,blending:THREE.AdditiveBlending}));this.muzzleFlash.visible=false;this.muzzleFlash.scale.setScalar(.55);this.scene.add(this.muzzleFlash);
+  }
+  emitFragments(x,y,z,color,count=7) {
+    this.ensureHitEffects();for(let i=0;i<count&&this.debrisParticles.length<128;i++)this.debrisParticles.push({x,y,z,vx:(Math.random()-.5)*2.2,vy:1.4+Math.random()*1.7,vz:(Math.random()-.5)*2.2,life:.5+Math.random()*.25,max:.75,color:new THREE.Color(color)});
+  }
+  weaponEffect(id,facing) {
+    this.ensureHitEffects();this.weaponVisual={id,facing,time:0};this.weaponRecoil=0;
+  }
+  clearWeaponEffect() {this.weaponVisual=null;if(this.swingTrail)this.swingTrail.visible=false;if(this.thrustTrail)this.thrustTrail.visible=false;if(this.muzzleFlash)this.muzzleFlash.visible=false;this.weaponRecoil=0;}
+  weaponMiss() {if(this.weaponVisual)this.weaponVisual.miss=true;}
+  enemyImpact(enemy,id) {
+    this.emitFragments(enemy.x,1.15,enemy.z,'#edc782',id==='unarmed'?3:8);enemy.hitFlash=.16;
+    if(!enemy.flashMaterials){enemy.flashMaterials=[];enemy.group.traverse(m=>{if(m.isMesh&&m.material.emissive){m.material=m.material.clone();enemy.flashMaterials.push({material:m.material,base:m.material.emissive.clone(),intensity:m.material.emissiveIntensity});}});}
+  }
+  resourceStrike(node) {
+    if(this.state.brokenNodes.includes(node.id))return;node.strikeTime=.18;this.emitFragments(node.x,node.machine==='quarry'?.6:.8,node.z,node.machine==='quarry'?'#acb7ae':'#c2a16c',8);
+  }
+  breakResource(node,px,pz) {
+    if(node.machine==='quarry'){this.emitFragments(node.x,.65,node.z,'#aeb5a6',12);return;}
+    const angle=Math.atan2(node.x-px,node.z-pz);let direction=angle;
+    for(let i=0;i<8;i++){const a=angle+i*Math.PI/4,x=node.x+Math.sin(a)*4.3,z=node.z+Math.cos(a)*4.3;if(!this.colliders.some(c=>c!==node.collider&&!c.disabled&&segmentHitsRect(node.x,node.z,x,z,{...c,w:c.w+.7,d:c.d+.7}))){direction=a;break;}}
+    node.falling={time:0,axis:new THREE.Vector3(Math.cos(direction),0,-Math.sin(direction))};if(node.stump)node.stump.visible=true;
+  }
+  updateResourceAnimations(dt) {
+    for(const node of this.nodes){
+      const model=node.group.userData.standing;if(!model)continue;
+      if(node.falling){node.falling.time+=dt;const t=Math.min(1,node.falling.time/.8);model.quaternion.setFromAxisAngle(node.falling.axis,t*t*Math.PI/2);model.scale.setScalar(t>.85?Math.max(.001,(1-t)/.15):1);
+        if(t>=1){node.falling=null;model.quaternion.identity();model.scale.setScalar(1);this.syncNodes();}
+      }else if(node.strikeTime>0){node.strikeTime=Math.max(0,node.strikeTime-dt);model.rotation.z=Math.sin(node.strikeTime/.18*Math.PI)*.035;}
+    }
+  }
+  updateHitEffects(dt) {
+    this.updateResourceAnimations(dt);if(!this.debris)return;
+    const particles=this.debrisParticles;for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.life-=dt;if(p.life<=0){particles.splice(i,1);continue;}p.vy-=dt*7;p.x+=p.vx*dt;p.y=Math.max(.08,p.y+p.vy*dt);p.z+=p.vz*dt;
+
+    }
+    // Compact indexes after expired particles are removed, without allocating meshes.
+    for(let i=0;i<particles.length;i++){const p=particles[i];this.debrisPosition.set(p.x,p.y,p.z);this.debrisScale.setScalar(Math.min(1,p.life/.15));this.debrisMatrix.compose(this.debrisPosition,this.debrisQuaternion,this.debrisScale);this.debris.setMatrixAt(i,this.debrisMatrix);this.debris.setColorAt(i,p.color);}
+    this.debris.count=particles.length;this.debris.visible=particles.length>0;if(particles.length){this.debris.instanceMatrix.needsUpdate=true;this.debris.instanceColor.needsUpdate=true;}
+    const effect=this.weaponVisual;if(!effect)return;effect.time+=dt;const ranged=['pistol','carbine'].includes(effect.id),duration=ranged?.16:.52;
+    const facing=effect.facing,x=this.state.x,z=this.state.z,dx=Math.sin(facing),dz=Math.cos(facing);
+    if(ranged){this.muzzleFlash.position.set(x+dx*.7,1.15,z+dz*.7);this.muzzleFlash.visible=effect.time<.08;this.muzzleFlash.material.opacity=Math.max(0,1-effect.time/.08);this.weaponRecoil=Math.sin(Math.min(1,effect.time/.16)*Math.PI)*-.18;}
+    else{const stab=effect.id==='spear',mesh=stab?this.thrustTrail:this.swingTrail;mesh.visible=effect.time>.08&&effect.time<.34;mesh.position.set(x+(stab?dx*1.2:0),1,z+(stab?dz*1.2:0));mesh.rotation.y=facing;mesh.scale.set(stab?1:1.6,1,stab?1.5:1.6);mesh.material.opacity=Math.max(0,Math.sin((effect.time-.08)/.26*Math.PI))*.24;}
+    if(effect.time>=duration)this.clearWeaponEffect();
+  }
+
   impact(x, y, z, color = '#ffca7a', scale = 1) {
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTexture(), color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
     sprite.position.set(x, y, z); sprite.scale.setScalar(scale); this.scene.add(sprite);
@@ -1247,12 +1313,12 @@ export class World {
     this.scene.add(line); this.effects ||= []; this.effects.push({ mesh: line, life: 0.15, max: 0.15 }); this.impact(tx, 1.1, tz);
   }
   update(dt, moving, focus = true) {
-    this.time += dt; this.updateRoofs(dt);this.updateConstructionRoofs(dt);this.syncFurniture();const weather=weatherAt(this.state.elapsed);this.updateRain(dt,weather);
+    this.time += dt;this.updateHitEffects(dt); this.updateRoofs(dt);this.updateConstructionRoofs(dt);this.syncFurniture();const weather=weatherAt(this.state.elapsed);this.updateRain(dt,weather);
     const player = this.player;
-    if (focus) {
+    if (focus&&!this.freezeBuildCamera) {
       const desired = new THREE.Vector3(this.state.x + 1, 0, this.state.z - 1);
       this.cameraCenter.lerp(desired, 1 - Math.exp(-dt * 5));
-    } else {
+    } else if(!focus) {
       this.cameraCenter.lerp(new THREE.Vector3(-12, 0, 13), 1 - Math.exp(-dt * 1.5));
     }
     this.camera.position.copy(this.cameraCenter).add(new THREE.Vector3(27, 33, 31)); this.camera.lookAt(this.cameraCenter);
@@ -1285,7 +1351,8 @@ export class World {
     for (let i = 0; i < pos.count; i++) { pos.setX(i, this.moteOrigins[i * 3] + Math.sin(this.time * 0.16 + this.motePhases[i]) * 0.6); pos.setY(i, this.moteOrigins[i * 3 + 1] + Math.sin(this.time * 0.25 + this.motePhases[i]) * 0.4); }
     pos.needsUpdate = true;
     for(const e of this.enemies){const near=Math.hypot(e.x-this.state.x,e.z-this.state.z)<13&&e.health>0;e.cone.visible=near;e.cone.position.set(e.x,.058,e.z);e.cone.rotation.y=e.facing;e.cone.material.opacity=e.alert>0?.1:.04;e.warning.visible=near&&e.windup>0;e.warning.position.set(e.x,.065,e.z);e.warning.scale.setScalar(1+(e.windup||0));}
-    for (const enemy of this.enemies) { enemy.group.position.set(enemy.x, 1.2 + Math.sin(this.time * 2 + enemy.seed) * 0.13, enemy.z); enemy.group.visible = enemy.health > 0; }
+    for(const enemy of this.enemies){enemy.hitFlash=Math.max(0,(enemy.hitFlash||0)-dt);enemy.group.position.set(enemy.x,1.2+Math.sin(this.time*2+enemy.seed)*.13,enemy.z);enemy.group.visible=enemy.health>0;if(enemy.hitFlash>0||enemy.wasFlashing)for(const f of enemy.flashMaterials||[]){f.material.emissive.copy(enemy.hitFlash>0?(this.hitColor??=new THREE.Color('#a67938')):f.base);f.material.emissiveIntensity=enemy.hitFlash>0?.7:f.intensity;}enemy.wasFlashing=enemy.hitFlash>0;}
+    this.weaponRoot.rotation.x=this.weaponRecoil||0;
     this.stationIcon.material.opacity = 0.4 + Math.sin(this.time * 2) * 0.14;
     for (const { item, group } of this.placedGroups) if (['garden', 'seedbed'].includes(item.id)) {
       const growth = 0.4 + Math.min(1, Math.max(0, (this.state.elapsed - item.harvested) / productionInfo(this.state, item).interval)) * 0.6;

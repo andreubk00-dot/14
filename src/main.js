@@ -1,3 +1,4 @@
+import {swingProfile,swingCanHit,advanceSwing} from './combat.js';
 import {DRONE_TYPES,gearProfile,droneSees,attackCharge} from './survival.js';
 import {STRUCTURES,snapStructure,dismantleAllowed} from './construction.js';
 import {buildStructure,dismantleStructure} from './game.js';
@@ -29,7 +30,7 @@ class QuietDistrict {
     this.state = loaded || freshState(); this.hasSave = !!loaded;
     this.started = false; this.ready = false; this.keys = new Set(); this.path = []; this.target = null;
     this.job = null; this.fish = null; this.build = null; this.pointerPosition = { x: innerWidth / 2, y: innerHeight / 2 };
-    this.attackCooldown = 0; this.stepTimer = 0; this.uiTimer = 0; this.saveTimer = 0; this.visibilityPaused = false;
+    this.swing=null;this.attackCooldown = 0; this.stepTimer = 0; this.uiTimer = 0; this.saveTimer = 0; this.visibilityPaused = false;
     this.motion = new Locomotion(); this.touchMovement = { x: 0, z: 0 }; this.audio = new DistrictAudio();
     this.ui = new UI(document.getElementById('app'), this.state, (action, data) => this.action(action, data));
     try {
@@ -154,7 +155,7 @@ class QuietDistrict {
     if (action === 'reload') { location.reload(); return; }
     if (action === 'start') { this.start(); return; }
     if (!this.started) return;
-    if (action === 'panel-open') { this.motion.reset(); this.path = []; this.target = null; this.job = null; this.keys.clear(); this.touchMovement = { x: 0, z: 0 }; this.ui.progress(null); this.cancelFishing(); return; }
+    if (action === 'panel-open') { this.swing=null;this.world.clearWeaponEffect(); this.motion.reset(); this.path = []; this.target = null; this.job = null; this.keys.clear(); this.touchMovement = { x: 0, z: 0 }; this.ui.progress(null); this.cancelFishing(); return; }
     if (action === 'panel-close') { this.keys.clear(); return; }
     if (this.ui.pendingConfirm) return;
     if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders', 'helper', 'storage', 'garden','dryer','station','loadouts','architecture'].includes(action)) {
@@ -205,7 +206,7 @@ class QuietDistrict {
       this.cancelBuild();const index=Number(data.index),entry=this.world.placedGroups[index];
       if(!this.atHome()||!packFurniture(this.state,index)) {this.ui.toast('Нельзя убрать последнюю кровать приглашённого помощника или переполнить склад мебели.');return;}
       if(entry){this.world.scene.remove(entry.group);entry.group.traverse(m=>{if(m.isMesh)m.geometry.dispose();if(m.isPointLight)this.world.lights=this.world.lights.filter(l=>l.light!==m);});this.world.placedGroups.splice(index,1);}
-      this.world.renderDirty=true;this.changed();return;
+      this.world.refreshConstructionLighting();this.world.renderDirty=true;this.changed();return;
     }
     if(action==='unpack-furniture') {
       const index=Number(data.index),item=this.state.packedFurniture[index];if(!this.atHome()||!item||this.state.placed.length>=70)return;
@@ -342,9 +343,9 @@ class QuietDistrict {
   updateBuildPreview() {
     if (!this.build) return;
     const hit = this.world.pointer(this.pointerPosition.x, this.pointerPosition.y), b = this.build;
-    if(b.recipe.structural){const part=snapStructure(b.recipe.id,hit.point.x,hit.point.z,this.state.construction,b.axis);b.part=part;const status=b.recipe.id==='dismantle'?dismantleAllowed(this.state,part):this.world.canBuildStructure(part);b.valid=status.ok;b.reason=status.reason;this.world.updateStructureGhost(part,b.valid);this.ui.buildHint(b.recipe,b.valid,0);const hint=document.querySelector('#build-hint span');if(hint)hint.textContent=b.valid?(b.recipe.id==='dismantle'?'Нажми на выбранную деталь для разбора':'Нажми, чтобы установить конструкцию'):status.reason;return;}
-    b.x=Math.round(hit.point.x);b.z=Math.round(hit.point.z);
-    if(['wallclock','fishtrophy','wallshelf'].includes(b.recipe.id)) {const anchor=clockAnchor(hit.point.x,hit.point.z,b.recipe.id);if(anchor) Object.assign(b,anchor);}
+    if(b.recipe.structural){const selected=this.world.structureUnderPointer();const part=b.recipe.id==='dismantle'?selected:b.recipe.id!=='floor'&&selected&&selected.id!=='floor'?{...selected,id:b.recipe.id}:snapStructure(b.recipe.id,hit.point.x,hit.point.z,this.state.construction,b.axis);b.part=part;const status=b.recipe.id==='dismantle'?dismantleAllowed(this.state,part):this.world.canBuildStructure(part);b.valid=status.ok;b.reason=status.reason;this.world.updateStructureGhost(part,b.valid);this.ui.buildHint(b.recipe,b.valid,part?.axis==='z'?Math.PI/2:0);const hint=document.querySelector('#build-hint span');if(hint)hint.textContent=b.valid?(b.recipe.id==='dismantle'?'Нажми на выбранную деталь для разбора':(status.old?'Нажми, чтобы заменить деталь; доплата: '+(Object.entries(status.cost).map(([id,n])=>n+' '+RESOURCES[id].name.toLowerCase()).join(', ')||'не требуется'):'Нажми, чтобы установить конструкцию')):status.reason;return;}
+    const precise=this.state.construction.some(p=>p.id==='floor'&&Math.abs(p.x-hit.point.x)<=1.5&&Math.abs(p.z-hit.point.z)<=1.5);b.x=Math.round(hit.point.x*(precise?4:1))/(precise?4:1);b.z=Math.round(hit.point.z*(precise?4:1))/(precise?4:1);
+    if(['wallclock','fishtrophy','wallshelf'].includes(b.recipe.id)) {const anchor=clockAnchor(hit.point.x,hit.point.z,b.recipe.id,this.state.construction);if(anchor) Object.assign(b,anchor);}
     b.valid = this.world.canPlace({id:b.recipe.id,x:b.x,z:b.z,rotation:b.rotation},b.movingIndex)
       && (b.movingIndex !== undefined || b.packedIndex !== undefined || craftStatus(this.state, b.recipe).ok);
     const ghost = this.world.ghost;
@@ -360,12 +361,12 @@ class QuietDistrict {
       const item = this.state.placed[b.movingIndex], group = this.world.placedGroups[b.movingIndex].group;
       item.x = b.x; item.z = b.z; item.rotation = b.rotation;
       group.position.set(b.x, this.world.furnitureElevation(b.x,b.z), b.z); group.rotation.y = b.rotation;
-      this.cancelBuild(); this.audio.craft(); this.changed(); return;
+      this.world.refreshConstructionLighting();this.cancelBuild(); this.audio.craft(); this.changed(); return;
     }
     if(b.packedIndex!==undefined) {
       if(unpackFurniture(this.state,b.packedIndex,b.x,b.z,b.rotation,this.world.colliders)){this.world.addPlaced(this.state.placed.at(-1));this.audio.craft();this.cancelBuild();this.changed();}else this.ui.toast('Не удалось разместить вещь. Она осталась на складе.');return;
     }
-    if (place(this.state, b.recipe.id, b.x, b.z, b.rotation)) {
+    if (place(this.state, b.recipe.id, b.x, b.z, b.rotation,this.world.colliders)) {
       const item = this.state.placed.at(-1); this.world.addPlaced(item); this.audio.craft();
       this.ui.toast(`${b.recipe.name} — теперь часть твоего дома.`, 'success'); this.cancelBuild(); this.changed();
     } else { this.ui.toast('Не хватает материалов для размещения.'); this.cancelBuild(); }
@@ -450,13 +451,13 @@ class QuietDistrict {
     if (target.type === 'node') this.harvest(target.entity);
   }
   harvest(node) {
-    if (!node.group.visible || this.job) return;
+    if (!node.group.visible || this.job||this.swing) return;
     if(node.accessGate&&!this.state.openedGates.includes(node.accessGate)){this.ui.toast('Сначала открой вход в помещение подходящим инструментом.');return;}
     if (node.requires && !this.state.owned.includes(node.requires)) { this.ui.toast(`Нужно изготовить: ${RECIPES.find(r => r.id === node.requires).name}`); return; }
     if (bagWeight(this.state) >= capacity(this.state)) { this.ui.toast('Рюкзак полон. Вернись домой и сложи добычу.'); return; }
     this.job = { type: 'harvest', node, elapsed: 0, duration: dismantleInfo(this.state.owned,node).duration, x: this.state.x, z: this.state.z, label: node.type==='herbs'?'Собираем травы…':node.machine==='standingtree'?'Рубим дерево…':node.machine==='quarry'?'Добываем камень…':'Разбираем находку…' };
-    this.audio.hit();
-    if(['standingtree','quarry'].includes(node.machine)){this.world.setHarvestTool(node.requires);this.world.playerVisual.rotation.y=Math.atan2(node.x-this.state.x,node.z-this.state.z);this.world.playCharacterAction('1h_melee_attack_chop');}else this.world.playCharacterAction('pickup');
+    this.audio.swing(node.requires);
+    if(['standingtree','quarry'].includes(node.machine)){this.world.setHarvestTool(node.requires);this.world.facing=Math.atan2(node.x-this.state.x,node.z-this.state.z);this.world.playerVisual.rotation.y=this.world.facing;this.world.playCharacterAction('1h_melee_attack_chop');}else this.world.playCharacterAction('pickup');
   }
   finishJob() {
     const job = this.job; this.job = null; this.ui.progress(null);
@@ -464,7 +465,7 @@ class QuietDistrict {
     if(job.type==='gate'){const result=openGate(this.state,job.gate.id);if(result.ok){this.world.syncGates();if(result.received)this.showLoot(result.received,job.gate.x,job.gate.z);this.audio.craft();this.ui.toast('Проход открыт.','success');this.changed();}else this.ui.toast(result.reason);return;}
     const node=job.node;
     if(node.find) {const result=claimFind(this.state,node);if(!result.ok) this.ui.toast(result.reason);else {node.group.visible=false;node.marker.visible=false;if(node.collider)node.collider.disabled=true;this.world.floatingText(`+1 ${FINDS[node.find].name}`,node.x,node.z,'#e6cc98',[node.find]);this.audio.collect();}this.changed();return;}
-    const result=collect(this.state,node.loot);if(['standingtree','quarry'].includes(node.machine)&&Object.keys(result.received).length&&!this.state.brokenNodes.includes(node.id))this.state.brokenNodes.push(node.id);
+    const wasBroken=this.state.brokenNodes.includes(node.id);const result=collect(this.state,node.loot);if(['standingtree','quarry'].includes(node.machine)&&Object.keys(result.received).length&&!this.state.brokenNodes.includes(node.id))this.state.brokenNodes.push(node.id);
     this.showLoot(result.received, node.x, node.z);
     node.loot = result.remaining;
     this.state.nodeLoot ||= {};
@@ -477,38 +478,45 @@ class QuietDistrict {
       if (node.type === 'drop') { const savedDrop = this.state.drops.find(d => d.id === node.id); if (savedDrop) savedDrop.loot = { ...result.remaining }; }
       this.ui.toast('Рюкзак почти полон. Остальное осталось на месте.');
     }
-    this.world.syncNodes();this.audio.collect(); this.changed();
+    if(!wasBroken&&Object.keys(result.received).length&&['standingtree','quarry'].includes(node.machine))this.world.breakResource(node,this.state.x,this.state.z);this.world.syncNodes();this.audio.collect(); this.changed();
   }
   showLoot(loot, x, z) {
     const entries = Object.entries(loot);
     if (entries.length) this.world.floatingText(entries.map(([id, n]) => `+${n} ${RESOURCES[id].name.toLowerCase()}`).join(' · '), x, z, '#e6cc98', entries.map(([id]) => id));
   }
   attack(target) {
-    if (this.ui.panel || this.build || this.job || this.attackCooldown > 0) return;
-    const s = this.state, w = weapon(s), ranged = ['pistol', 'carbine'].includes(w.id);
-    target ||= this.world.enemies.filter(e => e.health > 0 && Math.hypot(e.x - s.x, e.z - s.z) <= w.range).sort((a, b) => Math.hypot(a.x - s.x, a.z - s.z) - Math.hypot(b.x - s.x, b.z - s.z))[0];
-    if (!target || Math.hypot(target.x - s.x, target.z - s.z) > w.range) { this.ui.toast('В пределах досягаемости нет противника.'); return; }
-    if(!this.world.canSee(s.x,s.z,target.x,target.z)){this.ui.toast('Укрытие перекрывает удар.');return;}
-    if (ranged && !s.ammo) { this.ui.toast('Нет зарядов. Создай их на станции или возьми трубу.'); return; }
-    if (ranged) s.ammo--;
-    this.attackCooldown = w.cooldown;
-    this.world.facing = Math.atan2(target.x - s.x, target.z - s.z);
-    this.world.playerVisual.rotation.y = this.world.facing;
-    target.health = Math.max(0, target.health - w.damage); this.world.floatingText(`−${w.damage}`, target.x, target.z, '#edbf87');
-    if (ranged) { this.world.shot(s.x, s.z, target.x, target.z); this.audio.shoot(); }
-    else { this.world.impact(target.x, 1.2, target.z); this.audio.hit(); }
-    this.world.playCharacterAction(ranged ? '1h_ranged_shoot' : '1h_melee_attack_chop');
-    if (!target.health) {
-      target.deadAt = s.elapsed; s.droneDeaths[target.id] = s.elapsed; s.kills++;
-      const result = collect(s, { metal: 2, parts: 1 }); this.showLoot(result.received, target.x, target.z);
-      if (result.full) {
-        const drop = { id: `drop-${Date.now()}-${s.kills}`, x: target.x, z: target.z, loot: result.remaining };
-        s.drops.push(drop); this.world.addDrop(drop);
-        this.ui.toast('Рюкзак полон. Обломки остались на месте — вернись за ними.');
-      }
-      this.audio.collect(); this.target = null;
+    if(this.ui.panel||this.build||this.job||this.swing||this.attackCooldown>0)return;
+    const s=this.state,w=weapon(s),ranged=['pistol','carbine'].includes(w.id);
+    target ||= this.world.enemies.filter(e=>e.health>0&&Math.hypot(e.x-s.x,e.z-s.z)<=w.range&&this.world.canSee(s.x,s.z,e.x,e.z)).sort((a,b)=>Math.hypot(a.x-s.x,a.z-s.z)-Math.hypot(b.x-s.x,b.z-s.z))[0];
+    if(target?.health<=0)return;
+    if(target&&(Math.hypot(target.x-s.x,target.z-s.z)>w.range||!this.world.canSee(s.x,s.z,target.x,target.z))){this.ui.toast('Укрытие или расстояние мешает удару.');return;}
+    if(ranged&&!s.ammo){this.ui.toast('Нет зарядов. Создай их на станции или возьми трубу.');return;}
+    if(ranged&&!target){this.ui.toast('В пределах досягаемости нет противника.');return;}
+    const facing=target?Math.atan2(target.x-s.x,target.z-s.z):(this.world.facing||0);
+    this.attackCooldown=w.cooldown;this.world.facing=facing;this.world.playerVisual.rotation.y=facing;
+    if(ranged){s.ammo--;this.world.shot(s.x,s.z,target.x,target.z);this.world.weaponEffect(w.id,facing);this.audio.shoot();this.damageEnemy(target,w);}
+    else{this.swing={elapsed:0,resolved:false,weapon:{...w},profile:swingProfile(w.id),facing,target};this.world.weaponEffect(w.id,facing);this.audio.swing(w.id);}
+    this.world.playCharacterAction(ranged?'1h_ranged_shoot':w.id==='spear'?'1h_melee_attack_stab':'1h_melee_attack_chop');
+  }
+  updateSwing(dt) {
+    const swing=this.swing;if(!swing)return;
+    if(advanceSwing(swing,dt)){
+      const e=swing.target;
+      if(swingCanHit(swing,this.state,e,e&&this.world.canSee(this.state.x,this.state.z,e.x,e.z))){this.damageEnemy(e,swing.weapon);this.audio.weaponHit(swing.weapon.id);}
+      else this.world.weaponMiss();
     }
-    this.ui.update();
+    if(swing.elapsed>=swing.profile.duration)this.swing=null;
+  }
+  damageEnemy(target,w) {
+    const s=this.state;target.health=Math.max(0,target.health-w.damage);this.world.floatingText(`−${w.damage}`,target.x,target.z,'#edbf87');this.world.enemyImpact(target,w.id);
+    if(!['pistol','carbine'].includes(w.id)){
+      const d=Math.hypot(target.x-s.x,target.z-s.z)||1,push=swingProfile(w.id).push,x=target.x+(target.x-s.x)/d*push,z=target.z+(target.z-s.z)/d*push;
+      if(!this.world.blocked(x,z,.4)) {target.x=x;target.z=z;}target.windup=0;
+    }
+    if(!target.health){target.deadAt=s.elapsed;s.droneDeaths[target.id]=s.elapsed;s.kills++;const result=collect(s,{metal:2,parts:1});this.showLoot(result.received,target.x,target.z);
+      if(result.full){const drop={id:`drop-${Date.now()}-${s.kills}`,x:target.x,z:target.z,loot:result.remaining};s.drops.push(drop);this.world.addDrop(drop);this.ui.toast('Рюкзак полон. Обломки остались на месте — вернись за ними.');}this.audio.collect();this.target=null;
+    }
+    this.ui.update();this.save(false);
   }
   updateEnemies(dt) {
     const visibility=gearProfile(this.state,RECIPES).visibility;
@@ -531,6 +539,7 @@ class QuietDistrict {
     }
   }
   die() {
+    this.swing=null;this.world.clearWeaponEffect();
     this.motion.reset(); this.keys.clear(); this.touchMovement = { x: 0, z: 0 };
     respawn(this.state); this.path = []; this.target = null; this.job = null; this.cancelFishing(); this.cancelBuild();
     this.world.move(this.state.x, this.state.z); this.ui.progress(null); this.world.destination.visible = false;
@@ -598,7 +607,7 @@ class QuietDistrict {
     if (distance > 0.08 && this.job) { this.job = null; this.ui.progress(null); }
     const result = this.motion.update(dt, dx, dz, this.state.stamina,
       this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'), this.state.equipment.boots === 'boots');
-    const profile=gearProfile(this.state,RECIPES);result.x*=profile.speed;result.z*=profile.speed;
+    const profile=gearProfile(this.state,RECIPES);result.x*=profile.speed*(this.swing?.resolved===false?.75:1);result.z*=profile.speed*(this.swing?.resolved===false?.75:1);
     this.state.stamina = result.stamina; this.world.running = result.running;
     if (!manual && this.path.length && Math.hypot(result.x, result.z) > distance) {
       const ratio = distance / Math.hypot(result.x, result.z); result.x *= ratio; result.z *= ratio;
@@ -636,7 +645,7 @@ class QuietDistrict {
       this.state.elapsed += dt;updateRainCrops(this.state,dt,(x,z)=>this.world.sheltered(x,z));
       this.audio.rain(weatherAt(this.state.elapsed).rain,this.world.sheltered(this.state.x,this.state.z));this.audio.environment(this.world.ambience(),this.world.sheltered(this.state.x,this.state.z),this.state.elapsed);
       if (updateHelper(this.state)) this.ui.update(); this.attackCooldown = Math.max(0, this.attackCooldown - dt);
-      moving = this.movement(dt); this.updateEnemies(dt); this.audio.tick(this.state.elapsed);const music=this.state.placed.filter(p=>p.id==='recordplayer'&&p.enabled).map(p=>Math.hypot(p.x-this.state.x,p.z-this.state.z));this.audio.record(this.state.elapsed,music.length?Math.min(...music):Infinity);const radios=this.state.placed.filter(p=>p.id==='homeradio'&&p.enabled).map(p=>Math.hypot(p.x-this.state.x,p.z-this.state.z));this.audio.radio(this.state.elapsed,radios.length?Math.min(...radios):Infinity);
+      moving = this.movement(dt);this.updateSwing(dt); this.updateEnemies(dt); this.audio.tick(this.state.elapsed);const music=this.state.placed.filter(p=>p.id==='recordplayer'&&p.enabled).map(p=>Math.hypot(p.x-this.state.x,p.z-this.state.z));this.audio.record(this.state.elapsed,music.length?Math.min(...music):Infinity);const radios=this.state.placed.filter(p=>p.id==='homeradio'&&p.enabled).map(p=>Math.hypot(p.x-this.state.x,p.z-this.state.z));this.audio.radio(this.state.elapsed,radios.length?Math.min(...radios):Infinity);
       if (this.target) {
         const target = this.target, range = target.type === 'enemy' ? weapon(this.state).range : 2;
         if (Math.hypot(target.entity.x - this.state.x, target.entity.z - this.state.z) <= range) {
@@ -647,7 +656,11 @@ class QuietDistrict {
         }
       }
       if (this.job) {
-        this.job.elapsed += dt;if(this.job.type==='harvest'&&['standingtree','quarry'].includes(this.job.node.machine)){const hits=Math.floor(this.job.elapsed/.75);if(hits!==(this.job.hits||0)){this.job.hits=hits;this.audio.hit();this.world.playCharacterAction('1h_melee_attack_chop');this.world.impact(this.job.node.x,.8,this.job.node.z,this.job.node.machine==='quarry'?'#c1c9bf':'#bca472',.35);}} this.ui.progress(this.job.label, this.job.elapsed / this.job.duration);
+        this.job.elapsed += dt;if(this.job.type==='harvest'&&['standingtree','quarry'].includes(this.job.node.machine)){
+          const j=this.job;j.nextStrike??=.2;j.nextSwing??=.65;
+          if(j.elapsed>=j.nextSwing){this.world.playCharacterAction('1h_melee_attack_chop');this.audio.swing(j.node.requires);j.nextSwing+=.65;}
+          if(j.elapsed>=j.nextStrike){this.world.resourceStrike(j.node);this.audio.resourceHit(j.node.machine);j.nextStrike+=.65;}
+        } this.ui.progress(this.job.label, this.job.elapsed / this.job.duration);
         if (this.job.elapsed >= this.job.duration) this.finishJob();
       }
       this.uiTimer += dt; this.saveTimer += dt;
@@ -670,6 +683,7 @@ class QuietDistrict {
     while (remaining > 0.0001) { const step = Math.min(1 / 60, remaining); moving = this.tick(step) || moving; remaining -= step; }
     if (this.started && !this.ui.panel && !this.visibilityPaused) this.updateFishing(elapsed);
     if (!this.visibilityPaused) {
+      this.world.freezeBuildCamera=!!this.build;
       this.world.setHarvestTool(this.job?.type==='harvest'&&['standingtree','quarry'].includes(this.job.node.machine)?this.job.node.requires:null);
       // A paused scene needs one frame, then only redraws for equipment, lighting or resize changes.
       if (!this.ui.panel || !this.panelRendered || this.world.renderDirty) this.world.update(this.ui.panel ? 0 : elapsed, moving, this.started);

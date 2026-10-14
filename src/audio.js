@@ -29,6 +29,9 @@ export class DistrictAudio {
   collect() { this.tone(620, 0.16, 0.15, 'sine', 950); setTimeout(() => this.tone(980, 0.24, 0.1), 100); }
   craft() { [390, 490, 590].forEach((freq, i) => setTimeout(() => this.tone(freq, 0.4, 0.15), i * 90)); }
   hit() { this.tone(100, 0.12, 0.35, 'triangle', 40); }
+  swing(id){this.tone(id==='spear'?180:130,.11,.07,'triangle',55);}
+  weaponHit(id){this.tone(id==='unarmed'?80:150,.1,.25,'triangle',38);if(id!=='unarmed')this.tone(740,.1,.06,'sine',210);}
+  resourceHit(kind){this.tone(kind==='quarry'?420:95,.12,.2,'triangle',kind==='quarry'?160:40);}
   shoot() { this.tone(480, 0.13, 0.2, 'sawtooth', 90); }
   step() { this.tone(80 + Math.random() * 30, 0.055, 0.06, 'triangle', 35); }
   bite() { this.tone(720, 0.17, 0.25); setTimeout(() => this.tone(960, 0.23, 0.2), 160); }

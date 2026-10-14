@@ -65,6 +65,7 @@ export function buildAllowed(state,part,obstacles=[]){
 }
 export function dismantleAllowed(state,part){
  const parts=state.construction||[];if(!part||!parts.includes(part))return {ok:false,reason:'Выбери установленную конструкцию'};
+ if(part.id!=='floor'&&state.placed.some(p=>['wallclock','wallshelf','fishtrophy'].includes(p.id)&&Math.hypot(p.x-part.x,p.z-part.z)<1.2))return {ok:false,reason:'Сначала сними настенные предметы'};
  if(part.id==='floor'){
   if(circleHitsRect(state.x,state.z,.3,structureRect(part)))return {ok:false,reason:'Сойди с пола перед разбором'};
   if(parts.some(p=>p.id!=='floor'&&tileEdges(part).some(e=>matching(e,p))))return {ok:false,reason:'Сначала разбери стены этого пола'};
@@ -76,4 +77,17 @@ export function dismantleAllowed(state,part){
 export function cleanConstruction(input){
  const result=[];for(const p of Array.isArray(input)?input.slice(0,120):[]){if(!p||!['floor','wall','window','door'].includes(p.id)||!Number.isFinite(p.x)||!Number.isFinite(p.z))continue;const snapped=snapStructure(p.id,p.x,p.z,result,p.axis);if(!snapped||snapped.x!==p.x||snapped.z!==p.z||p.id!=='floor'&&snapped.axis!==p.axis)continue;const state={construction:result,placed:[],x:-16,z:16};if(buildAllowed(state,snapped).ok)result.push(snapped);}
  return result;
+}
+
+export function replacementPlan(state,part,obstacles=[]){
+ const old=(state.construction||[]).find(p=>part&&p.id!=='floor'&&partKey(p)===partKey(part));
+ if(!old)return {...buildAllowed(state,part,obstacles),cost:part?STRUCTURES[part.id]?.cost:{},refund:{}};
+ if(old.id===part.id)return {ok:false,reason:'Здесь уже есть такая конструкция'};
+ if(state.placed.some(p=>['wallclock','wallshelf','fishtrophy'].includes(p.id)&&Math.hypot(p.x-old.x,p.z-old.z)<1.2))return {ok:false,reason:'Сначала сними настенные предметы'};
+ const next={...state,construction:state.construction.filter(p=>p!==old)},allowed=buildAllowed(next,part,obstacles);
+ if(!allowed.ok)return allowed;
+ const cost={},refund={};for(const id of new Set([...Object.keys(STRUCTURES[old.id].cost),...Object.keys(STRUCTURES[part.id].cost)])){
+  const difference=(STRUCTURES[part.id].cost[id]||0)-(STRUCTURES[old.id].cost[id]||0);if(difference>0)cost[id]=difference;if(difference<0)refund[id]=-difference;
+ }
+ return {ok:true,old,cost,refund};
 }

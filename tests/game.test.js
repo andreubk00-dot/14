@@ -37,8 +37,8 @@ test('Furniture only consumes cost after valid placement, not selection', () => 
   const before = structuredClone(s.stash);
   assert.equal(craft(s, 'bed').placement, true); assert.deepEqual(s.stash, before);
   assert.equal(place(s, 'bed', 0, 0), false); assert.deepEqual(s.stash, before);
-  assert.equal(place(s, 'bed', -18, 18), true); assert.equal(s.stash.wood, 32);
-  assert.equal(place(s, 'bed', -18, 18), false); assert.equal(s.stash.wood, 32);
+  assert.equal(place(s, 'bed', -16, 12), true); assert.equal(s.stash.wood, 32);
+  assert.equal(place(s, 'bed', -16, 12), false); assert.equal(s.stash.wood, 32);
 });
 test('Armour reduces damage; respawn preserves home and recoverable bag', () => {
   const s = freshState(); s.equipment.armor = 'vest';
@@ -544,4 +544,25 @@ test('An unfinished extension keeps a closed neighbouring room roof and leaves o
  const rooms=closedRooms(s.construction);assert.equal(rooms.length,1);assert.equal(rooms[0].tiles.length,1);
  s.placed=[{id:'raincatcher',x:-18,z:22.5,rotation:0}];assert.equal(buildAllowed(s,{id:'wall',x:-17,z:22.5,axis:'z'}).ok,true);
  s.placed[0].z=20.5;s.construction.pop();assert.equal(buildAllowed(s,{id:'door',x:-18,z:21.5,axis:'x'}).ok,false);
+});
+
+import {swingProfile,swingCanHit,advanceSwing} from '../src/combat.js';
+import {replacementPlan} from '../src/construction.js';
+test('Replacing a wall pays only the delta and refunds unused materials atomically',()=>{
+ const s=annexState();buildStructure(s,{id:'floor',x:-18,z:20.5});buildStructure(s,{id:'wall',x:-19,z:20.5,axis:'z'});
+ s.stash={wood:0,stone:0,metal:1,cloth:1};const wall=s.construction[1],window={...wall,id:'window'};
+ const plan=replacementPlan(s,window);assert.deepEqual(plan.cost,{metal:1,cloth:1});assert.deepEqual(plan.refund,{stone:1});assert.equal(buildStructure(s,window).ok,true);assert.equal(s.construction.length,2);assert.deepEqual(s.stash,{wood:0,stone:1,metal:0,cloth:0});
+ const before=structuredClone(s);assert.equal(buildStructure(s,{...window,id:'door'}).ok,false);assert.deepEqual(s,before);
+ s.placed=[{id:'wallshelf',x:-18.895,z:20.5,rotation:Math.PI/2}];assert.equal(dismantleAllowed(s,s.construction[1]).ok,false);
+});
+test('New walls support attached furniture, openings stay usable and save keeps coordinates',()=>{
+ const s=annexState();s.construction=[{id:'floor',x:-18,z:20.5},{id:'floor',x:-18,z:22.5},{id:'wall',x:-19,z:22.5,axis:'z'},{id:'door',x:-18,z:23.5,axis:'x'}];s.storedFinds.wallshelf=1;
+ const anchor=clockAnchor(-18.8,22.5,'wallshelf',s.construction);assert.equal(anchor.x,-18.895);assert.equal(place(s,'wallshelf',anchor.x,anchor.z,anchor.rotation),true);
+ assert.equal(placementAllowed({id:'chest',x:-18,z:23.5,rotation:0},[],[], -1,s.construction),false);
+ assert.equal(validateSave(structuredClone(s)).placed[0].x,-18.895);
+});
+test('Melee damage resolves once at impact and respects retreat, angle, cover and death',()=>{
+ const swing={elapsed:0,resolved:false,weapon:{id:'spear',range:2.8},profile:swingProfile('spear'),facing:0},player={x:0,z:0},enemy={x:0,z:2,health:50};
+ assert.equal(advanceSwing(swing,.1),false);assert.equal(advanceSwing(swing,.2),true);assert.equal(advanceSwing(swing,1),false);assert.equal(swingCanHit(swing,player,enemy,true),true);
+ assert.equal(swingCanHit(swing,player,{...enemy,z:4},true),false);assert.equal(swingCanHit(swing,player,{...enemy,x:2,z:0},true),false);assert.equal(swingCanHit(swing,player,enemy,false),false);assert.equal(swingCanHit(swing,player,{...enemy,health:0},true),false);
 });
