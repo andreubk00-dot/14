@@ -1,4 +1,4 @@
-import {CARGO_WEIGHT,cleanCargo,cargoLoot} from './salvage.js';
+import {CARGO_WEIGHT,cleanCargo,cargoLoot,cargoStorageCapacity} from './salvage.js';
 import {STRUCTURES,dismantleAllowed,cleanConstruction,replacementPlan} from './construction.js';
 import {STATION_UPGRADES,collectorCapacity,dryingBatch} from './upgrades.js';
 import { GATES, BAITS, fishingProbabilities, weatherAt } from './expedition.js';
@@ -26,6 +26,10 @@ export const RESOURCES = {
   water: { name: 'Чистая вода', icon: 'water', color: '#84bfc7', weight: 0.5 },
 };
 export const RECIPES = [
+ {id:'cargorack',name:'Стеллаж для техники',category:'shelter',desc:'Хранение целой техники: +12 мест к четырём базовым. Работает после установки дома. Общий предел: 200 агрегатов.',cost:{wood:10,metal:6},placeable:true},
+ {id:'precisionbench',name:'Разборочный верстак',category:'shelter',desc:'Разбор привезённой техники за 1,6 вместо 3,2 секунды. Ещё одна ремонтная деталь с каждого груза.',cost:{metal:18,parts:12,wire:6,battery:1},requires:'generator',fixed:true},
+ {id:'trailpack',name:'Рюкзак дальнего маршрута',category:'gear',desc:'Вместимость 80 без штрафа скорости. Для вылазок в дальние кварталы.',cost:{cloth:18,metal:6,parts:6,battery:1},requires:'bag2',slot:'bag',capacity:80},
+ {id:'quietboots',name:'Мягкие походные ботинки',category:'gear',desc:'Скорость +12% · дистанция обнаружения −15%. Тихий обход патрулей.',cost:{cloth:10,parts:4,metal:3},requires:'boots',slot:'boots',speedMultiplier:1.12,visibilityMultiplier:.85},
  {id:'yardfence',name:'Деревянная ограда',category:'shelter',desc:'Секция 2 м для двора. Секции ставятся вплотную; проход к дому должен оставаться свободным.',cost:{wood:4,stone:1},placeable:true},
  {id:'yardgate',name:'Дворовая калитка',category:'shelter',desc:'Проход в ограде. Открывается рядом клавишей E; створка участвует в коллизиях.',cost:{wood:4,metal:2},placeable:true},
  {id:'yardpath',name:'Каменная дорожка',category:'shelter',desc:'Площадка 2 × 2 м. Не мешает ходить; можно соединять в дорожку.',cost:{stone:3},placeable:true},
@@ -275,7 +279,7 @@ export function collect(state, loot) {
 }
 export function deposit(state) {
   let amount = 0;
-  const movedCargo=state.cargo.splice(0,Math.max(0,200-state.storedCargo.length));amount+=movedCargo.length;state.storedCargo.push(...movedCargo);
+  const movedCargo=state.cargo.splice(0,Math.max(0,cargoStorageCapacity(state)-state.storedCargo.length));amount+=movedCargo.length;state.storedCargo.push(...movedCargo);
   const findHaul=Object.fromEntries(Object.entries(state.finds).filter(([,n])=>n>0));for(const [id,n] of Object.entries(state.finds)) {state.storedFinds[id]=(state.storedFinds[id]||0)+n;amount+=n;}state.finds={};
   const haul=Object.fromEntries(Object.entries(state.bag).filter(([,n])=>n>0));
   for (const [id, n] of Object.entries(state.bag)) { state.stash[id] = (state.stash[id] || 0) + n; amount += n; }
@@ -502,7 +506,7 @@ export function takeSalvage(state,node){
 export function processSalvage(state,index,stored=false){
  if(Math.hypot(state.x+21,state.z-13)>=4.5)return {ok:false,reason:'Подойди к станции рецептов'};
  const list=stored?state.storedCargo:state.cargo,cargo=list[index];if(!cargo)return {ok:false,reason:'Груз уже разобран'};
- const received=cargoLoot(cargo);for(const [id,n]of Object.entries(received))state.stash[id]=(state.stash[id]||0)+n;list.splice(index,1);state.gathered+=Object.values(received).reduce((a,b)=>a+b,0);return {ok:true,received};
+ const received=cargoLoot(cargo,state);for(const [id,n]of Object.entries(received))state.stash[id]=(state.stash[id]||0)+n;list.splice(index,1);state.gathered+=Object.values(received).reduce((a,b)=>a+b,0);return {ok:true,received};
 }
 export function recoverCargo(state,cargo){
  if(!cargo)return true;for(let i=0;i<cargo.length;){if(bagWeight(state)+CARGO_WEIGHT[cargo[i].machine]<=capacity(state)){state.cargo.push(cargo.splice(i,1)[0]);}else i++;}return !cargo.length;

@@ -1,10 +1,11 @@
+import {WORLD_LIMIT} from './district.js';
 import * as THREE from 'three';
 import {Reflector} from 'three/addons/objects/Reflector.js';
 // All horizontal water shares one render, rather than rendering the world per puddle.
 export class DistrictReflections {
  constructor(world){
   this.world=world;this.surfaces=[];this.last=-Infinity;this.projection=new THREE.Matrix4();this.inverse=new THREE.Matrix4();
-  this.capture=new Reflector(new THREE.PlaneGeometry(140,140),{clipBias:.003,textureWidth:512,textureHeight:512,color:'#6b827d'});this.capture.rotation.x=-Math.PI/2;this.capture.position.y=.055;this.capture.visible=false;world.scene.add(this.capture);
+  this.capture=new Reflector(new THREE.PlaneGeometry((WORLD_LIMIT+6)*2,(WORLD_LIMIT+6)*2),{clipBias:.003,textureWidth:512,textureHeight:512,color:'#6b827d'});this.capture.rotation.x=-Math.PI/2;this.capture.position.y=.055;this.capture.visible=false;world.scene.add(this.capture);
  }
  surface(x,z,w,d,water=false){
   const material=new THREE.ShaderMaterial({transparent:true,depthWrite:false,uniforms:{reflection:{value:this.capture.getRenderTarget().texture},projection:{value:this.projection},time:{value:0},strength:{value:0},tint:{value:new THREE.Color(water?'#436962':'#35494a')},opacity:{value:water?.6:.78}},

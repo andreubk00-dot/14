@@ -25,11 +25,13 @@ export class DistrictAudio {
     this.loading=Promise.all(AUDIO_FILES.map(async id=>{try{const response=await fetch(globalThis.__quietAudio?.[id]||`/assets/audio/${id}.ogg`);if(!response.ok)throw Error(id);const buffer=await this.context.decodeAudioData(await response.arrayBuffer());this.buffers.set(id,buffer);}catch{(this.failed??=[]).push(id);}})).then(()=>{if(this.buffers.has('house-forest')&&!this.musicSource){this.musicSource=this.context.createBufferSource();this.musicSource.buffer=this.buffers.get('house-forest');this.musicSource.loop=true;this.musicSource.connect(this.musicGain);this.musicSource.start();this.updateMusic();}});
     return this.loading;
   }
-  playSample(id,volume=.35,rate=1){
+  setListener(x,z){this.listener={x,z};}
+  spatial(x,z){const dx=x-(this.listener?.x||0),dz=z-(this.listener?.z||0);return {gain:1/(1+(dx*dx+dz*dz)/16),pan:Math.max(-1,Math.min(1,(dx*.754-dz*.657)/12))};}
+  playSample(id,volume=.35,rate=1,position=null){
     if(!this.context||!this.enabled||this.context.state!=='running'||!this.buffers.has(id)||this.voices.size>=16)return false;
-    const source=this.context.createBufferSource(),gain=this.context.createGain();source.buffer=this.buffers.get(id);source.playbackRate.value=rate;gain.gain.value=volume;source.connect(gain).connect(this.master);this.voices.add(source);source.onended=()=>{this.voices.delete(source);source.disconnect();gain.disconnect();};source.start();return true;
+    const source=this.context.createBufferSource(),gain=this.context.createGain();source.buffer=this.buffers.get(id);source.playbackRate.value=rate;gain.gain.value=volume;const spatial=position?this.spatial(position.x,position.z):null,panner=spatial&&this.context.createStereoPanner?this.context.createStereoPanner():null;if(spatial)gain.gain.value*=spatial.gain;source.connect(gain);if(panner){panner.pan.value=spatial.pan;gain.connect(panner).connect(this.master);}else gain.connect(this.master);this.voices.add(source);source.onended=()=>{this.voices.delete(source);source.disconnect();gain.disconnect();panner?.disconnect();};source.start();return true;
   }
-  variant(prefix,count=2,volume=.35){return this.playSample(`${prefix}_${String(Math.floor(Math.random()*count)).padStart(3,'0')}`,volume,.96+Math.random()*.08);}
+  variant(prefix,count=2,volume=.35,position=null){return this.playSample(`${prefix}_${String(Math.floor(Math.random()*count)).padStart(3,'0')}`,volume,.96+Math.random()*.08,position);}
   updateMusic(){this.musicTarget=this.musicEnabled?this.musicVolume*(this.recordDistance<9?.22:.09):0;if(this.musicGain)this.musicGain.gain.setTargetAtTime(this.musicTarget,this.context.currentTime,.8);}
   setMusic(enabled,volume=this.musicVolume){this.musicEnabled=enabled;this.musicVolume=Math.max(0,Math.min(1,volume));this.updateMusic();}
   toggle(enabled) { this.enabled = enabled;if(enabled)this.start(true);if (this.context) this.master.gain.setTargetAtTime(enabled ? 0.22 : 0, this.context.currentTime, 0.15); }
@@ -45,8 +47,8 @@ export class DistrictAudio {
   craft() { this.playSample('weapon_change',.4); }
   hit() { this.playSample('enemy_hurt',.5); }
   swing(id){this.playSample(id==='axe'?'chop':id==='spear'?'knife_slice_2':'knife_slice',.2);}
-  weaponHit(id){this.variant(id==='unarmed'?'impact_wood_medium':'impact_metal_medium',2,.5);}
-  resourceHit(kind){this.variant(kind==='quarry'?'impact_mining':'impact_wood_medium',2,.48);}
+  weaponHit(id,x,z){this.variant(id==='unarmed'?'impact_wood_medium':'impact_metal_medium',2,.5,Number.isFinite(x)?{x,z}:null);}
+  resourceHit(kind,x,z){this.variant(kind==='quarry'?'impact_mining':'impact_wood_medium',2,.48,Number.isFinite(x)?{x,z}:null);}
   shoot(id='pistol') { this.playSample(id==='carbine'?'blaster_repeater':'blaster',.45); }
   step(surface='grass') { this.variant(`footstep_${surface}`,3,.24); }
   bite() { this.playSample('metal_click',.42); }

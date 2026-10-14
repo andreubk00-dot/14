@@ -342,7 +342,7 @@ test('Haul recap keeps the last positive delivery and expanded-world coordinates
 import { mapPoint } from '../src/district.js';
 test('Expanded map coordinates match the drawn bounds and outskirts are not clamped to the old district',()=>{
  assert.deepEqual(mapPoint(.5,.5),{x:0,z:0});
- const p=mapPoint((-49+66)/132,(32+66)/132);assert.equal(p.x,-49);assert.equal(p.z,32);
+ const p=mapPoint((-49+WORLD_LIMIT+2)/((WORLD_LIMIT+2)*2),(32+WORLD_LIMIT+2)/((WORLD_LIMIT+2)*2));assert.equal(p.x,-49);assert.equal(p.z,32);
  assert.equal(validateSave({...freshState(),x:51,z:-44}).x,51);
 });
 
@@ -615,3 +615,28 @@ test('Detection gives a warning, decays behind cover and close contact or a hit 
  updateAwareness(e,.7,true,s,5);assert.equal(e.alert,3);assert.deepEqual(e.lastSeen,s);updateAwareness(e,4,false,s,5);assert.equal(e.alert,0);
  updateAwareness(e,.01,true,s,1);assert.equal(e.suspicion,1);reactToHit(e,{x:100,z:100});assert.ok(Math.hypot(e.lastSeen.x,e.lastSeen.z)<=8.5+.001);assert.equal(e.windup,0);assert.equal(e.stagger,.18);
 });
+
+
+import {cargoStorageCapacity,salvageDuration} from '../src/salvage.js';
+
+import {QUARTERS,FRONTIER_BUILDINGS,FRONTIER_NODES} from '../src/frontier.js';
+import {DistrictAudio} from '../src/audio.js';
+test('Cargo storage overflow keeps whole machines in the bag and a placed rack expands it without losing old saves',()=>{
+ const s=freshState(),c={machine:'motor',node:'node-125',loot:{parts:2,metal:3}};s.cargo=Array.from({length:6},()=>structuredClone(c));assert.equal(cargoStorageCapacity(s),4);deposit(s);assert.equal(s.cargo.length,2);assert.equal(s.storedCargo.length,4);s.placed.push({id:'cargorack',x:-16,z:12,rotation:0});assert.equal(cargoStorageCapacity(s),16);deposit(s);assert.equal(s.cargo.length,0);assert.equal(s.storedCargo.length,6);assert.equal(validateSave(JSON.parse(JSON.stringify(s))).storedCargo.length,6);
+});
+test('Station upgrade improves common salvage yield and duration while preserving rare components and distant rejection',()=>{
+ const s=freshState();s.x=-20;s.z=14;s.cargo=[{machine:'motor',node:'node-125',loot:{metal:3,battery:1,pumpmodule:1}}];assert.equal(salvageDuration(s),3.2);s.owned.push('precisionbench');assert.equal(salvageDuration(s),1.6);assert.equal(processSalvage(s,0).ok,true);assert.deepEqual(s.stash,{wood:3,metal:5,cloth:2,parts:4,wire:1,battery:1,pumpmodule:1});assert.equal(processSalvage(s,0).ok,false);
+});
+test('Long expedition gear trades materials for capacity and stealth, with independent save slots',()=>{
+ const s=freshState();s.owned=['bag','bag2','boots'];s.stash={cloth:40,metal:20,parts:20,battery:2};assert.equal(craft(s,'trailpack').ok,true);assert.equal(capacity(s),80);assert.equal(craft(s,'quietboots').ok,true);const p=gearProfile(s,RECIPES);assert.equal(p.speed,1.12);assert.equal(p.visibility,.85);assert.equal(validateSave(JSON.parse(JSON.stringify(s))).equipment.bag,'trailpack');
+});
+test('Expanded places remain within map bounds and regenerated medicine never multiplies',()=>{
+ assert.equal(QUARTERS.length,6);assert.equal(FRONTIER_BUILDINGS.length,24);assert.equal(FRONTIER_NODES.length,72);for(const [type,name,x,z,originalLoot]of FRONTIER_NODES){assert.ok(Math.abs(x)<WORLD_LIMIT&&Math.abs(z)<WORLD_LIMIT);if(originalLoot.medicine)assert.equal(expeditionLoot({id:'node-180',type,x,z,originalLoot},3).medicine,originalLoot.medicine);}
+});
+test('Recorded positional effects fade with distance and pan toward their source',()=>{const a=new DistrictAudio();a.setListener(10,10);assert.deepEqual(a.spatial(10,10),{gain:1,pan:0});assert.ok(a.spatial(20,10).gain<a.spatial(12,10).gain);assert.ok(a.spatial(20,10).pan>0);assert.ok(a.spatial(0,10).pan<0);});
+
+import {ROADS} from '../src/district.js';
+test('New streets do not intersect any new foundation or exterior wall',()=>{for(const b of FRONTIER_BUILDINGS){assert.ok(Math.abs(b.x)+b.w/2+.17<WORLD_LIMIT&&Math.abs(b.z)+b.d/2+.17<WORLD_LIMIT);for(const r of ROADS)assert.equal(overlaps(b,r,.17),false,`${b.sign}: road ${r.x},${r.z}`);}});
+test('Regenerated frontier supplies stay tied to room contents instead of adding medicine to libraries',()=>{const b=FRONTIER_BUILDINGS.find(b=>b.style==='school'&&b.index===1),n=FRONTIER_NODES.find(n=>n[2]===b.x-b.w/4);for(let cycle=1;cycle<8;cycle++){const loot=expeditionLoot({id:'node-115',type:n[0],x:n[2],z:n[3],originalLoot:n[4],regionProfile:n[8]},cycle);assert.ok(Object.keys(loot).every(id=>Object.hasOwn(n[4],id)));}});
+
+test('Large cargo warehouses stop at the save limit and overflow remains carried',()=>{const s=freshState(),c={machine:'motor',node:'node-125',loot:{metal:3}};s.placed=Array.from({length:20},()=>({id:'cargorack'}));assert.equal(cargoStorageCapacity(s),200);s.storedCargo=Array.from({length:199},()=>structuredClone(c));s.cargo=[structuredClone(c),structuredClone(c)];deposit(s);assert.equal(s.storedCargo.length,200);assert.equal(s.cargo.length,1);assert.equal(validateSave(JSON.parse(JSON.stringify(s))).storedCargo.length,200);});

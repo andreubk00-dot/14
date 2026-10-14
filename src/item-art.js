@@ -12,6 +12,10 @@ const shell = path('M12 40Q0 8 32 7Q64 8 52 40L40 56H24Z','#c6a4b8')+line(18,18,
 const station = c => rect(8,23,48,33,c,4)+rect(14,10,36,15,dark)+rect(19,15,26,5,steel)+rect(14,32,20,17,dark)+circle(24,40,5,gold)+rect(39,31,11,5,steel)+rect(39,42,11,5,steel)+rect(13,56,7,4,dark)+rect(44,56,7,4,dark);
 const bed = rect(8,31,48,20,wood)+rect(10,23,44,16,'#7daa8a',4)+rect(12,20,13,16,'#eae0c2',3)+path('M29 24H53V45H29Z','#9fbd91')+rect(8,49,5,9,dark)+rect(51,49,5,9,dark);
 const art = {
+ cargorack:rect(7,8,5,50,steel)+rect(52,8,5,50,steel)+[15,35,54].map(y=>rect(8,y,48,4,wood)).join('')+rect(17,20,27,12,green)+rect(16,40,29,12,dark)+circle(29,46,5,gold),
+ precisionbench:rect(7,22,50,8,wood)+rect(11,30,5,27,steel)+rect(48,30,5,27,steel)+rect(16,12,18,10,steel)+circle(42,17,7,gold)+line(40,8,46,25,dark),
+ trailpack:pack(true)+rect(8,31,9,20,green)+rect(47,31,9,20,green)+rect(23,5,18,8,gold),
+ quietboots:path('M15 8H34V34L54 44V55H10V28H15Z',green)+rect(10,49,44,7,dark)+line(19,18,29,18,gold)+line(19,25,29,25,gold),
  'cargo-appliance':rect(12,8,40,49,steel)+circle(32,36,14,dark)+circle(32,36,10,'#88a9ae')+rect(17,14,14,5,gold)+circle(44,17,3,wood),
  'cargo-motor':rect(11,25,43,27,dark)+rect(14,16,35,13,steel)+[19,31,43].map(x=>circle(x,17,5,gold)).join('')+rect(6,49,52,7,wood)+rect(54,33,5,12,steel),
  yardfence:rect(7,11,6,46,wood)+rect(51,11,6,46,wood)+rect(10,23,44,7,gold)+rect(10,42,44,7,gold)+[22,32,42].map(x=>rect(x,17,4,38,wood)).join(''),

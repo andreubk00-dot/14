@@ -1,3 +1,4 @@
+import {QUARTERS,FRONTIER_BUILDINGS,FRONTIER_NODES,FRONTIER_RESOURCES} from './frontier.js';
 import {closedRooms,structureColliders,replacementPlan,partKey} from './construction.js';
 import {installLightCulling} from './render-budget.js';
 import {SpatialIndex} from './spatial.js';
@@ -21,7 +22,7 @@ import { HOME, productionInfo } from './game.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const rand = seed => { let n = seed; return () => { n = (n * 1664525 + 1013904223) >>> 0; return n / 4294967296; }; };
-const rng = rand(1472);
+let rng = rand(1472);
 const overlapsPlayer=(item,state)=>furnitureColliders(item).some(r=>circleHitsRect(state.x,state.z,.4,r));
 const Y = new THREE.Vector3(0, 1, 0);
 const color = { ground: '#384339', road: '#3a4546', wall: '#77796c', rust: '#785b47', wood: '#766a50', leaf: '#546e4e', dark: '#283b39', cream: '#b3aa89', orange: '#f4bb77' };
@@ -184,11 +185,11 @@ export class World {
   }
   buildWorld() {
     const hemisphere = new THREE.HemisphereLight('#adc4c7', '#454532', 2.1); this.scene.add(hemisphere); this.ambient = hemisphere;
-    const sun = new THREE.DirectionalLight('#ffcf93', 3.0); sun.position.set(-35, 35, -12); sun.castShadow = true;
+    const sun = new THREE.DirectionalLight('#ffcf93', 3.0); sun.position.set(-140, 140, -48); sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048); sun.shadow.camera.left = sun.shadow.camera.bottom = -65; sun.shadow.camera.right = sun.shadow.camera.top = 65;
-    sun.shadow.camera.near = 1; sun.shadow.camera.far = 120; sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.04; this.scene.add(sun); this.sun = sun;
-    const ground = this.box(0, -0.22, 0, 140, 0.4, 140, color.ground);
-    ground.material = new THREE.MeshStandardMaterial({ map: this.texture('ground'), roughness: 0.96 });
+    sun.shadow.camera.near = 1; sun.shadow.camera.far = 400; sun.shadow.bias = -0.0004*119/399; sun.shadow.normalBias = 0.04; this.scene.add(sun); this.sun = sun;
+    const ground = this.box(0, -0.22, 0, (WORLD_LIMIT+6)*2, 0.4, (WORLD_LIMIT+6)*2, color.ground);
+    ground.material = new THREE.MeshStandardMaterial({ map: this.texture('ground'), roughness: 0.96 });ground.material.map.repeat.setScalar(14*(WORLD_LIMIT+6)*2/140);
     const roadMaterial=new THREE.MeshStandardMaterial({map:this.texture('road'),roughness:.6,metalness:.12});
     for(const r of ROADS) this.box(r.x,.015,r.z,r.w,.04,r.d,color.road).material=roadMaterial;
     for (let z = -39; z < 41; z += 7) this.box(0, 0.048, z, 0.09, 0.008, 2.1, '#a19b7c');
@@ -197,7 +198,7 @@ export class World {
     this.mirrors=new DistrictReflections(this);this.reflection=this.mirrors.capture;
     for (let i = 0; i < 19; i++) this.puddle(rng() * 7 - 3.5, rng() * 78 - 39, 0.9 + rng() * 2.5, 0.5 + rng());
     this.mirrors.surface(-.8,17,2.5,1.15);this.mirrors.surface(-18,23,2,1);
-    this.buildHome(); this.buildMarket(); this.buildDepot(); this.furnishExpeditions(); this.buildOutskirts(); this.buildScenes(); this.buildExpandedDistrict(); this.buildNewQuarter(); this.buildDeepDistrict(); this.buildPond(); this.buildTower();this.buildExpeditionDetails();
+    this.buildHome(); this.buildMarket(); this.buildDepot(); this.furnishExpeditions(); this.buildOutskirts(); this.buildScenes(); this.buildExpandedDistrict(); this.buildNewQuarter(); this.buildDeepDistrict(); this.buildPond(); this.buildTower();this.buildExpeditionDetails();this.buildFrontier();
     // Treelines frame the district, leaving the traversable paths readable.
     for (let i = 0; i < 180; i++) {
       const x = rng() * 126 - 63, z = rng() * 126 - 63;
@@ -477,7 +478,7 @@ export class World {
     for(const x of [-27.4,-26.8])this.cylinder(x,.14,32.2,.08,.14,'#c6bea3');
     this.box(52,.5,22,2,1,1,'#817b62');this.collider(52,22,2,1);
     this.cylinder(54.5,.55,23.5,.4,1.1,'#6e8274');this.collider(54.5,23.5,.8,.8);
-    for(const n of MEMORIES) {const h=n.id==='dispatch'?1.48:n.id==='laundry'?1.61:n.id==='bus'?.7:n.id==='yard'?1.01:n.id==='salvage'?.21:.065;this.box(n.x,h,n.z,.3,.012,.23,'#e0d6b8');}
+    for(const n of MEMORIES) {const h=n.y??(n.id==='dispatch'?1.48:n.id==='laundry'?1.61:n.id==='bus'?.7:n.id==='yard'?1.01:n.id==='salvage'?.21:.065);this.box(n.x,h,n.z,.3,.012,.23,'#e0d6b8');}
   }
   buildExpandedDistrict() {
     // Three silhouettes: a low timber hut, a tall factory and a house with veranda.
@@ -798,6 +799,40 @@ export class World {
     for(const x of [-59,-57])this.box(x,2,40.6,.6,.6,.025,'#c9c7b3');
   }
 
+  buildFrontier() {
+    const savedRng=rng;rng=rand(1717);try{
+    for(const b of FRONTIER_BUILDINGS){
+      this.building(b.x,b.z,b.w,b.d,b.h,b.shade,b.sign,{roofStyle:b.roofStyle,pitch:b.pitch,greenhouse:b.greenhouse,roofColor:b.style==='village'?'#79634e':b.style==='rail'?'#677b80':'#536e62'});
+      const room=this.buildings.at(-1),back=b.z-b.d/2+1.1;
+      // Furnish along the back wall, leaving a wide central approach to all supplies.
+      const shelfX=b.x-b.w/2+1.1;
+      for(const y of [.35,1.1,1.85])this.box(shelfX,y,back,1.5,.12,.7,'#7e8068');
+      for(const x of [shelfX-.68,shelfX+.68]){this.box(x,1.1,back,.09,2.2,.65,'#5a716a');}
+      this.collider(shelfX,back,1.5,.7);
+      const tableX=b.x+b.w/2-1.3;
+      this.box(tableX,.9,back,1.6,.12,.8,'#a0906b');for(const x of [tableX-.65,tableX+.65])this.box(x,.45,back,.1,.9,.6,'#596d64');this.collider(tableX,back,1.6,.8);
+      if(b.style==='school'&&b.index===0){for(const x of [b.x-3,b.x,b.x+3]){this.box(x,.8,b.z+2.8,1.2,.12,.7,'#a29171');this.collider(x,b.z+2.8,1.2,.7);}this.cutawayDetail(this.box(b.x,1.7,b.z-b.d/2+.2,4,1.2,.05,'#354e44'),room);}
+      if(b.style==='school'&&b.index===3){const x=b.x-b.w/2+1.1,z=b.z+1.4;this.box(x,.4,z,1.2,.5,2.1,'#7c8c82');this.box(x,.72,z,1.2,.16,2.1,'#c6c5ad');this.box(x,.83,z-.6,1.1,.12,.4,'#e0d8c0');this.collider(x,z,1.2,2.1);}
+      if(b.style==='rail'&&b.index===0){this.cutawayDetail(this.box(b.x, b.h+.9,b.z-b.d/2,2,1.8,1,'#8d8876'),room);this.cutawayDetail(this.label('ВОКЗАЛ',b.x,b.h+1,b.z-b.d/2+.6,2),room);}
+      if(b.style==='port'){for(let z=b.z-b.d/2+.5;z<b.z+b.d/2;z+=1.4)this.cutawayDetail(this.box(b.x-b.w/2-.05,2,z,.08,3.6,.06,'#4a625d'),room);}
+      if(b.style==='village'||b.style==='retail'){this.canopy(b.x,b.z+b.d/2+1.2,b.w*.7,2,2.6,'#74816b');this.box(b.x-b.w*.25,.35,b.z+b.d/2+1,1.3,.6,.6,'#89926f');this.collider(b.x-b.w*.25,b.z+b.d/2+1,1.3,.6);}
+      if(b.style==='orchard'){for(const x of [b.x-b.w/2+1.2,b.x+b.w/2-1.2]){this.box(x,.35,b.z+.5,.7,.5,2,'#a09873');for(const z of [b.z,b.z+1])this.bush(x,z,.3);this.collider(x,b.z+.5,.7,2);}}
+    }
+    for(const q of QUARTERS){
+      // Courtyard islands never cross the street or building approaches.
+      for(const side of [-1,1]){const x=q.x+side*5,z=q.z+6;this.box(x,.12,z,3,.22,3,'#797f69');this.collider(x,z,3,3);this.tree(x,z,.85);this.bush(x+1,z+.6,.45);}
+      this.car(q.x-18,q.z+6,0,'#75877c');
+      for(const offset of [-17,17]){const x=q.x+offset,z=q.z+2;this.cylinder(x,1.8,z,.05,3.6,'#4d635b',this.scene,6);this.collider(x,z,.12,.12);const glow=this.box(x,3.6,z,.5,.12,.35,'#edc992');glow.material=new THREE.MeshStandardMaterial({color:'#eed2a0',emissive:'#d4a56d',emissiveIntensity:1.3});}
+      for(const side of [-1,1])this.mirrors.surface(q.x+side*8,q.z,1.5,.6);
+      for(let i=0;i<10;i++){const x=q.x-22+i*4.8,z=q.z-24;if(!this.blocked(x,z,1)&&!this.onRoad(x,z,1))this.tree(x,z,.65+(i%3)*.12);}
+      for(const x of [q.x-2,q.x+2]){this.box(x,1.1,q.z+7,.1,2.2,.1,'#857b61');this.collider(x,q.z+7,.1,.1);}this.label(q.name.toLocaleUpperCase('ru'),q.x,2.2,q.z+7,5);
+    }
+    // A real shoreline, shared reflections and a walkable timber promenade.
+    this.mirrors.surface(115,-20,9,30,true);
+    for(let z=-45;z<=5;z+=2){this.box(104,.045,z,2.2,.09,1.96,'#8b8264');this.box(105.02,.5,z,.08,.95,.09,'#7a8e7c');this.collider(105.02,z,.08,.09);}
+    for(const z of [-38,-20,-2]){this.box(105.02,1,z,.12,.12,2.4,'#7a8e7c');this.collider(105.02,z,.12,2.4);this.box(103.2,.42,z+.8,1,.16,.45,'#9a8a66');this.collider(103.2,z+.8,1,.45);}
+    }finally{rng=savedRng;}
+  }
   createNodes() {
     const definitions = [
       ['scrap', 'Куча металлолома', -7, 17, { metal: 4, parts: 1 }],
@@ -902,8 +937,9 @@ export class World {
       ['crate','Ящик под служебным навесом',56.8,-31.5,{parts:3,wire:2}],
       ['crate','Сухие травы кухонной кладовой',31,36.8,{herbs:4,seeds:2,cloth:1}],
       ['crate','Запас ремонтной смены',54,9.5,{parts:3,metal:2}],
+      ...FRONTIER_NODES,...FRONTIER_RESOURCES,
     ];
-    definitions.forEach(([type, name, x, z, loot, requires, find, machine], i) => {
+    definitions.forEach(([type, name, x, z, loot, requires, find, machine,regionProfile], i) => {
       const group = new THREE.Group(); group.position.set(x,this.furnitureElevation(x,z),z); this.scene.add(group);
       const kind=machineKind({type,name,machine});
       if(kind==='standingtree'||kind==='quarry'){this.makeResourceNode(group,kind);}
@@ -926,7 +962,7 @@ export class World {
         for (let j = 0; j < 4; j++) this.box((rng() - 0.5) * 0.7, 0.2 + j * 0.12, (rng() - 0.5) * 0.6, 0.6 + rng() * 0.3, 0.25, 0.5, j % 2 ? '#7f897a' : '#626f67', group).rotation.y = rng() * 3;
       }
       const marker = this.marker(x, 1.5, z, type === 'herbs' ? '#a9c181' : '#e7c993');
-      const node = { id: `node-${i}`, type, name, x, z, loot: { ...(this.state.nodeLoot[`node-${i}`] || expeditionLoot({id:`node-${i}`,type,x,z,originalLoot:loot},this.state.depleted[`node-${i}`]===undefined?0:Math.floor(this.state.elapsed/(type==='herbs'?120:240)))) }, originalLoot: { ...loot }, requires, find, accessGate:gateForPoint(x,z), machine:kind, group, marker, respawnTime: type === 'herbs' ? 120 : 240 };
+      const node = { id: `node-${i}`, type, name, x, z, loot: { ...(this.state.nodeLoot[`node-${i}`] || expeditionLoot({id:`node-${i}`,type,x,z,originalLoot:loot,regionProfile},this.state.depleted[`node-${i}`]===undefined?0:Math.floor(this.state.elapsed/(type==='herbs'?120:240)))) }, originalLoot: { ...loot },regionProfile, requires, find, accessGate:gateForPoint(x,z), machine:kind, group, marker, respawnTime: type === 'herbs' ? 120 : 240 };
       if(kind||find||type==='crate') {const f=find?footprint({id:find,x:0,z:0}):null;const size=kind==='standingtree'?[.6,.6]:kind==='quarry'?[2.1,1.6]:find?(['wallclock','wallshelf'].includes(find)?[1.05,1.13]:[f.w*.6,f.d*.6]):type==='crate'?[1.05,1.13]:kind==='motor'?[1.35,.95]:kind==='appliance'?[1,.8]:kind==='radio'?[.9,.4]:[.9,.6];node.collider=this.collider(x,z,...size);}
       group.traverse(mesh => { mesh.userData.node = node; if (mesh.isMesh) this.pickables.push(mesh); });
       const fieldLights=[];group.traverse(o=>{if(o.isPointLight)fieldLights.push(o);});for(const light of fieldLights)this.pinLight(light,group);
@@ -935,7 +971,12 @@ export class World {
     });
   }
   createEnemies() {
-    for (const [i, [x, z]] of [[8, -4], [26, 11], [-11, -18], [-22, -24], [50,20], [56,12],[-47,-21],[-56,-13],[53.5,-35]].entries()) {
+    for (const [i, initial] of [[8, -4], [26, 11], [-11, -18], [-22, -24], [50,20], [56,12],[-47,-21],[-56,-13],[53.5,-35],...QUARTERS.filter(q=>['rail','port'].includes(q.style)).flatMap(q=>q.style==='port'?[[q.x-19,q.z],[q.x+8,q.z-5]]:[[q.x-19,q.z],[q.x+19,q.z]])].entries()) {
+      let [x,z]=initial;
+      if(this.blocked(x,z,.35)){
+        const free=[];for(let dx=-3;dx<=3;dx+=.5)for(let dz=-3;dz<=3;dz+=.5)if(!this.blocked(x+dx,z+dz,.35))free.push({x:x+dx,z:z+dz,d:dx*dx+dz*dz});free.sort((a,b)=>a.d-b.d);
+        if(!free.length)throw Error(`Нет свободного места для патруля ${i}`);({x,z}=free[0]);
+      }
       const group = new THREE.Group(); group.position.set(x, 1, z); this.scene.add(group);
       const core = this.box(0, 0, 0, 0.65, 0.35, 0.65, '#646f67', group);
       this.box(0, 0, 0.34, 0.35, 0.07, 0.05, '#e39b6b', group, new THREE.MeshStandardMaterial({ color: '#e39b6b', emissive: '#db7847', emissiveIntensity: 2 }));
@@ -1043,8 +1084,8 @@ export class World {
         const cells=new Map();
         const matrix = new THREE.Matrix4(), quaternion = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
         let used = 0;
-        for (let i = 0; i < 1350 && used < 450; i++) {
-          const x = rng() * 126 - 63, z = rng() * 126 - 63;
+        for (let i = 0; i < 3000 && used < 750; i++) {
+          const radius=used<450?63:WORLD_LIMIT-2;const x = rng() * radius*2 - radius, z = rng() * radius*2 - radius;if(used>=450&&Math.abs(x)<64&&Math.abs(z)<64)continue;
           if (this.onRoad(x,z,.5) || this.blocked(x, z, 1) || this.buildings.some(b=>isInsideBuilding(b,x,z))) continue;
           p.set(x, 0.02, z); quaternion.setFromAxisAngle(Y, rng() * 6.28); s.setScalar(0.7 + rng() * 0.6); matrix.compose(p, quaternion, s);
           const key=`${Math.floor(x/24)}:${Math.floor(z/24)}`;if(!cells.has(key))cells.set(key,[]);cells.get(key).push(matrix.clone());used++;
@@ -1086,7 +1127,7 @@ export class World {
     this.genIndicator.material.color.set(powered ? '#a9cc83' : '#b1664d'); this.genIndicator.material.emissive.set(powered ? '#a9cc83' : '#b1664d');
     this.bridgeGroup.visible = this.state.owned.includes('bridge');
     this.bridgeCollider.disabled = this.bridgeGroup.visible;
-    this.precisionTool.visible=this.state.owned.includes('tooling');this.receiverModel.visible=this.state.owned.includes('receiver');
+    this.precisionTool.visible=this.state.owned.includes('tooling')||this.state.owned.includes('precisionbench');this.receiverModel.visible=this.state.owned.includes('receiver');
     this.solarRoof.visible = this.state.owned.includes('solar');
     const water = this.state.owned.includes('pump'); this.towerLight.intensity = water ? 7 : 0;
     this.towerIndicator.material.emissive.set(water ? '#8ccac2' : '#a58664'); this.towerIndicator.material.emissiveIntensity = water ? 2.5 : 0.3;
@@ -1105,6 +1146,7 @@ export class World {
   onRoad(x,z,margin=0) {return [...ROADS,...SCENES,...this.canopies].some(r=>Math.abs(x-r.x)<r.w/2+margin&&Math.abs(z-r.z)<r.d/2+margin);}
   canSee(ax,az,bx,bz,ignore=null,wallsOnly=false){return ![...this.collisionIndex.query(Math.min(ax,bx),Math.min(az,bz),Math.max(ax,bx),Math.max(az,bz))].some(r=>r!==ignore&&!r.disabled&&(!wallsOnly||r.cover||r.construction)&&(r.w>.45||r.d>.45)&&segmentHitsRect(ax,az,bx,bz,r))&&!this.state.placed.some(p=>(!wallsOnly||['yardgate','yardfence'].includes(p.id))&&furnitureColliders(p).some(r=>segmentHitsRect(ax,az,bx,bz,r)));}
   blocked(x, z, radius = 0.3) {
+    if(Math.pow((x-115)/9,2)+Math.pow((z+20)/30,2)<1)return true;
     if (x < -WORLD_LIMIT || x > WORLD_LIMIT || z < -WORLD_LIMIT || z > WORLD_LIMIT) return true;
     if(Math.pow((x-30)/6.8,2)+Math.pow((z-59)/3.7,2)<1&&!(x>=25.2&&x<=29.5&&z<56.2))return true;
     // Pond shoreline; dock remains navigable.
@@ -1178,7 +1220,11 @@ export class World {
   refreshStation(item){const entry=this.placedGroups.find(e=>e.item===item);if(entry&&!entry.group.userData.stationUpgrade)this.decorateStation(item,entry.group);this.renderDirty=true;}
   makeFurniture(id, ghost = false,item=null) {
     const group = new THREE.Group();
-    if(id==='yardfence'||id==='yardgate'){
+    if(id==='cargorack'){
+      for(const x of [-.83,.83])this.box(x,.95,0,.1,1.9,.7,'#617c71',group);
+      for(const y of [.12,.85,1.55])this.box(0,y,0,1.8,.1,.75,'#9b8868',group);
+      this.box(-.3,.48,0,.7,.55,.55,'#81958a',group);this.box(.35,1.16,0,.6,.52,.5,'#667e77',group);
+    }else if(id==='yardfence'||id==='yardgate'){
       for(const x of [-.94,.94])this.box(x,.58,0,.12,1.16,.18,'#8a8066',group);
       let panel=group;if(id==='yardgate'){panel=new THREE.Group();panel.position.x=-.82;panel.rotation.y=item?.open?(item.openSide||1)*Math.PI/2:0;panel.userData.yardGateLeaf=true;group.userData.gateLeaf=panel;group.add(panel);}
       const offset=id==='yardgate'?.82:0,width=id==='yardgate'?1.64:1.88;
@@ -1469,7 +1515,7 @@ export class World {
       if(item.id==='wallclock') {const minutes=17*60+42+this.state.elapsed/2;group.traverse(hand=>{if(hand.userData.clockMinute)hand.rotation.z=-minutes%60/60*Math.PI*2;if(hand.userData.clockHour)hand.rotation.z=-(minutes/60)%12/12*Math.PI*2;});}
     }
     this.fishingMarker.material.opacity = 0.45 + Math.sin(this.time * 1.5) * 0.15;
-    for (const node of this.nodes) { node.marker.visible=node.group.visible&&Math.hypot(node.x-this.state.x,node.z-this.state.z)<9; if(node.marker.visible) node.marker.position.y = 1.45 + Math.sin(this.time * 1.8 + node.x) * 0.12; }
+    for (const node of this.nodes) { node.marker.visible=node.group.visible&&Math.hypot(node.x-this.state.x,node.z-this.state.z)<9&&this.canSee(this.state.x,this.state.z,node.x,node.z,node.collider,true); if(node.marker.visible) node.marker.position.y = 1.45 + Math.sin(this.time * 1.8 + node.x) * 0.12; }
     for (const f of this.floating) { f.life -= dt; f.y += dt * 0.65; } this.floating = this.floating.filter(f => f.life > 0);
     for (const effect of this.effects || []) {
       effect.life -= dt; effect.mesh.material.opacity = Math.max(0, effect.life / effect.max);

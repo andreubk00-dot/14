@@ -1,3 +1,4 @@
+import {salvageDuration} from './salvage.js';
 import {toggleYardGate} from './game.js';
 import {salvageStatus,takeSalvage,processSalvage,recoverCargo} from './game.js';
 import {COOKING_RECIPES,atCookingStove} from './game.js';
@@ -179,7 +180,10 @@ class QuietDistrict {
       const node=this.world.nodes.find(n=>n.id===this.ui.salvageNode);this.ui.close();if(!node||Math.hypot(node.x-this.state.x,node.z-this.state.z)>2.4)return;
       if(action==='salvage-quick')this.harvest(node);else {const status=salvageStatus(this.state,node);if(!status.ok)this.ui.toast(status.reason);else {this.world.playCharacterAction('pickup');this.audio.collect();this.job={type:'haul',node,elapsed:0,duration:2.4,label:'Грузим технику…'};}}return;
     }
-    if(action==='process-salvage'){const result=processSalvage(this.state,Number(data.index),data.stored==='true');if(!result.ok)this.ui.toast(result.reason);else {this.audio.craft();this.ui.selectedItem=null;this.ui.toast('Техника разобрана. Материалы на складе.','success');}this.changed();return;}
+    if(action==='process-salvage'){
+      const index=Number(data.index),stored=data.stored==='true';if(Math.hypot(this.state.x+21,this.state.z-13)>=4.5){this.ui.toast('Подойди к станции рецептов.');return;}
+      const cargo=(stored?this.state.storedCargo:this.state.cargo)[index];if(!cargo)return;this.ui.close();this.world.playCharacterAction('pickup');this.job={type:'process-salvage',cargo,index,stored,elapsed:0,duration:salvageDuration(this.state),label:'Разбираем технику на верстаке…'};return;
+    }
     if (action === 'hud-change') { this.save(false); return; }
     if (action === 'hotbar-assign') {
       if (assignHotbar(this.state, Number(data.index), data.id || null)) this.changed(); return;
@@ -401,8 +405,8 @@ class QuietDistrict {
   nearestInteraction() {
     const s = this.state, candidates = [];
     const add = (type, x, z, label, hint, entity, range = 2.4) => { const distance = Math.hypot(s.x - x, s.z - z); if (distance < range) candidates.push({ type, x, z, label, hint, entity, distance }); };
-    for(const note of this.world.memories) add('note',note.x,note.z,'Прочитать запись',note.name,note,1.8);
-    for (const node of this.world.nodes) if (node.group.visible&&(s.x-node.x)**2+(s.z-node.z)**2<2.4**2&&(!node.accessGate||s.openedGates.includes(node.accessGate))&&this.world.canSee(s.x,s.z,node.x,node.z,node.collider,true)) add('node', node.x, node.z, `${({ tree: 'Рубить дерево', wood: 'Собрать доски', stone:'Добыть камень', ore: 'Добыть металл', herbs: 'Собрать растения', electronics: 'Разобрать электронику', crate: 'Открыть ящик', cloth: 'Собрать ткань', scrap: 'Разобрать лом', drop: 'Забрать добычу' })[node.type] || (node.find?'Забрать находку':'Собрать')} · ${node.name}`, node.requires && !s.owned.includes(node.requires) ? `Нужно: ${RECIPES.find(r => r.id === node.requires)?.name}` : node.find?`Вес находки: ${FINDS[node.find].weight}`:dismantleInfo(s.owned,node).kind?`${dismantleInfo(s.owned,node).duration.toFixed(1)} сек. · ${dismantleInfo(s.owned,node).fast?'инструмент ускоряет разбор':'ручной разбор'}`:'Добыча в рюкзак', node);
+    for(const note of this.world.memories) if((s.x-note.x)**2+(s.z-note.z)**2<1.8**2&&this.world.canSee(s.x,s.z,note.x,note.z,null,true))add('note',note.x,note.z,'Прочитать запись',note.name,note,1.8);
+    for (const node of this.world.nodes) if (node.group.visible&&(s.x-node.x)**2+(s.z-node.z)**2<2.4**2&&(!node.accessGate||s.openedGates.includes(node.accessGate))&&this.world.canSee(s.x,s.z,node.x,node.z,node.collider,true)) add('node', node.x, node.z, `${['appliance','motor'].includes(node.machine)?'Осмотреть технику':({ tree: 'Рубить дерево', wood: 'Собрать доски', stone:'Добыть камень', ore: 'Добыть металл', herbs: 'Собрать растения', electronics: 'Разобрать электронику', crate: 'Открыть ящик', cloth: 'Собрать ткань', scrap: 'Разобрать лом', drop: 'Забрать добычу' })[node.type] || (node.find?'Забрать находку':'Собрать')} · ${node.name}`, node.requires && !s.owned.includes(node.requires) ? `Нужно: ${RECIPES.find(r => r.id === node.requires)?.name}` : node.find?`Вес находки: ${FINDS[node.find].weight}`:dismantleInfo(s.owned,node).kind?`${dismantleInfo(s.owned,node).duration.toFixed(1)} сек. · ${dismantleInfo(s.owned,node).fast?'инструмент ускоряет разбор':'ручной разбор'}`:'Добыча в рюкзак', node);
     add('station', -21, 13, 'Станция рецептов', 'Создать снаряжение', null, 2.8);
     add('storage', -13.5, 17, 'Открыть хранилище', 'Склад убежища', null, 2.2);
     add('bed', -22, 17.7, 'Отдохнуть', 'Восстановить здоровье', null, 2);
@@ -486,6 +490,7 @@ class QuietDistrict {
     const job = this.job; this.job = null; this.ui.progress(null);
     if (job.type === 'rest') { this.state.health = Math.max(this.state.health, job.max); this.state.stamina = 100; this.ui.toast('Силы вернулись. Дом ждёт новых находок.', 'success'); this.changed(); return; }
     if(job.type==='gate'){const result=openGate(this.state,job.gate.id);if(result.ok){this.world.syncGates();if(result.received)this.showLoot(result.received,job.gate.x,job.gate.z);this.audio.craft();this.ui.toast('Проход открыт.','success');this.changed();}else this.ui.toast(result.reason);return;}
+    if(job.type==='process-salvage'){const list=job.stored?this.state.storedCargo:this.state.cargo;if(list[job.index]!==job.cargo)return;const result=processSalvage(this.state,job.index,job.stored);if(result.ok){this.audio.craft();this.ui.selectedItem=null;this.ui.toast('Техника разобрана. Материалы на складе.','success');this.ui.open('salvage-workbench');this.changed();}else this.ui.toast(result.reason);return;}
     if(job.type==='haul'){const result=takeSalvage(this.state,job.node);if(result.ok){this.world.syncNodes();this.audio.collect();this.ui.toast('Техника в рюкзаке. Можно разобрать на станции.','success');this.changed();}else this.ui.toast(result.reason);return;}
     const node=job.node;
     if(node.find) {const result=claimFind(this.state,node);if(!result.ok) this.ui.toast(result.reason);else {node.group.visible=false;node.marker.visible=false;if(node.collider)node.collider.disabled=true;this.world.floatingText(`+1 ${FINDS[node.find].name}`,node.x,node.z,'#e6cc98',[node.find]);this.audio.collect();}this.changed();return;}
@@ -527,7 +532,7 @@ class QuietDistrict {
     const swing=this.swing;if(!swing)return;
     if(advanceSwing(swing,dt)){
       const e=swing.target;
-      if(swingCanHit(swing,this.state,e,e&&this.world.canSee(this.state.x,this.state.z,e.x,e.z))){this.damageEnemy(e,swing.weapon);this.audio.weaponHit(swing.weapon.id);}
+      if(swingCanHit(swing,this.state,e,e&&this.world.canSee(this.state.x,this.state.z,e.x,e.z))){this.damageEnemy(e,swing.weapon);this.audio.weaponHit(swing.weapon.id,e.x,e.z);}
       else this.world.weaponMiss();
     }
     if(swing.elapsed>=swing.profile.duration)this.swing=null;
@@ -549,6 +554,7 @@ class QuietDistrict {
       const type=DRONE_TYPES[e.kind]||DRONE_TYPES.guardian;
       if(e.health<=0){e.windup=0;if(this.state.elapsed-e.deadAt>180){e.health=e.maxHealth;e.x=e.originX;e.z=e.originZ;e.alert=0;e.suspicion=0;e.route=null;e.stagger=0;delete this.state.droneDeaths[e.id];}continue;}
       e.cooldown=Math.max(0,e.cooldown-dt);const distance=Math.hypot(e.x-this.state.x,e.z-this.state.z),leash=Math.hypot(e.x-e.originX,e.z-e.originZ);
+      if(distance>30&&e.alert<=0){e.suspicion=0;e.windup=0;continue;}
       const sight=distance<type.vision*visibility&&this.world.canSee(e.x,e.z,this.state.x,this.state.z),seen=leash<10&&droneSees(e,this.state,sight,visibility);
       updateAwareness(e,dt,seen,this.state,distance);
       if(e.stagger>0){e.stagger=Math.max(0,e.stagger-dt);e.windup=0;continue;}
@@ -672,7 +678,7 @@ class QuietDistrict {
       this.state.elapsed += dt;updateRainCrops(this.state,dt,(x,z)=>this.world.sheltered(x,z));
       this.audio.rain(weatherAt(this.state.elapsed).rain,this.world.sheltered(this.state.x,this.state.z));this.audio.environment(this.world.ambience(),this.world.sheltered(this.state.x,this.state.z),this.state.elapsed);
       if (updateHelper(this.state)) this.ui.update(); this.attackCooldown = Math.max(0, this.attackCooldown - dt);
-      moving = this.movement(dt);this.updateSwing(dt); this.updateEnemies(dt); this.audio.tick(this.state.elapsed);const music=this.state.placed.filter(p=>p.id==='recordplayer'&&p.enabled).map(p=>Math.hypot(p.x-this.state.x,p.z-this.state.z));this.audio.record(this.state.elapsed,music.length?Math.min(...music):Infinity);const radios=this.state.placed.filter(p=>p.id==='homeradio'&&p.enabled).map(p=>Math.hypot(p.x-this.state.x,p.z-this.state.z));this.audio.radio(this.state.elapsed,radios.length?Math.min(...radios):Infinity);
+      this.audio.setListener(this.state.x,this.state.z);moving = this.movement(dt);this.updateSwing(dt); this.updateEnemies(dt); this.audio.tick(this.state.elapsed);const music=this.state.placed.filter(p=>p.id==='recordplayer'&&p.enabled).map(p=>Math.hypot(p.x-this.state.x,p.z-this.state.z));this.audio.record(this.state.elapsed,music.length?Math.min(...music):Infinity);const radios=this.state.placed.filter(p=>p.id==='homeradio'&&p.enabled).map(p=>Math.hypot(p.x-this.state.x,p.z-this.state.z));this.audio.radio(this.state.elapsed,radios.length?Math.min(...radios):Infinity);
       if (this.target) {
         const target = this.target, range = target.type === 'enemy' ? weapon(this.state).range : 2;
         if (Math.hypot(target.entity.x - this.state.x, target.entity.z - this.state.z) <= range&&(target.type!=='node'||this.world.canSee(this.state.x,this.state.z,target.entity.x,target.entity.z,target.entity.collider,true))) {
@@ -686,8 +692,9 @@ class QuietDistrict {
         this.job.elapsed += dt;if(this.job.type==='harvest'&&['standingtree','quarry'].includes(this.job.node.machine)){
           const j=this.job;j.nextStrike??=.2;j.nextSwing??=.65;
           if(j.elapsed>=j.nextSwing){this.world.playCharacterAction('1h_melee_attack_chop');this.audio.swing(j.node.requires);j.nextSwing+=.65;}
-          if(j.elapsed>=j.nextStrike){this.world.resourceStrike(j.node);this.audio.resourceHit(j.node.machine);j.nextStrike+=.65;}
-        }else if(this.job.type==='harvest'&&['appliance','motor'].includes(this.job.node.machine)){const j=this.job;j.nextTap??=.4;if(j.elapsed>=j.nextTap){this.audio.variant('impact_metal_medium',2,.24);this.world.resourceStrike(j.node);j.nextTap+=.8;}} this.ui.progress(this.job.label, this.job.elapsed / this.job.duration);
+          if(j.elapsed>=j.nextStrike){this.world.resourceStrike(j.node);this.audio.resourceHit(j.node.machine,j.node.x,j.node.z);j.nextStrike+=.65;}
+        }else if(this.job.type==='process-salvage'){const j=this.job;j.nextTap??=.2;if(j.elapsed>=j.nextTap){this.audio.variant('impact_metal_medium',2,.18,{x:-21,z:13});j.nextTap+=.6;}
+        }else if(this.job.type==='harvest'&&['appliance','motor'].includes(this.job.node.machine)){const j=this.job;j.nextTap??=.4;if(j.elapsed>=j.nextTap){this.audio.variant('impact_metal_medium',2,.24,{x:j.node.x,z:j.node.z});this.world.resourceStrike(j.node);j.nextTap+=.8;}} this.ui.progress(this.job.label, this.job.elapsed / this.job.duration);
         if (this.job.elapsed >= this.job.duration) this.finishJob();
       }
       this.uiTimer += dt; this.saveTimer += dt;

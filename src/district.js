@@ -1,5 +1,7 @@
-export const WORLD_LIMIT=64;
+import {FRONTIER_LOCATIONS,FRONTIER_ROADS,QUARTERS} from './frontier.js';
+export const WORLD_LIMIT=112;
 export const LOCATIONS=[
+ ...FRONTIER_LOCATIONS,
  {id:'laundry',name:'Прачечная клиники',label:'Прачечная',subtitle:'Чистое бельё · медицинские запасы',x:-58,z:35,color:'#b5c5bf',radius:5,note:'Маленький двор за клиникой. Бельё сложено отдельно от разобранной машины; пустые корзины остались у двери.'},
  {id:'dispatch',name:'Старая диспетчерская',label:'Диспетчерская',subtitle:'Ремонтные запасы · резервное питание',x:58,z:-36,color:'#9eb9c0',radius:6,note:'Пульт смены и шкаф ремонтных запасов. Антенна ещё стоит; питание давно отключено.'},
  {id:'pumpstation',name:'Затопленная насосная',label:'Насосная',subtitle:'Фильтры · насосы · влажные залы',x:49,z:-25,color:'#94c0b9',radius:8,note:'Вода остановилась у платформы. Сменные фильтры лежат на сухих стеллажах, насосные узлы — в ремонтных запасах.'},
@@ -24,6 +26,7 @@ export const LOCATIONS=[
 ];
 // Paths avoid foundations; the map and vegetation use the same rectangles.
 export const ROADS=[
+ ...FRONTIER_ROADS,
  {x:49,z:-18,w:3,d:10},{x:-15,z:-39,w:3,d:8},{x:10,z:56,w:3,d:16},{x:6,z:56,w:12,d:3},
  {x:26,z:29,w:3,d:22},{x:-44,z:-14,w:24,d:3},
  {x:27,z:40,w:3,d:30},{x:-44,z:50,w:3,d:22},{x:51,z:-32,w:3,d:32},
@@ -48,10 +51,10 @@ export function mapPoint(nx,nz) {
  return {x:nx*span-WORLD_LIMIT-2,z:nz*span-WORLD_LIMIT-2};
 }
 
-const EXPEDITION_PROFILES={clinic:['cloth','herbs'],laundry:['cloth','herbs'],tailor:['cloth','wire'],lane:['vegetables','cloth','water'],courtyard:['cloth','vegetables'],cafe:['vegetables','herbs','water'],backwater:['fish','wood'],pond:['fish','wood'],garden:['seeds','herbs'],greenhouse:['seeds','flowers'],garage:['metal','parts','wire'],depot:['metal','parts'],workshop:['parts','wire','metal'],salvage:['parts','metal','wire'],pumpstation:['cloth','wire','parts'],dispatch:['wire','parts'],market:['wood','cloth','water'],housing:['cloth','wood'],substation:['wire','parts']};
+const EXPEDITION_PROFILES={...Object.fromEntries(QUARTERS.map(q=>[q.id,q.profile])),clinic:['cloth','herbs'],laundry:['cloth','herbs'],tailor:['cloth','wire'],lane:['vegetables','cloth','water'],courtyard:['cloth','vegetables'],cafe:['vegetables','herbs','water'],backwater:['fish','wood'],pond:['fish','wood'],garden:['seeds','herbs'],greenhouse:['seeds','flowers'],garage:['metal','parts','wire'],depot:['metal','parts'],workshop:['parts','wire','metal'],salvage:['parts','metal','wire'],pumpstation:['cloth','wire','parts'],dispatch:['wire','parts'],market:['wood','cloth','water'],housing:['cloth','wood'],substation:['wire','parts']};
 export function expeditionLoot(node,cycle){
  const base=node.originalLoot||{},loot=cycleLoot(node.id,base,cycle);if(!cycle||node.type!=='crate'||node.find)return loot;
- const place=LOCATIONS.reduce((a,b)=>Math.hypot(node.x-a.x,node.z-a.z)<Math.hypot(node.x-b.x,node.z-b.z)?a:b),choices=EXPEDITION_PROFILES[place.id];
- if(!choices)return loot;let hash=cycle;for(const char of node.id)hash=(Math.imul(hash,31)+char.charCodeAt(0))>>>0;const item=choices[hash%choices.length];loot[item]=(loot[item]||0)+1;
+ const place=LOCATIONS.reduce((a,b)=>Math.hypot(node.x-a.x,node.z-a.z)<Math.hypot(node.x-b.x,node.z-b.z)?a:b),choices=node.regionProfile||EXPEDITION_PROFILES[place.id];
+ if(!choices?.length)return loot;let hash=cycle;for(const char of node.id)hash=(Math.imul(hash,31)+char.charCodeAt(0))>>>0;const item=choices[hash%choices.length];loot[item]=(loot[item]||0)+1;
  for(const id of ['battery','filterunit','pumpmodule','medicine'])if(base[id])loot[id]=base[id];return loot;
 }

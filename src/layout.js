@@ -1,6 +1,7 @@
 // Geometry shared by movement, furnishing previews and district checks.
 import {gridPath} from './navigation.js';
 export const FURNITURE = {
+ cargorack:[1.8,.75],
  yardfence:[2,.2],yardgate:[2,.2],yardpath:[2,2],
  campstove:[1.06,.86],toolcabinet:[1.4,.7],
   desklamp:[.75,.65],homeradio:[1,.65],wallshelf:[1.4,.24],raincatcher:[1.2,1.2],dryrack:[2.1,1.1],gearrack:[1.8,.7],fishtrophy:[.8,.15],foundlamp:[.8,.8],armchair:[1.4,1.3],recordplayer:[1.2,.75],wallclock:[.8,.15],cropbed:[2,1.6],bouquet:[.6,.6],lamp:[1.2,.5], bed:[1.5,2.3], garden:[2,1.6], seedbed:[2,1.6],
