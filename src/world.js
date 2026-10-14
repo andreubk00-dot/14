@@ -1,3 +1,4 @@
+import {SpatialIndex} from './spatial.js';
 import {DistrictReflections} from './reflections.js';
 import {DRONE_TYPES,segmentHitsRect} from './survival.js';
 import {gridPath} from './navigation.js';
@@ -20,7 +21,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const rand = seed => { let n = seed; return () => { n = (n * 1664525 + 1013904223) >>> 0; return n / 4294967296; }; };
 const rng = rand(1472);
-const overlapsPlayer=(item,state)=>item.id!=='rug'&&!['wallclock','fishtrophy'].includes(item.id) && circleHitsRect(state.x,state.z,.4,footprint(item));
+const overlapsPlayer=(item,state)=>item.id!=='rug'&&!['wallclock','fishtrophy','wallshelf'].includes(item.id) && circleHitsRect(state.x,state.z,.4,footprint(item));
 const Y = new THREE.Vector3(0, 1, 0);
 const color = { ground: '#384339', road: '#3a4546', wall: '#77796c', rust: '#785b47', wood: '#766a50', leaf: '#546e4e', dark: '#283b39', cream: '#b3aa89', orange: '#f4bb77' };
 const materials = new Map();
@@ -63,7 +64,7 @@ export class World {
         gl_FragColor=vec4(c,1.);}`,
     });
     this.composer.addPass(this.grade);
-    this.canopies=[];this.mirrors=null;this.gates=[];this.memories=MEMORIES;this.buildings = []; this.colliders = []; this.nodes = []; this.enemies = []; this.floating = []; this.lights = [];
+    this.canopies=[];this.mirrors=null;this.gates=[];this.memories=MEMORIES;this.buildings = []; this.colliders = [];this.collisionIndex=new SpatialIndex();this.shelterIndex=new SpatialIndex(); this.nodes = []; this.enemies = []; this.floating = []; this.lights = [];
     this.pickables = []; this.fogs = []; this.mixers = []; this.placedGroups = [];
     this.raycaster = new THREE.Raycaster(); this.mouse = new THREE.Vector2();
     this.plane = new THREE.Plane(Y, 0); this.time = 0;
@@ -108,7 +109,7 @@ export class World {
     const mesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, vertices), mat(c));
     mesh.position.set(x, y, z); mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh); return mesh;
   }
-  collider(x, z, w, d, rotation = 0) { const rect={x,z,w,d,rotation}; this.colliders.push(rect); return rect; }
+  collider(x, z, w, d, rotation = 0) { const rect={x,z,w,d,rotation}; this.colliders.push(rect);this.collisionIndex.add(rect);return rect; }
   wall(x,z,w,d,h,shade,parent=this.scene) { const mesh=this.box(x,h/2,z,w,h,d,shade,parent); const p=parent.position; this.collider(x+p.x,z+p.z,w,d); return mesh; }
   texture(kind) {
     const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
@@ -255,7 +256,7 @@ export class World {
     }
     return group;
   }
-  registerBuilding(x,z,w,d,roof,structures) {
+  registerBuilding(x,z,w,d,roof,structures,h=3.6) {
     const roofMeshes=[], wallMeshes=[], copies=new Map();
     const mark=(mesh,list)=>{
       if(!mesh.isMesh) return;
@@ -290,7 +291,23 @@ export class World {
     const building={x,z,w,d,roofMeshes,wallMeshes,inside:isInsideBuilding({x,z,w,d},this.state.x,this.state.z)};
     for(const mesh of roofMeshes) { mesh.material.opacity=building.inside?0.035:mesh.material.userData.baseOpacity; mesh.material.depthWrite=!building.inside&&mesh.material.opacity>.98; }
     for(const mesh of wallMeshes) { mesh.material.opacity=building.inside?0.13:mesh.material.userData.baseOpacity; mesh.material.depthWrite=!building.inside&&mesh.material.opacity>.98; }
-    this.buildings.push(building);
+    const detailStart=building.wallMeshes.length;
+    for(const xOffset of [-w*.3,w*.3]){const frame=new THREE.Group();frame.position.set(x+xOffset,0,z+d/2+.2);this.scene.add(frame);
+      this.cutawayDetail(this.box(0,Math.min(1.3,h*.45),-.04,1.06,.94,.02,'#3e5350',frame),building);
+      for(const [xx,yy,ww,hh]of [[-.53,Math.min(1.3,h*.45),.08,.95],[.53,Math.min(1.3,h*.45),.08,.95],[0,Math.min(1.3,h*.45)-.5,1.14,.08],[0,Math.min(1.3,h*.45)+.5,1.14,.08],[0,Math.min(1.3,h*.45),.05,.95]])this.cutawayDetail(this.box(xx,yy,0,ww,hh,.055,'#b1ab91',frame),building);
+      this.cutawayDetail(this.box(0,Math.min(1.3,h*.45)-.53,.055,1.3,.09,.16,'#b1ab91',frame),building);
+    }
+    const doorHeight=Math.min(2.1,h*.7);
+    for(const offset of [-w*.1+.035,w*.1-.035])this.cutawayDetail(this.box(x+offset,doorHeight/2,z+d/2+.13,.09,doorHeight,.12,'#b1ab91'),building);
+    this.cutawayDetail(this.box(x,doorHeight,z+d/2+.13,w*.2+.14,.12,.12,'#b1ab91'),building);
+    if(roofMeshes.every(m=>(m.material.userData.baseOpacity??1)>.8)){const shade=wallMeshes.find(m=>m.material.color)?.material.color.getHexString()||'77796c';this.cutawayDetail(this.box(x,(h+doorHeight)/2,z+d/2,w*.2,h-doorHeight,.3,'#'+shade),building);}
+    this.mergeBuildingDetails(building,detailStart);
+    this.buildings.push(building);this.shelterIndex.add(building,.25);
+  }
+  mergeBuildingDetails(building,start){
+    const meshes=building.wallMeshes.splice(start),colors=new Set(meshes.map(m=>m.material.color.getHexString())),batches=new Map();for(let i=building.wallMeshes.length-1;i>=0;i--){const m=building.wallMeshes[i];let parent=m,animated=false;while(parent){if(parent===this.solarRoof)animated=true;parent=parent.parent;}if(!animated&&!m.material.map&&!m.userData.canopyBounds&&(m.material.userData.baseOpacity??1)===1&&colors.has(m.material.color.getHexString()))meshes.push(...building.wallMeshes.splice(i,1));}this.scene.updateMatrixWorld(true);
+    for(const m of meshes){const key=m.material.color.getHexString();if(!batches.has(key))batches.set(key,[]);batches.get(key).push(m);}
+    for(const group of batches.values()){const parts=group.map(m=>m.geometry.clone().applyMatrix4(m.matrixWorld)),geometry=mergeGeometries(parts);parts.forEach(g=>g.dispose());if(!geometry){building.wallMeshes.push(...group);continue;}const material=group[0].material;for(const m of group){m.parent.remove(m);m.geometry.dispose();if(m.material!==material)m.material.dispose();}const merged=new THREE.Mesh(geometry,material);merged.userData.cutaway=true;merged.renderOrder=2;material.opacity=building.inside?.13:1;material.depthWrite=!building.inside;merged.castShadow=!building.inside;merged.receiveShadow=true;this.scene.add(merged);building.wallMeshes.push(merged);}
   }
   updateRoofs(dt) {
     for(const b of this.buildings) {
@@ -329,11 +346,11 @@ export class World {
       this.box(0,h-.1,-d/2,w,.12,.12,'#6d8177',group);
     }
     this.box(0, h - 0.2, d / 2, w + 0.3, 0.18, 0.65, '#6f7567', group);
-    if (sign) this.label(sign, 0, h - 0.95, d / 2 + (options.signOffset??.19), w * 0.73, '#ccbe98', '#46594c', group);
+    if(sign){const plaque=this.label(sign,0,h-.55,d/2+(options.signOffset??.24),w*.73,'#ccbe98','#46594c',group);plaque.scale.y=Math.min(1,.65/(w*.73/4));}
     for (let i = 0; i < 8; i++) this.box(rng() * (w - 1) - w / 2 + 0.5, 0.255, rng() * (d - 1) - d / 2 + 0.5, 0.2 + rng() * 0.35, 0.13, 0.2 + rng() * 0.35, '#8b8975', group);
     const roof = this.createRoof(x,z,w,d,h,options.greenhouse?'#9ab7a6':options.roofColor||'#566d65',options.pitch??.22,options.roofStyle||'gable');
     if(options.greenhouse) roof.traverse(mesh=>{if(mesh.isMesh&&mesh.material.color.getHexString()==='9ab7a6') {mesh.material=mesh.material.clone();mesh.material.opacity=.5;mesh.material.transparent=true;}});
-    this.registerBuilding(x,z,w,d,roof,[group]);
+    this.registerBuilding(x,z,w,d,roof,[group],h);
     return group;
   }
   buildHome() {
@@ -479,9 +496,10 @@ export class World {
     this.canopy(51,18.2,10,2.1,3.2,'#74827b');
     for(const gate of GATES) {
       const group=new THREE.Group();group.position.set(gate.x,0,gate.z);this.scene.add(group);
-      this.box(0,1.1,0,gate.w,2.2,.14,'#7c8270',group);
-      if(gate.tool==='cutter')for(let x=-.6;x<=.6;x+=.3)this.box(x,1.1,.12,.23,.07,.06,'#bcae81',group);
-      else {this.box(0,1.1,.12,1.5,.13,.08,'#a99b75',group);for(const x of [-.6,.6])this.cylinder(x,1.1,.2,.08,.08,'#b2bda4',group,8).rotation.x=Math.PI/2;}
+      if(gate.kind){for(let i=0;i<4;i++){const plank=this.box(0,.14+i*.2,(i%2-.5)*.22,gate.w-.08,.2,.34,gate.kind==='boards'?'#a48962':'#7e928b',group);plank.rotation.y=(i%2?.06:-.06);}if(gate.kind==='metal')for(const x of [-1,1])this.box(x,.65,0,.12,1.3,.6,'#a79d7d',group);}
+      else this.box(0,1.1,0,gate.w,2.2,.14,'#7c8270',group);
+      if(!gate.kind&&gate.tool==='cutter')for(let x=-.6;x<=.6;x+=.3)this.box(x,1.1,.12,.23,.07,.06,'#bcae81',group);
+      else if(!gate.kind){this.box(0,1.1,.12,1.5,.13,.08,'#a99b75',group);for(const x of [-.6,.6])this.cylinder(x,1.1,.2,.08,.08,'#b2bda4',group,8).rotation.x=Math.PI/2;}
       this.gates.push({...gate,group,collider:this.collider(gate.x,gate.z,gate.w,gate.d)});
     }
     this.syncGates();
@@ -492,10 +510,10 @@ export class World {
   canopy(x,z,w,d,h,color) {
     const roof=this.box(x,h,z,w,.12,d,color);
     roof.material=roof.material.clone();roof.material.transparent=true;roof.material.userData.baseOpacity=1;roof.userData.cutaway=true;
-    const b=this.buildings.reduce((best,b)=>Math.hypot(b.x-x,b.z-z)<Math.hypot(best.x-x,best.z-z)?b:best);roof.userData.canopyBounds={x,z,w,d};this.canopies.push(roof.userData.canopyBounds);b.roofMeshes.push(roof);
+    const b=this.buildings.reduce((best,b)=>Math.hypot(b.x-x,b.z-z)<Math.hypot(best.x-x,best.z-z)?b:best);roof.userData.canopyBounds={x,z,w,d};this.canopies.push(roof.userData.canopyBounds);this.shelterIndex.add(roof.userData.canopyBounds,.25);b.roofMeshes.push(roof);
     for(const xx of [x-w/2+.12,x+w/2-.12]) {this.box(xx,h/2,z+d/2-.12,.14,h,.14,color);this.collider(xx,z+d/2-.12,.14,.14);}
   }
-  sheltered(x,z) {return this.buildings.some(b=>isInsideBuilding(b,x,z))||this.canopies.some(c=>isInsideBuilding(c,x,z));}
+  sheltered(x,z) {return [...this.shelterIndex.query(x,z)].some(b=>isInsideBuilding(b,x,z));}
   syncGates() {for(const g of this.gates){const opened=this.state.openedGates.includes(g.id);g.group.visible=!opened;g.collider.disabled=opened;}this.renderDirty=true;}
   createReeds(){
     this.reedBases=[];
@@ -517,7 +535,9 @@ export class World {
     this.rainRipples=new THREE.InstancedMesh(rippleGeo,new THREE.MeshBasicMaterial({color:'#b6ccc1',transparent:true,opacity:0,depthWrite:false}),20);this.rainRipples.frustumCulled=false;this.scene.add(this.rainRipples);
   }
   updateRain(dt,weather) {
-    const strength=weather.rain;this.rain.visible=strength>.01;this.rain.material.opacity=strength*.25;
+    const strength=weather.rain;for(const material of this.wetMaterials||[])material.roughness=material.userData.dryRoughness-strength*.24;
+    if(strength<=.01){this.rain.visible=false;this.rainRipples.visible=false;return;}
+    this.rain.visible=strength>.01;this.rain.material.opacity=strength*.25;
     const p=this.rain.geometry.attributes.position;
     for(let i=0;i<this.rainSeeds.length;i++){const [dx,dz,phase]=this.rainSeeds[i],x=this.state.x+dx,z=this.state.z+dz,y=((phase-this.time*8)%10+10)%10;const inside=this.sheltered(x,z);p.setXYZ(i*2,x,y,z);p.setXYZ(i*2+1,x+.08,inside?y:y+.55,z+.04);if(inside)p.setXYZ(i*2+1,x,y,z);}
     p.needsUpdate=true;this.rainRipples.visible=strength>.01;this.rainRipples.material.opacity=strength*.3;
@@ -651,7 +671,7 @@ export class World {
     for (const zz of [-13, -9]) { this.box(-16.5, 0.85, zz, 3.4, 0.09, 0.09, '#b2a17b', this.bridgeGroup); }
     this.collider(-23.1,-11,9.8,2.2); this.collider(-10.4,-11,8.8,2.2);
     this.collider(-16.5,-13,3.4,.09); this.collider(-16.5,-9,3.4,.09);
-    this.bridgeCollider = { x: -17, z: -11, w: 22, d: 2.2, bridge: true }; this.colliders.push(this.bridgeCollider);
+    this.bridgeCollider = { x: -17, z: -11, w: 22, d: 2.2, bridge: true }; this.colliders.push(this.bridgeCollider);this.collisionIndex.add(this.bridgeCollider);
   }
   buildPond() {
     const pondGeometry = new THREE.CircleGeometry(9.5, 64);
@@ -800,11 +820,15 @@ export class World {
       ['cloth','Ткани швейного дома',9,60,{cloth:5}],
       ['crate','Кухонная кладовая',12.5,52,{vegetables:4,herbs:2}],
       ['herbs','Сад переулка',17,58,{herbs:4,flowers:3}],
+      ['find','Лампа ремонтника',-9.5,-45,{},null,'desklamp'],
+      ['find','Приёмник из кафе',26,38.5,{},null,'homeradio'],
+      ['find','Упакованная полка',7,57.5,{},null,'wallshelf'],
     ];
     definitions.forEach(([type, name, x, z, loot, requires, find, machine], i) => {
       const group = new THREE.Group(); group.position.set(x,this.furnitureElevation(x,z),z); this.scene.add(group);
       const kind=machineKind({type,name,machine});
-      if(find) {const model=this.makeFurniture(find);model.scale.setScalar(.6);group.add(model);if(find==='wallclock')this.crate(0,0,1,group);}
+      if(find==='wallshelf'){this.crate(0,0,1,group);}
+      else if(find) {const model=this.makeFurniture(find);model.scale.setScalar(.6);group.add(model);if(find==='wallclock')this.crate(0,0,1,group);}
       else if(kind==='motor') {this.box(0,.55,0,1.15,.8,.8,'#667970',group);for(const xx of [-.4,0,.4])this.cylinder(xx,1.05,0,.13,.4,'#83958a',group,8);this.box(0,.075,0,1.35,.15,.95,'#857c62',group);}
       else if(kind==='radio') {this.box(0,.3,0,.9,.5,.4,'#83917d',group);this.cylinder(.3,.85,0,.015,.8,'#b2bca0',group,6);this.box(-.15,.35,.22,.4,.3,.025,'#4c6253',group);for(const x of [-.3,.3])for(const z of [-.15,.15])this.box(x,.025,z,.08,.05,.06,'#647564',group);}
       else if(kind==='appliance') {this.box(0,.65,0,1,1.25,.8,'#8d9a8e',group);const drum=this.cylinder(0,.6,.43,.29,.055,'#435c57',group,12);drum.rotation.x=Math.PI/2;this.box(0,1.15,.43,.8,.1,.05,'#b4b49a',group);for(const x of [-.38,.38])for(const z of [-.28,.28])this.box(x,.0125,z,.1,.025,.08,'#69796c',group);}
@@ -823,7 +847,7 @@ export class World {
       }
       const marker = this.marker(x, 1.5, z, type === 'herbs' ? '#a9c181' : '#e7c993');
       const node = { id: `node-${i}`, type, name, x, z, loot: { ...(this.state.nodeLoot[`node-${i}`] || cycleLoot(`node-${i}`,loot,this.state.depleted[`node-${i}`]===undefined?0:Math.floor(this.state.elapsed/(type==='herbs'?120:240)))) }, originalLoot: { ...loot }, requires, find, accessGate:gateForPoint(x,z), machine:kind, group, marker, respawnTime: type === 'herbs' ? 120 : 240 };
-      if(kind||find||type==='crate') {const f=find?footprint({id:find,x:0,z:0}):null;const size=find?(find==='wallclock'?[1.05,1.13]:[f.w*.6,f.d*.6]):type==='crate'?[1.05,1.13]:kind==='motor'?[1.35,.95]:kind==='appliance'?[1,.8]:kind==='radio'?[.9,.4]:[.9,.6];node.collider=this.collider(x,z,...size);}
+      if(kind||find||type==='crate') {const f=find?footprint({id:find,x:0,z:0}):null;const size=find?(['wallclock','wallshelf'].includes(find)?[1.05,1.13]:[f.w*.6,f.d*.6]):type==='crate'?[1.05,1.13]:kind==='motor'?[1.35,.95]:kind==='appliance'?[1,.8]:kind==='radio'?[.9,.4]:[.9,.6];node.collider=this.collider(x,z,...size);}
       group.traverse(mesh => { mesh.userData.node = node; if (mesh.isMesh) this.pickables.push(mesh); });
       if(this.state.depleted[node.id]!==undefined && this.state.elapsed-this.state.depleted[node.id]>=node.respawnTime && !this.state.nodeLoot[node.id]) this.state.nodeLoot[node.id]={...node.loot};
       this.nodes.push(node);
@@ -992,13 +1016,13 @@ export class World {
     }
   }
   onRoad(x,z,margin=0) {return [...ROADS,...SCENES,...this.canopies].some(r=>Math.abs(x-r.x)<r.w/2+margin&&Math.abs(z-r.z)<r.d/2+margin);}
-  canSee(ax,az,bx,bz){return !this.colliders.some(r=>!r.disabled&&(r.w>.45||r.d>.45)&&segmentHitsRect(ax,az,bx,bz,r))&&!this.state.placed.some(p=>!['rug','wallclock','fishtrophy'].includes(p.id)&&segmentHitsRect(ax,az,bx,bz,solidFootprint(p)));}
+  canSee(ax,az,bx,bz){return ![...this.collisionIndex.query(Math.min(ax,bx),Math.min(az,bz),Math.max(ax,bx),Math.max(az,bz))].some(r=>!r.disabled&&(r.w>.45||r.d>.45)&&segmentHitsRect(ax,az,bx,bz,r))&&!this.state.placed.some(p=>!['rug','wallclock','fishtrophy','wallshelf'].includes(p.id)&&segmentHitsRect(ax,az,bx,bz,solidFootprint(p)));}
   blocked(x, z, radius = 0.3) {
     if (x < -WORLD_LIMIT || x > WORLD_LIMIT || z < -WORLD_LIMIT || z > WORLD_LIMIT) return true;
     if(Math.pow((x-30)/6.8,2)+Math.pow((z-59)/3.7,2)<1&&!(x>=25.2&&x<=29.5&&z<56.2))return true;
     // Pond shoreline; dock remains navigable.
     if (Math.pow((x - 23) / 9, 2) + Math.pow((z + 24) / 7.4, 2) < 1 && !(x < 21.5 && z > -18.1)) return true;
-    return this.colliders.some(c => !c.disabled && circleHitsRect(x,z,radius,c)) || this.state.placed.some(p=>p.id!=='rug'&&!['wallclock','fishtrophy'].includes(p.id) && circleHitsRect(x,z,radius,solidFootprint(p)));
+    return [...this.collisionIndex.query(x-radius,z-radius,x+radius,z+radius)].some(c => !c.disabled && circleHitsRect(x,z,radius,c)) || this.state.placed.some(p=>p.id!=='rug'&&!['wallclock','fishtrophy','wallshelf'].includes(p.id) && circleHitsRect(x,z,radius,solidFootprint(p)));
   }
   repairFurniture() { return repairFurniture(this.colliders,this.state.placed); }
   furnitureElevation(x,z) { return this.buildings.some(b=>isInsideBuilding(b,x,z))?.205:.025; }
@@ -1065,6 +1089,12 @@ export class World {
       for(const x of [-.8,.8])this.box(x,1,0,.12,2,.7,'#827959',group);for(const y of [.15,1,1.9])this.box(0,y,0,1.8,.1,.7,'#a4956c',group);this.box(-.4,1.35,0,.5,.6,.35,'#a6ac89',group);this.box(.4,.55,0,.5,.6,.35,'#8b9f92',group);
     } else if(id==='fishtrophy') {
       this.box(0,1.8,0,.85,.5,.07,'#a88e65',group);this.box(0,1.8,.055,.6,.22,.06,'#89b4b3',group);const tail=this.box(-.33,1.8,.055,.15,.18,.06,'#92bcbd',group);tail.rotation.z=Math.PI/4;this.box(.23,1.85,.095,.04,.04,.015,'#314a46',group);
+    } else if(id==='wallshelf'){
+      this.box(0,1.55,.11,1.4,.12,.24,'#a9956a',group);for(const x of [-.5,.5])this.box(x,1.37,.04,.07,.3,.1,'#607868',group);for(const x of [-.35,0,.35]){this.cylinder(x,1.74,.1,.09,.25,'#aeb4a1',group,8);this.cylinder(x,1.87,.1,.095,.035,'#7e8c78',group,8);}
+    } else if(id==='homeradio'){
+      this.box(0,.57,0,1,.12,.65,'#9c8761',group);for(const x of [-.38,.38])for(const z of [-.22,.22])this.box(x,.27,z,.08,.54,.08,'#6c7c67',group);this.box(0,.85,0,.8,.43,.38,'#9ba58c',group);this.box(-.14,.86,.205,.38,.28,.025,'#4c6b60',group);this.cylinder(.24,.85,.23,.06,.04,'#d4bd86',group,8).rotation.x=Math.PI/2;this.cylinder(.25,1.38,-.1,.012,.7,'#bfc5ad',group,6);
+    } else if(id==='desklamp'){
+      this.box(0,.56,0,.75,.12,.65,'#a28b65',group);for(const x of [-.27,.27])for(const z of [-.22,.22])this.box(x,.25,z,.08,.5,.08,'#7a876c',group);this.cylinder(0,.65,0,.16,.07,'#839c90',group,12);this.cylinder(0,.9,0,.025,.48,'#779086',group);this.cylinder(0,1.17,0,.22,.18,'#c7b27d',group,8);const glow=this.cylinder(0,1.07,0,.14,.025,'#ffe0a0',group);glow.material=new THREE.MeshStandardMaterial({color:'#ffe0a0',emissive:'#ffc17c',emissiveIntensity:ghost?0:2});const light=new THREE.PointLight('#ffd39a',ghost?0:5,6,1.5);light.position.set(0,1.03,0);group.add(light);this.lights.push({light,glow,base:ghost?0:5});group.userData.fixture={light,glow,base:5};
     } else if(id==='foundlamp') {
       this.cylinder(0,.05,0,.28,.1,'#7d856b',group);this.cylinder(0,.7,0,.045,1.3,'#69796c',group);
       this.cylinder(0,1.35,0,.32,.32,'#c6ae7b',group,8);

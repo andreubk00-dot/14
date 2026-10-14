@@ -12,6 +12,9 @@ const shell = path('M12 40Q0 8 32 7Q64 8 52 40L40 56H24Z','#c6a4b8')+line(18,18,
 const station = c => rect(8,23,48,33,c,4)+rect(14,10,36,15,dark)+rect(19,15,26,5,steel)+rect(14,32,20,17,dark)+circle(24,40,5,gold)+rect(39,31,11,5,steel)+rect(39,42,11,5,steel)+rect(13,56,7,4,dark)+rect(44,56,7,4,dark);
 const bed = rect(8,31,48,20,wood)+rect(10,23,44,16,'#7daa8a',4)+rect(12,20,13,16,'#eae0c2',3)+path('M29 24H53V45H29Z','#9fbd91')+rect(8,49,5,9,dark)+rect(51,49,5,9,dark);
 const art = {
+ desklamp:rect(10,44,44,6,wood)+rect(14,49,5,10,dark)+rect(45,49,5,10,dark)+rect(29,21,5,23,steel)+path('M18 12H46L52 26H12Z',gold)+rect(23,40,20,4,steel),
+ homeradio:rect(9,20,46,34,wood,5)+rect(14,25,23,23,dark)+[29,35,41].map(y=>line(18,y,33,y,steel,2)).join('')+circle(46,36,5,gold)+line(42,18,51,6,steel,2),
+ wallshelf:rect(5,40,54,7,wood)+rect(10,47,5,12,dark)+rect(49,47,5,12,dark)+rect(12,20,13,20,'#bdc5aa')+rect(31,13,8,27,'#8dada6')+rect(41,17,10,23,gold),
  filterunit:rect(15,11,34,44,steel,6)+rect(20,16,24,34,'#d6d8bf')+[22,29,36,43].map(y=>line(23,y,41,y,dark,2)).join('')+rect(24,6,16,6,gold),
  pumpmodule:rect(9,23,39,29,'#7eaaa9',5)+circle(27,36,11,steel)+circle(27,36,5,dark)+rect(45,29,12,10,gold)+rect(15,13,23,12,dark)+rect(11,52,37,5,wood),
  battery:rect(12,13,40,43,'#6b8676',5)+rect(18,7,8,7,steel)+rect(38,7,8,7,gold)+rect(17,19,30,31,dark)+path('M34 21L23 37H31L28 48L42 31H34Z',gold),

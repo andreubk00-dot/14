@@ -32,7 +32,7 @@ export const RECIPES = [
  {id:'lure',name:'Многоразовая блесна',category:'tools',desc:'Привлекает форель. Выбирается у воды; не расходуется.',cost:{metal:3,wire:2,pearl:1},requires:'rod',slot:'tool'},
  {id:'fishmeal',name:'Рыба, запечённая с овощами',category:'supplies',desc:'Две порции походной еды из улова и урожая.',cost:{fish:2,vegetables:2,wood:1},repeatable:true},
  {id:'fishtrophy',name:'Панно «Лунная форель»',category:'shelter',desc:'Память о редком улове. Крепится на стену после первой пойманной форели.',cost:{wood:4,fish:3,pearl:1},placeable:true},
-  ...Object.entries(FINDS).map(([id,f])=>({id,name:f.name,category:'shelter',desc:id==='wallclock'?'Крепятся на стену внутри убежища.':id==='recordplayer'?'Уцелевшая пластинка. Включается рядом с проигрывателем.':id==='foundlamp'?'Работает от уцелевшего аккумулятора. Свет можно включать и выключать.':'Удобное кресло. Найденную вещь можно поставить дома.',cost:{},placeable:true,foundOnly:true})),
+  ...Object.entries(FINDS).map(([id,f])=>({id,name:f.name,category:'shelter',desc:f.desc|| (id==='wallclock'?'Крепятся на стену внутри убежища.':id==='recordplayer'?'Уцелевшая пластинка. Включается рядом с проигрывателем.':id==='foundlamp'?'Работает от уцелевшего аккумулятора. Свет можно включать и выключать.':'Удобное кресло. Найденную вещь можно поставить дома.'),cost:{},placeable:true,foundOnly:true})),
   {id:'wrench',name:'Набор ключей',category:'tools',desc:'Ускоряет разбор двигателей и бытовой техники вдвое.',cost:{metal:5,parts:2},slot:'tool'},
   {id:'cropbed',name:'Посадочная грядка',category:'shelter',desc:'Травы, овощи или цветы. После ручного сбора нужна новая посадка.',cost:{wood:6,metal:2},placeable:true},
   {id:'stew',name:'Овощной паёк',category:'supplies',desc:'Готовит порцию походной еды: 30 здоровья и всю выносливость.',cost:{vegetables:2,water:1,herbs:1},repeatable:true},
@@ -106,7 +106,7 @@ export function freshState() {
 function cleanFurniture(p,elapsed) {
  if(!p||typeof p!=='object'||!RECIPES.some(r=>r.id===p.id&&r.placeable)||!Number.isFinite(p.x)||!Number.isFinite(p.z)||p.x<-26||p.x>-6||p.z<6||p.z>26)return null;
  const item={id:p.id,x:p.x,z:p.z,rotation:Number.isFinite(p.rotation)?p.rotation:0,harvested:Number.isFinite(p.harvested)?Math.min(elapsed,Math.max(0,p.harvested)):elapsed};
- if(['lamp','foundlamp','recordplayer'].includes(p.id))item.enabled=p.id==='recordplayer'?p.enabled===true:p.enabled!==false;
+ if(['lamp','foundlamp','desklamp','homeradio','recordplayer'].includes(p.id))item.enabled=['recordplayer','homeradio'].includes(p.id)?p.enabled===true:p.enabled!==false;
  if(p.id==='cropbed'){item.crop=Object.hasOwn(CROPS,p.crop)?p.crop:null;item.plantedAt=item.crop&&Number.isFinite(p.plantedAt)?Math.max(0,Math.min(elapsed,p.plantedAt)):null;if(Number.isFinite(p.rainGrowth)&&p.rainGrowth>0)item.rainGrowth=Math.min(p.rainGrowth,10000);}
  if(STATION_UPGRADES[p.id])item.upgrade=p.upgrade===1?1:0;
  if(p.id==='raincatcher')item.rainWater=Number.isFinite(p.rainWater)?Math.max(0,Math.min(collectorCapacity(item),p.rainWater)):0;
@@ -246,10 +246,10 @@ export function place(state, id, x, z, rotation = 0) {
   const recipe = RECIPES.find(r => r.id === id);
   if (!recipe?.placeable || !craftStatus(state, recipe).ok) return false;
   if (x < -26 || x > -6 || z < 6 || z > 26) return false;
-  if(['wallclock','fishtrophy'].includes(id)&&!placementAllowed({id,x,z,rotation},[],state.placed)) return false;
-  if(id!=='rug'&&!['wallclock','fishtrophy'].includes(id)&&state.placed.some(p=>p.id!=='rug'&&!['wallclock','fishtrophy'].includes(p.id)&&overlaps(footprint({id,x,z,rotation}),footprint(p),.15))) return false;
+  if(['wallclock','fishtrophy','wallshelf'].includes(id)&&!placementAllowed({id,x,z,rotation},[],state.placed)) return false;
+  if(id!=='rug'&&!['wallclock','fishtrophy','wallshelf'].includes(id)&&state.placed.some(p=>p.id!=='rug'&&!['wallclock','fishtrophy','wallshelf'].includes(p.id)&&overlaps(footprint({id,x,z,rotation}),footprint(p),.15))) return false;
   if(recipe.foundOnly) {const stock=state.finds[id]>0?state.finds:state.storedFinds;stock[id]--;} else spend(state,recipe.cost);
-  state.placed.push({id,x,z,rotation,harvested:state.elapsed,...(['lamp','foundlamp','recordplayer'].includes(id)?{enabled:id!=='recordplayer'}:{}),...(id==='cropbed'?{crop:null,plantedAt:null}:{})});
+  state.placed.push({id,x,z,rotation,harvested:state.elapsed,...(['lamp','foundlamp','desklamp','homeradio','recordplayer'].includes(id)?{enabled:!['recordplayer','homeradio'].includes(id)}:{}),...(id==='cropbed'?{crop:null,plantedAt:null}:{})});
   return true;
 }
 export function collect(state, loot) {
@@ -411,7 +411,8 @@ export function openGate(state,id) {
  if(!gate||state.openedGates.includes(id))return {ok:false,reason:'Проход уже открыт'};
  if(Math.hypot(state.x-gate.x,state.z-gate.z)>3)return {ok:false,reason:'Подойди к двери'};
  if(!state.owned.includes(gate.tool))return {ok:false,reason:'Нужен подходящий инструмент'};
- state.openedGates.push(id);return {ok:true};
+ if(gate.loot&&bagWeight(state)+Object.entries(gate.loot).reduce((n,[id,v])=>n+RESOURCES[id].weight*v,0)>capacity(state))return {ok:false,reason:'Освободи место в рюкзаке для разобранных материалов'};
+ const received=gate.loot?collect(state,gate.loot).received:{};state.openedGates.push(id);return {ok:true,received};
 }
 export function consumeBait(state,id) {
  const bait=Object.hasOwn(BAITS,id)?BAITS[id]:null;if(!bait||bait.tool&&!state.owned.includes(bait.tool)||bait.resource&&!(state.bag[bait.resource]>0))return false;

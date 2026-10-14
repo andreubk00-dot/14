@@ -3,6 +3,8 @@ export const GATES=[
  {id:'yard',name:'Цепь на двери кладовой',x:-44,z:61,w:2.7,d:.32,tool:'cutter',duration:3,bounds:{x:-44,z:56,w:10,d:10}},
  {id:'salvage',name:'Заклинившая дверь склада',x:51,z:-45,w:2.7,d:.32,tool:'wrench',duration:4,bounds:{x:51,z:-50,w:14,d:10}},
  {id:'garage-path',name:'Калитка ремонтного двора',x:-15,z:-37,w:2.8,d:.22,tool:'cutter',duration:2.5},
+ {id:'housing-debris',name:'Доски в проходе',x:15,z:25.5,w:2.8,d:.8,tool:'axe',duration:3,kind:'boards',loot:{wood:5}},
+ {id:'workshop-debris',name:'Металлический завал',x:41,z:18,w:3.2,d:.8,tool:'wrench',duration:4,kind:'metal',loot:{metal:3,parts:1}},
  {id:'pump-path',name:'Сервисная калитка',x:49,z:-16,w:2.8,d:.22,tool:'wrench',duration:2.5},
 ];
 export const FISHING_SPOTS=[

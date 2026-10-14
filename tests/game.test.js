@@ -486,3 +486,27 @@ test('Legacy production and new rare resource inventory survive validation witho
 test('Shortcut gates persist without treating their open yards as locked rooms',()=>{
  const s=freshState(),gate=GATES.find(g=>g.id==='garage-path');s.x=gate.x;s.z=gate.z;s.owned=['cutter'];assert.equal(gateForPoint(-15,-48),undefined);assert.equal(openGate(s,gate.id).ok,true);assert.deepEqual(validateSave(s).openedGates,['garage-path']);assert.equal(openGate(s,gate.id).ok,false);
 });
+
+import {SpatialIndex} from '../src/spatial.js';
+import {chooseInteraction,interactionKey} from '../src/interactions.js';
+import {reelMood,advanceReel,reelInput} from '../src/fishing.js';
+test('Spatial broad phase retains every exact hit across rotated rectangles, negative cells and disabled doors',()=>{
+ let seed=9;const rnd=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};const index=new SpatialIndex(8),rects=Array.from({length:180},()=>({x:rnd()*128-64,z:rnd()*128-64,w:.1+rnd()*12,d:.1+rnd()*6,rotation:rnd()*6.28,disabled:rnd()<.2}));rects.forEach(r=>index.add(r));
+ for(let i=0;i<5000;i++){const x=rnd()*130-65,z=rnd()*130-65,r=.15+rnd()*.5,candidates=[...index.query(x-r,z-r,x+r,z+r)];assert.equal(candidates.some(q=>!q.disabled&&circleHitsRect(x,z,r,q)),rects.some(q=>!q.disabled&&circleHitsRect(x,z,r,q)));}
+ const gate=index.add({x:-8,z:0,w:2,d:.2,disabled:false});assert.ok(index.query(-8,-.3,-8,.3).has(gate));gate.disabled=true;assert.ok(index.query(-8,0).has(gate));
+});
+test('Indexed cover rays preserve exact thin-wall and rotated cover results',()=>{
+ const index=new SpatialIndex(),rects=[{x:-8,z:0,w:3,d:.08},{x:2,z:3,w:6,d:.12,rotation:.8},{x:10,z:-5,w:1,d:2}];rects.forEach(r=>index.add(r));for(let i=0;i<1500;i++){const ax=Math.sin(i)*20,az=Math.cos(i*.7)*20,bx=Math.cos(i*.4)*20,bz=Math.sin(i*.3)*20;assert.equal([...index.query(Math.min(ax,bx),Math.min(az,bz),Math.max(ax,bx),Math.max(az,bz))].some(r=>segmentHitsRect(ax,az,bx,bz,r)),rects.some(r=>segmentHitsRect(ax,az,bx,bz,r)));}
+});
+test('Overlapping interactions resist tiny distance changes and an explicit selection stays usable until leaving range',()=>{
+ const a={type:'node',x:1,z:0,entity:{id:'node-1'},distance:1},b={type:'note',x:0,z:1,entity:{id:'paper'},distance:1.1};const first=chooseInteraction([a,b]);assert.equal(interactionKey(first),interactionKey(a));assert.equal(chooseInteraction([{...a,distance:1.25},b],interactionKey(a)).entity.id,'node-1');assert.equal(chooseInteraction([{...a,distance:1.7},b],interactionKey(a)).entity.id,'paper');assert.equal(chooseInteraction([a,b],interactionKey(b),true).entity.id,'paper');assert.equal(chooseInteraction([a],interactionKey(b),true).entity.id,'node-1');assert.equal(chooseInteraction([],interactionKey(a)),null);
+});
+test('Debris clears permanently, rewards once, needs the correct tool and never loses materials to a full bag',()=>{
+ const s=freshState(),gate=GATES.find(g=>g.kind==='boards');s.x=gate.x;s.z=gate.z;s.owned=['wrench'];assert.equal(openGate(s,gate.id).ok,false);s.owned=['axe'];s.bag={wood:24};const before=structuredClone(s);assert.equal(openGate(s,gate.id).ok,false);assert.deepEqual(s,before);s.bag={};assert.deepEqual(openGate(s,gate.id).received,{wood:5});assert.equal(openGate(s,gate.id).ok,false);assert.equal(s.bag.wood,5);assert.ok(validateSave(s).openedGates.includes(gate.id));
+});
+test('New finds remain unique, retain switches through storage and fit the actual wall with suitable spacing',()=>{
+ const s=freshState();for(const [i,id]of ['desklamp','homeradio','wallshelf'].entries()){const n={id:'node-'+(84+i),find:id};assert.equal(claimFind(s,n).ok,true);assert.equal(claimFind(s,n).ok,false);}s.x=-16;s.z=18;assert.equal(place(s,'desklamp',-16,12),true);assert.equal(place(s,'homeradio',-18,12),true);const anchor=clockAnchor(-23.4,10.66,'wallshelf');assert.ok(anchor.x>=-23.1);assert.equal(place(s,'wallshelf',anchor.x,anchor.z,anchor.rotation),true);assert.equal(placementAllowed({id:'wallclock',...clockAnchor(anchor.x+.7,10.66)},[],s.placed),false);s.placed[0].enabled=false;s.placed[1].enabled=true;const clean=validateSave(s);assert.equal(clean.placed[0].enabled,false);assert.equal(clean.placed[1].enabled,true);assert.equal(packFurniture(clean,1),true);assert.equal(clean.packedFurniture[0].enabled,true);assert.equal(unpackFurniture(clean,0,-18,12,0),true);assert.equal(clean.placed.at(-1).enabled,true);
+});
+test('Reel tension makes surge pulls risky, release creates recovery time and repeated clicks do not grant free hits',()=>{
+ const f={phase:'reel',timer:3.4,totalTime:3.4,tension:.7,needle:50,target:50,hits:0,misses:0};assert.equal(reelMood(f.timer),'surge');assert.equal(reelInput(f,'pull'),'escape');f.tension=.8;assert.equal(reelInput(f,'relax'),'relax');assert.equal(f.tension,.4);assert.equal(reelInput(f,'pull'),'hold');f.timer=4.3;f.tension=.3;assert.equal(reelInput(f,'pull'),'hit');assert.equal(f.hits,1);assert.equal(reelInput(f,'pull'),'hold');assert.equal(f.hits,1);f.timer=5;const prior=f.tension;assert.equal(advanceReel(f,.05),false);assert.ok(f.tension<prior);assert.equal(f.mood,'slack');f.timer=6;f.totalTime=23;assert.equal(advanceReel(f,.05),true);
+});

@@ -88,7 +88,7 @@ test('Placement through the canvas spends materials and persists across reload',
 });
 
 test('Fishing needs timing, produces loot and updates collection', async ({ page }) => {
-  test.setTimeout(150000);
+  test.setTimeout(240000);await page.setViewportSize({width:800,height:600});
   await start(page, { x: 19, z: -17, owned: ['rod'] });
   await page.keyboard.press('KeyE');
   await expect(page.locator('#fish-ui')).toContainText('Поплавок качается');
@@ -105,12 +105,13 @@ test('Fishing needs timing, produces loot and updates collection', async ({ page
       ui.querySelector('[data-action="fish-action"]').click();
       window.__reelVisible = ui.textContent.includes('Поймай момент');
     }
+    if(f.phase==='reel'&&(f.tension>.7||f.mood==='surge')&&f.timer>=(f.relaxedUntil||0)){ui.querySelector('[data-action="relax-fish"]').click();return false;}
     if (f.phase === 'reel' && Math.abs(f.needle - f.target) < 8) {
       window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyE', bubbles: true }));
       return f.phase === 'caught';
     }
     return false;
-  }, undefined, { timeout: 90000, polling: 16 });
+  }, undefined, { timeout: 180000, polling: 16 });
   expect(await page.evaluate(() => window.__reelVisible)).toBe(true);
   await expect(page.locator('#fish-ui')).toContainText('Ещё один заброс');
   expect(await page.evaluate(() => window.__quietDistrict.state.fishCollection.length)).toBe(1);
@@ -432,7 +433,7 @@ test('District audit: entrances, solid walls, repaired bridge, loot access and s
   expect(audit.solar).toBeCloseTo(-.22);expect(audit.lamp).toEqual([-18,0,10.85]);
   expect(audit.repaired).toBe(1);expect(audit.savedProduction).toBe(321);expect(audit.legal).toBe(true);
   expect(audit.noLeakedLight).toBe(true);expect(audit.outsideDepth).toBe(true);expect(audit.insideDepth).toBe(true);
-  expect(audit.nodeCount).toBe(84);expect(audit.roofCounts.length).toBe(18);expect(audit.roofCounts.every(n=>n>=2)).toBe(true);
+  expect(audit.nodeCount).toBe(87);expect(audit.roofCounts.length).toBe(18);expect(audit.roofCounts.every(n=>n>=2)).toBe(true);
 });
 
 test('Solid containers disappear after collection and wait for the player before restoring',async({page})=>{
@@ -620,7 +621,7 @@ test('Rain and distinct architecture preserve sheltered interiors, canopy cutawa
   g.state.x=34;g.state.z=53;w.updateRoofs(1);const outside=canopy.material.opacity>.98;
   return {rainy,under,outside,shelter:w.sheltered(27,54.8),exposed:!w.sheltered(28,57),fish:!w.blocked(28,55.2),water:w.blocked(30,59),buildings:w.buildings.length,gates:w.gates.length};
  });
- expect(audit.rainy&&audit.under&&audit.outside&&audit.shelter&&audit.exposed&&audit.fish&&audit.water).toBe(true);expect(audit.buildings).toBe(18);expect(audit.gates).toBe(4);
+ expect(audit.rainy&&audit.under&&audit.outside&&audit.shelter&&audit.exposed&&audit.fish&&audit.water).toBe(true);expect(audit.buildings).toBe(18);expect(audit.gates).toBe(6);
 });
 
 
@@ -678,4 +679,23 @@ test('New districts have reachable rare supplies, shortcut gates open physically
 });
 test('Mobile station windows show rare part artwork and usable upgrade controls without horizontal overflow',async({browser})=>{
  const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});const page=await context.newPage();await start(page,{x:-20,z:23,stash:{battery:1,metal:6,cloth:4},placed:[{id:'dryrack',x:-20,z:23,rotation:0,harvested:0}]});await page.getByRole('button',{name:'Взаимодействовать',exact:true}).click();const button=page.locator('[data-action="upgrade-station"]');await expect(button).toBeEnabled();const box=await button.boundingBox();expect(box.width).toBeGreaterThan(180);expect(box.height).toBeGreaterThanOrEqual(40);expect(await page.locator('#panel .recipe-card .costs .item-icon').count()).toBe(3);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await button.click();await expect(page.locator('#panel')).toContainText('установлено');await context.close();
+});
+
+test('Debris uses real tools, clears collisions once and preserves permanent openings',async({page})=>{
+ test.setTimeout(180000);await start(page,{x:15,z:26.7,owned:['axe','wrench']});await page.keyboard.press('KeyE');await page.evaluate(()=>{const g=window.__quietDistrict;if(g.job?.type!=='gate')throw Error('Debris interaction missing');g.job.elapsed=g.job.duration;g.finishJob();});expect(await page.evaluate(()=>{const g=window.__quietDistrict;return g.state.bag.wood===5&&g.state.openedGates.includes('housing-debris')&&!g.world.blocked(15,25.5);})).toBe(true);
+ await page.evaluate(()=>{const g=window.__quietDistrict;g.state.x=41;g.state.z=19.4;g.ui.context(g.nearestInteraction());});await page.keyboard.press('KeyE');await page.evaluate(()=>{const g=window.__quietDistrict;g.job.elapsed=g.job.duration;g.finishJob();});expect(await page.evaluate(()=>window.__quietDistrict.state.bag.metal)).toBe(3);await page.evaluate(()=>window.__quietDistrict.save(false));const saved=JSON.parse(await page.evaluate(()=>localStorage.getItem('quiet-district-save-v1')));expect(saved.openedGates).toEqual(expect.arrayContaining(['housing-debris','workshop-debris']));
+});
+test('New home finds have distinct models, toggle locally, pack intact and a wall shelf stays out of walking collisions',async({page})=>{
+ test.setTimeout(180000);await start(page,{x:-16,z:13,findClaims:['node-84','node-85','node-86'],placed:[{id:'desklamp',x:-16,z:12,rotation:0,harvested:0,enabled:true},{id:'homeradio',x:-18,z:12,rotation:0,harvested:0,enabled:false},{id:'wallshelf',x:-20,z:10.66,rotation:0,harvested:0}]});
+ expect(await page.evaluate(()=>window.__quietDistrict.world.placedGroups[0].group.userData.fixture.light.intensity)).toBeGreaterThan(0);await page.keyboard.press('KeyE');expect(await page.evaluate(()=>window.__quietDistrict.state.placed[0].enabled)).toBe(false);await page.keyboard.press('KeyB');await page.locator('[data-action="toggle-furniture"][data-index="1"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.placed[1].enabled)).toBe(true);await page.locator('[data-action="pack-furniture"][data-index="1"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.packedFurniture[0].enabled)).toBe(true);
+ const result=await page.evaluate(()=>{const g=window.__quietDistrict;g.visibilityPaused=true;const wallFree=!g.world.blocked(-20,11.4);g.audio.toggle(true);let tones=0;g.audio.tone=()=>tones++;g.audio.radio(100,8);const distant=tones;g.audio.radio(100,1);g.audio.toggle(false);g.audio.radio(200,1);return {wallFree,distant,tones,claimed:g.world.nodes.slice(84).every(n=>!n.group.visible)};});expect(result).toEqual({wallFree:true,distant:0,tones:1,claimed:true});
+});
+test('Mobile nearby interaction selector cycles targets without losing the chosen item or overflowing the HUD',async({browser})=>{
+ const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});try{const page=await context.newPage();await start(page,{x:-19,z:22,placed:[{id:'desklamp',x:-20,z:23,rotation:0,harvested:0,enabled:true},{id:'homeradio',x:-18,z:23,rotation:0,harvested:0,enabled:false}]});const select=page.getByRole('button',{name:'Выбрать другой предмет рядом',exact:true});await expect(select).toBeVisible();await select.click();await expect(page.locator('#context')).toContainText('приёмник');await page.locator('#context [data-action="interact"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.placed[1].enabled)).toBe(true);const box=await select.boundingBox();expect(box.width).toBeGreaterThanOrEqual(44);expect(box.height).toBeGreaterThanOrEqual(44);const bounds=await page.locator('#context').boundingBox();expect(bounds.x).toBeGreaterThanOrEqual(0);expect(bounds.x+bounds.width).toBeLessThanOrEqual(390);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);}finally{await context.close();}
+});
+test('Indexed world queries exactly match linear collision and cover while dry rain skips buffer uploads',async({page})=>{
+ test.setTimeout(180000);await start(page);const result=await page.evaluate(async()=>{const g=window.__quietDistrict,w=g.world;g.visibilityPaused=true;const {circleHitsRect}=await import('/src/layout.js'),{segmentHitsRect}=await import('/src/survival.js');let seed=31,mismatches=0,total=0;const rnd=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};for(let i=0;i<4000;i++){const x=rnd()*128-64,z=rnd()*128-64,r=.3,c=[...w.collisionIndex.query(x-r,z-r,x+r,z+r)];total+=c.length;if(c.some(q=>!q.disabled&&circleHitsRect(x,z,r,q))!==w.colliders.some(q=>!q.disabled&&circleHitsRect(x,z,r,q)))mismatches++;const bx=x+rnd()*12-6,bz=z+rnd()*12-6;if([...w.collisionIndex.query(Math.min(x,bx),Math.min(z,bz),Math.max(x,bx),Math.max(z,bz))].some(q=>!q.disabled&&(q.w>.45||q.d>.45)&&segmentHitsRect(x,z,bx,bz,q))!==w.colliders.some(q=>!q.disabled&&(q.w>.45||q.d>.45)&&segmentHitsRect(x,z,bx,bz,q)))mismatches++;}const p=w.rain.geometry.attributes.position,v=p.version;w.updateRain(.1,{rain:0});const dry=p.version===v&&!w.rain.visible;w.updateRain(.1,{rain:1});const wet=p.version>v&&w.rain.visible;w.setQuality('high');return {mismatches,ratio:total/4000/w.colliders.length,dry,wet,shadow:w.sun.shadow.mapSize.x,mirror:w.mirrors.capture.getRenderTarget().width,high:w.renderer.shadowMap.enabled};});expect(result.mismatches).toBe(0);expect(result.ratio).toBeLessThan(.2);expect(result.dry&&result.wet&&result.high).toBe(true);expect(result.shadow).toBe(2048);expect(result.mirror).toBe(512);
+});
+test('Fishing shows a surge warning, release relieves tension and repeated clicks cannot skip reel timing',async({page})=>{
+ await start(page,{x:19,z:-17,owned:['rod']});await page.keyboard.press('KeyE');await page.evaluate(()=>{const g=window.__quietDistrict;g.visibilityPaused=true;g.fish.phase='bite';g.fishAction();g.fish.timer=3.4;g.fish.totalTime=3.4;g.fish.tension=.8;g.updateFishing(.01);});await expect(page.locator('#fish-ui')).toContainText('Рывок');await page.locator('[data-action="relax-fish"]').click();expect(await page.evaluate(()=>window.__quietDistrict.fish.tension)).toBeLessThan(.5);await page.locator('[data-action="fish-action"]').click();expect(await page.evaluate(()=>window.__quietDistrict.fish.hits)).toBe(0);expect(await page.locator('.line-tension').isVisible()).toBe(true);
 });

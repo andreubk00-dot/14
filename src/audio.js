@@ -50,6 +50,7 @@ export class DistrictAudio {
     const melody=[261.63,329.63,392,329.63,293.66,349.23,440,349.23,261.63,392,523.25,392,246.94,293.66,392,293.66];
     this.tone(melody[this.recordStep++%melody.length],.8,.07*(1-distance/9),'triangle');this.nextRecord=time+.65;
   }
+  radio(time,distance){if(distance>=7||time<(this.nextRadio||0)||!this.enabled)return;this.tone(240,.65,.025*(1-distance/7),'sine',265);this.nextRadio=time+4;}
   pause() { this.context?.suspend().catch(() => {}); }
   resume() { this.context?.resume().catch(() => {}); }
 }

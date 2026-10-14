@@ -1,4 +1,6 @@
 import {DRONE_TYPES,gearProfile,droneSees,attackCharge} from './survival.js';
+import {chooseInteraction,interactionKey} from './interactions.js';
+import {reelMood,advanceReel,reelInput} from './fishing.js';
 import {upgradeStation,startDrying,saveLoadout,applyLoadout} from './game.js';
 import { GATES,FISHING_SPOTS,BAITS,gameHour,weatherAt,gateForPoint } from './expedition.js';
 import {openGate,consumeBait,packFurniture,unpackFurniture,updateRainCrops} from './game.js';
@@ -89,8 +91,10 @@ class QuietDistrict {
       if (!this.ui.panel && /^Digit[1-6]$/.test(key)) { event.preventDefault(); this.action('hotbar-use', { index: Number(key.slice(-1)) - 1 }); return; }
       const shortcuts = { KeyC: 'craft', KeyI: 'inventory', KeyB: 'build', KeyM: 'map', KeyJ: 'journal', KeyK: 'orders', KeyQ: 'use-medkit', KeyH: 'home' };
       if (shortcuts[key]) { this.action(shortcuts[key]); return; }
+      if(key==='KeyR'&&this.fish?.phase==='reel'&&!this.ui.panel){this.action('relax-fish');return;}
       if (key === 'KeyR' && this.build) { this.action('rotate-build'); return; }
       if (this.ui.panel) return;
+      if(key==='KeyF'&&!this.fish&&!this.build&&!this.job){event.preventDefault();this.cycleInteraction();return;}
       if (key === 'KeyE') { this.interact(); return; }
       if (key === 'Space') { if (this.fish) this.fishAction(); else this.attack(); return; }
       this.keys.add(key);
@@ -181,7 +185,7 @@ class QuietDistrict {
       const item=this.state.placed[Number(data.index)];if(!item||!this.atHome()||Math.hypot(item.x-this.state.x,item.z-this.state.z)>3) {this.ui.toast('Подойди к грядке.');return;}
       const result=action==='plant-crop'?plantCrop(this.state,item,data.id):harvestProduction(this.state,item);if(!result.ok)this.ui.toast(result.reason);else {this.audio.collect();this.world.renderDirty=true;}this.changed();return;
     }
-    if(action==='toggle-furniture') {const p=this.state.placed[Number(data.index)];if(!p||!this.atHome()||!['lamp','foundlamp','recordplayer'].includes(p.id))return;p.enabled=!p.enabled;this.world.renderDirty=true;this.world.syncFurniture();this.changed();return;}
+    if(action==='toggle-furniture') {const p=this.state.placed[Number(data.index)];if(!p||!this.atHome()||!['lamp','foundlamp','desklamp','homeradio','recordplayer'].includes(p.id))return;p.enabled=!p.enabled;this.world.renderDirty=true;this.world.syncFurniture();this.changed();return;}
     if(action==='station-details'){if(!this.atHome())return;this.ui.stationIndex=Number(data.index);this.ui.open('station');return;}
     if(action==='upgrade-station'||action==='harvest-station'){
       const item=this.state.placed[Number(data.index)];if(!item||!this.atHome()||action==='harvest-station'&&Math.hypot(item.x-this.state.x,item.z-this.state.z)>3)return;const result=action==='upgrade-station'?upgradeStation(this.state,item):harvestProduction(this.state,item);if(!result.ok)this.ui.toast(result.reason);else {if(action==='upgrade-station'){this.world.refreshStation(item);this.audio.craft();}else this.audio.collect();this.ui.toast(action==='upgrade-station'?'Улучшение установлено.':'Продукция получена.','success');}this.changed();return;
@@ -271,6 +275,8 @@ class QuietDistrict {
     if (action === 'map-point') { this.ui.close(); this.target = null; this.navigate(Number(data.x), Number(data.z)); return; }
     if (action === 'interact') { this.interact(); return; }
     if (action === 'attack') { if (this.fish) this.fishAction(); else this.attack(); return; }
+    if(action==='cycle-interaction'){this.cycleInteraction();return;}
+    if(action==='relax-fish'){if(this.fish?.phase==='reel'){reelInput(this.fish,'relax');this.ui.fishing(this.fish);}return;}
     if (action === 'fish-action') { this.fishAction(); return; }
     if (action === 'fish-again') { this.startFishing(); return; }
     if (action === 'cancel-fish') { this.cancelFishing(); return; }
@@ -334,7 +340,7 @@ class QuietDistrict {
     if (!this.build) return;
     const hit = this.world.pointer(this.pointerPosition.x, this.pointerPosition.y), b = this.build;
     b.x=Math.round(hit.point.x);b.z=Math.round(hit.point.z);
-    if(['wallclock','fishtrophy'].includes(b.recipe.id)) {const anchor=clockAnchor(hit.point.x,hit.point.z);if(anchor) Object.assign(b,anchor);}
+    if(['wallclock','fishtrophy','wallshelf'].includes(b.recipe.id)) {const anchor=clockAnchor(hit.point.x,hit.point.z,b.recipe.id);if(anchor) Object.assign(b,anchor);}
     b.valid = this.world.canPlace({id:b.recipe.id,x:b.x,z:b.z,rotation:b.rotation},b.movingIndex)
       && (b.movingIndex !== undefined || b.packedIndex !== undefined || craftStatus(this.state, b.recipe).ok);
     const ghost = this.world.ghost;
@@ -387,13 +393,14 @@ class QuietDistrict {
       if(p.id==='dryrack')add('dryer',p.x,p.z,'Сушилка для улова',info.needsLoading?'Загрузить рыбу':info.remaining?`До готовности: ${Math.ceil(info.remaining)} сек.`:'Еда готова',p);
       if(p.id==='gearrack')add('loadouts',p.x,p.z,'Стеллаж комплектов','Выбрать снаряжение',p);
       if(p.id==='cropbed') add('garden',p.x,p.z,'Посадочная грядка',info?info.remaining?`Растёт: ${Math.ceil(info.remaining)} сек.`:'Урожай готов':'Выбрать посадки',p);
-      if(['lamp','foundlamp','recordplayer'].includes(p.id)) add('furniture-toggle',p.x,p.z,p.id==='recordplayer'?(p.enabled?'Выключить проигрыватель':'Включить проигрыватель'):(p.enabled?'Погасить свет':'Включить свет'),'Обустройство убежища',p);
+      if(['lamp','foundlamp','desklamp','homeradio','recordplayer'].includes(p.id)) add('furniture-toggle',p.x,p.z,['recordplayer','homeradio'].includes(p.id)?(p.enabled?'Выключить ':'Включить ')+(p.id==='homeradio'?'приёмник':'проигрыватель'):(p.enabled?'Погасить свет':'Включить свет'),'Обустройство убежища',p);
       if (info&&!['cropbed','dryrack'].includes(p.id)) add('production', p.x, p.z, RECIPES.find(r => r.id === p.id).name, info.waitingForRain?'Ожидает дождь':info.remaining ? `До готовности: ${Math.ceil(info.remaining)} сек.` : info.name, p);
       if (p.id === 'bed') add('bed', p.x, p.z, 'Отдохнуть', 'Восстановить здоровье полностью', p);
       if (p.id === 'chest') add('storage', p.x, p.z, 'Открыть хранилище', 'Склад убежища', p);
     }
-    candidates.sort((a, b) => a.distance - b.distance); return candidates[0] || null;
+    this.interactionCandidates=candidates;const target=chooseInteraction(candidates,this.preferredInteraction,this.interactionLocked);if(target){const key=interactionKey(target);if(key!==this.preferredInteraction)this.interactionLocked=false;this.preferredInteraction=key;}else {this.preferredInteraction=null;this.interactionLocked=false;}return target;
   }
+  cycleInteraction(){if(!this.started||this.ui.panel||this.build||this.fish||this.job)return;this.nearestInteraction();const c=this.interactionCandidates;if(c.length<2)return;const i=c.findIndex(e=>interactionKey(e)===this.preferredInteraction);this.preferredInteraction=interactionKey(c[(i+1)%c.length]);this.interactionLocked=true;this.ui.context(this.nearestInteraction());}
   interact() {
     if (!this.started || this.ui.panel || this.build) return;
     if (this.fish) { this.fishAction(); return; }
@@ -403,7 +410,7 @@ class QuietDistrict {
     this.path = []; this.target = null; this.world.destination.visible = false;
     if(target.type==='dryer'){this.ui.stationIndex=undefined;this.ui.dryerIndex=this.state.placed.indexOf(target.entity);this.ui.open('dryer');return;}
     if(target.type==='loadouts'){this.ui.open('loadouts');return;}
-    if(target.type==='gate') {if(!this.state.owned.includes(target.entity.tool)){this.ui.toast('Нужен '+RECIPES.find(r=>r.id===target.entity.tool).name);return;}this.job={type:'gate',gate:target.entity,elapsed:0,duration:target.entity.duration,label:'Открываем проход…'};return;}
+    if(target.type==='gate') {if(!this.state.owned.includes(target.entity.tool)){this.ui.toast('Нужен '+RECIPES.find(r=>r.id===target.entity.tool).name);return;}this.job={type:'gate',gate:target.entity,elapsed:0,duration:target.entity.duration,label:target.entity.kind?'Разбираем завал…':'Открываем проход…'};return;}
     if(target.type==='note') {if(!this.state.notes.includes(target.entity.id))this.state.notes.push(target.entity.id);this.ui.noteId=target.entity.id;this.ui.open('note');this.save(false);return;}
     if(target.type==='garden') {this.ui.gardenIndex=this.state.placed.indexOf(target.entity);this.ui.open('garden');return;}
     if(target.type==='furniture-toggle') {this.action('toggle-furniture',{index:this.state.placed.indexOf(target.entity)});return;}
@@ -449,7 +456,7 @@ class QuietDistrict {
   finishJob() {
     const job = this.job; this.job = null; this.ui.progress(null);
     if (job.type === 'rest') { this.state.health = Math.max(this.state.health, job.max); this.state.stamina = 100; this.ui.toast('Силы вернулись. Дом ждёт новых находок.', 'success'); this.changed(); return; }
-    if(job.type==='gate'){const result=openGate(this.state,job.gate.id);if(result.ok){this.world.syncGates();this.audio.craft();this.ui.toast('Проход открыт.','success');this.changed();}else this.ui.toast(result.reason);return;}
+    if(job.type==='gate'){const result=openGate(this.state,job.gate.id);if(result.ok){this.world.syncGates();if(result.received)this.showLoot(result.received,job.gate.x,job.gate.z);this.audio.craft();this.ui.toast('Проход открыт.','success');this.changed();}else this.ui.toast(result.reason);return;}
     const node=job.node;
     if(node.find) {const result=claimFind(this.state,node);if(!result.ok) this.ui.toast(result.reason);else {node.group.visible=false;node.marker.visible=false;if(node.collider)node.collider.disabled=true;this.world.floatingText(`+1 ${FINDS[node.find].name}`,node.x,node.z,'#e6cc98',[node.find]);this.audio.collect();}this.changed();return;}
     const result=collect(this.state,node.loot);
@@ -542,10 +549,9 @@ class QuietDistrict {
     const f = this.fish; if (!f) return;
     if (f.phase === 'wait') return;
     if (f.phase === 'caught') { this.startFishing(); return; }
-    if (f.phase === 'bite') { f.phase = 'reel'; f.timer = 0; f.totalTime = 0; f.target = 35 + Math.random() * 30; this.ui.fishing(f); return; }
+    if (f.phase === 'bite') { f.phase = 'reel'; f.timer = 0; f.totalTime = 0;f.tension=.25;f.mood='calm'; f.target = 35 + Math.random() * 30; this.ui.fishing(f); return; }
     if (f.phase === 'reel') {
-      if (Math.abs(f.needle - f.target) <= (f.upgraded ? 13 : 10)) { f.hits++; this.audio.water(); }
-      else { f.misses++; this.audio.hit(); }
+      const result=reelInput(f,'pull');if(result==='hold')return;if(result==='escape'){this.ui.toast('Леска не выдержала рывок.');this.cancelFishing();return;}if(result==='hit')this.audio.water();else this.audio.hit();
       if (f.misses >= 2) { this.ui.toast('Леска ослабла — рыба ушла. Попробуй ещё раз.'); this.cancelFishing(); return; }
       if (f.hits >= 3) {
         f.result = catchFish(Math.random, f.upgraded,f); f.phase = 'caught';
@@ -562,8 +568,8 @@ class QuietDistrict {
     if (f.phase === 'wait' && f.timer >= f.biteAt) { f.phase = 'bite'; f.timer = 0; this.audio.bite(); this.ui.fishing(f); }
     if (f.phase === 'bite' && f.timer > 2.3) { this.ui.toast('Поклёвку упустили. Сделай новый заброс.'); this.cancelFishing(); }
     if (f.phase === 'reel') {
-      f.totalTime += delta; f.needle = 50 + Math.sin(f.timer * 2.6) * 46; this.ui.updateFishNeedle(f.needle);
-      if (f.totalTime > 18) { this.ui.toast('Рыба сорвалась. В следующий раз получится.'); this.cancelFishing(); }
+      f.totalTime += delta;const mood=f.mood,lost=advanceReel(f,delta);if(mood!==f.mood)this.ui.fishing(f);this.ui.updateFishNeedle(f.needle,f.tension);
+      if (lost) { this.ui.toast('Рыба сорвалась. В следующий раз получится.'); this.cancelFishing(); }
     }
   }
   cancelFishing() { this.fish = null; this.ui.fishing(null); }
@@ -625,7 +631,7 @@ class QuietDistrict {
       this.state.elapsed += dt;updateRainCrops(this.state,dt,(x,z)=>this.world.sheltered(x,z));
       this.audio.rain(weatherAt(this.state.elapsed).rain,this.world.sheltered(this.state.x,this.state.z));this.audio.environment(this.world.ambience(),this.world.sheltered(this.state.x,this.state.z),this.state.elapsed);
       if (updateHelper(this.state)) this.ui.update(); this.attackCooldown = Math.max(0, this.attackCooldown - dt);
-      moving = this.movement(dt); if(discover(this.state,this.world.nodes)) this.save(false); this.updateEnemies(dt); this.audio.tick(this.state.elapsed);const music=this.state.placed.filter(p=>p.id==='recordplayer'&&p.enabled).map(p=>Math.hypot(p.x-this.state.x,p.z-this.state.z));this.audio.record(this.state.elapsed,music.length?Math.min(...music):Infinity);
+      moving = this.movement(dt); this.updateEnemies(dt); this.audio.tick(this.state.elapsed);const music=this.state.placed.filter(p=>p.id==='recordplayer'&&p.enabled).map(p=>Math.hypot(p.x-this.state.x,p.z-this.state.z));this.audio.record(this.state.elapsed,music.length?Math.min(...music):Infinity);const radios=this.state.placed.filter(p=>p.id==='homeradio'&&p.enabled).map(p=>Math.hypot(p.x-this.state.x,p.z-this.state.z));this.audio.radio(this.state.elapsed,radios.length?Math.min(...radios):Infinity);
       if (this.target) {
         const target = this.target, range = target.type === 'enemy' ? weapon(this.state).range : 2;
         if (Math.hypot(target.entity.x - this.state.x, target.entity.z - this.state.z) <= range) {
@@ -641,7 +647,7 @@ class QuietDistrict {
       }
       this.uiTimer += dt; this.saveTimer += dt;
       if (this.uiTimer > 0.2) {
-        this.uiTimer = 0; this.ui.update(); this.world.syncNodes();
+        this.uiTimer = 0;if(discover(this.state,this.world.nodes))this.save(false);this.ui.update(); this.world.syncNodes();
         const context = this.fish || this.build || this.job ? null : this.nearestInteraction(); this.ui.context(context);
         this.world.selectionRing.visible = !!context && context.type === 'node';
         if (context) this.world.selectionRing.position.set(context.x, 0.13, context.z);
