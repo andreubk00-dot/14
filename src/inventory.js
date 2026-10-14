@@ -1,13 +1,15 @@
+import {CARGO_NAME,CARGO_WEIGHT} from './salvage.js';
 import { RESOURCES, RECIPES, DEFAULT_WEAPON, capacity, bagWeight } from './game.js';
 export const EQUIPMENT_SLOTS = { weapon: 'Оружие', armor: 'Броня', bag: 'Рюкзак', boots: 'Ботинки' };
 export function inventoryItems(state, storage=false) {
   const resources = Object.entries(storage ? state.stash : state.bag).filter(([,n])=>n>0).map(([id,count])=>({ id, count, name: RESOURCES[id].name, kind: 'resource', desc: `${RESOURCES[id].desc||'Материал для рецептов.'} Вес единицы: ${RESOURCES[id].weight}.` }));
   const finds=Object.entries(storage?state.storedFinds:state.finds).filter(([,n])=>n>0).map(([id,count])=>({...RECIPES.find(r=>r.id===id),count,kind:'find'}));
-  if (storage) return [...resources,...finds];
+  const cargo=(storage?state.storedCargo:state.cargo).map((c,i)=>({id:`cargo-${i}`,art:`cargo-${c.machine}`,name:CARGO_NAME[c.machine],count:1,kind:'cargo',cargoIndex:i,desc:`Вес: ${CARGO_WEIGHT[c.machine]}. Разбор на станции даёт дополнительные детали и провод; продукция поступит на склад.`}));
+  if (storage) return [...resources,...finds,...cargo];
   const supplies = [['medkit','medkits'],['meal','meals'],['tea','teas'],['ammo','ammo']].filter(([,field])=>state[field]>0).map(([id,field])=>({...RECIPES.find(r=>r.id===id), count:state[field], kind:'supply'}));
   const equipped = Object.values(state.equipment);
   const gear = [{...DEFAULT_WEAPON, slot:'weapon', desc:'Надёжная стальная труба для ближнего боя.'}, ...RECIPES.filter(r=>r.slot && state.owned.includes(r.id))].filter(r=>!equipped.includes(r.id)).map(r=>({...r,count:1,kind:'gear'}));
-  return [...resources,...finds, ...supplies, ...gear];
+  return [...resources,...finds,...cargo, ...supplies, ...gear];
 }
 export function equipItem(state, id) {
   const item = id === 'pipe' ? {...DEFAULT_WEAPON,slot:'weapon'} : RECIPES.find(r=>r.id===id);

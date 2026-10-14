@@ -1,8 +1,9 @@
+import {CARGO_WEIGHT,cleanCargo,cargoLoot} from './salvage.js';
 import {STRUCTURES,dismantleAllowed,cleanConstruction,replacementPlan} from './construction.js';
 import {STATION_UPGRADES,collectorCapacity,dryingBatch} from './upgrades.js';
 import { GATES, BAITS, fishingProbabilities, weatherAt } from './expedition.js';
 import { FINDS, CROPS, MEMORIES, cropInfo } from './homelife.js';
-import { footprint, overlaps, placementAllowed } from './layout.js';
+import { footprint, overlaps, circleHitsRect, placementAllowed, yardRouteClear, furnitureColliders } from './layout.js';
 import { WORLD_LIMIT, LOCATIONS } from './district.js';
 export const SAVE_KEY = 'quiet-district-save-v1';
 export const RESOURCES = {
@@ -25,6 +26,9 @@ export const RESOURCES = {
   water: { name: 'Чистая вода', icon: 'water', color: '#84bfc7', weight: 0.5 },
 };
 export const RECIPES = [
+ {id:'yardfence',name:'Деревянная ограда',category:'shelter',desc:'Секция 2 м для двора. Секции ставятся вплотную; проход к дому должен оставаться свободным.',cost:{wood:4,stone:1},placeable:true},
+ {id:'yardgate',name:'Дворовая калитка',category:'shelter',desc:'Проход в ограде. Открывается рядом клавишей E; створка участвует в коллизиях.',cost:{wood:4,metal:2},placeable:true},
+ {id:'yardpath',name:'Каменная дорожка',category:'shelter',desc:'Площадка 2 × 2 м. Не мешает ходить; можно соединять в дорожку.',cost:{stone:3},placeable:true},
  {id:'scoutcoat',name:'Куртка разведчика',category:'gear',desc:'12% защиты · скорость +8% · дистанция обнаружения −25%. Для обхода патрулей.',cost:{cloth:9,herbs:3,parts:2},slot:'armor',defense:.12,speedMultiplier:1.08,visibilityMultiplier:.75},
  {id:'hauler',name:'Грузовая рама',category:'gear',desc:'Вместимость 70 · скорость −16%. Для больших партий добычи.',cost:{wood:8,metal:7,cloth:8},requires:'bag',slot:'bag',capacity:70,speedMultiplier:.84},
  {id:'raincatcher',name:'Дождевой накопитель',category:'shelter',desc:'Фильтрует дождевую воду во дворе. До 6 воды; сбор вручную.',cost:{wood:6,metal:4,cloth:2},placeable:true},
@@ -94,14 +98,14 @@ export const FISH = [
 export const HOME = { x: -16, z: 16 };
 export function freshState() {
   return {
-    construction:[],brokenNodes:[],loadouts:[null,null],openedGates:[],packedFurniture:[],fishingBait:'none',visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
+    cargo:[],storedCargo:[],strippedNodes:[],construction:[],brokenNodes:[],loadouts:[null,null],openedGates:[],packedFurniture:[],fishingBait:'none',visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
     version: 1, x: HOME.x + 1, z: HOME.z + 2, health: 100, stamina: 100,
     stash: { wood: 3, metal: 2, cloth: 2 }, bag: {}, owned: [],
     equipment: { weapon: 'pipe', armor: null, bag: null, boots: null },
     ammo: 0, medkits: 1, meals: 0, teas: 0, placed: [], depleted: {}, nodeLoot: {}, droneDeaths: {}, drops: [], contracts: {}, completedOrders: 0, waterCollected: -120,
     elapsed: 0, fishCollection: [], kills: 0, trips: 0, gathered: 0,
     hotbar: ['pipe', 'axe', 'rod', 'medkit', 'meal', 'tea'], hotbarSelected: 0, lanternOn: true,
-    helper: { assignment: 'garden', cycles: 0 }, recovered: false, grave: null, settings: { sound: true, quality: 'high', questExpanded: false, minimapExpanded: false },
+    helper: { assignment: 'garden', cycles: 0 }, recovered: false, grave: null, settings: { sound: true, music:true, musicVolume:.5, quality: 'high', questExpanded: false, minimapExpanded: false },
     tutorial: true, chapterComplete: false,
   };
 }
@@ -109,6 +113,7 @@ function cleanFurniture(p,elapsed) {
  if(!p||typeof p!=='object'||!RECIPES.some(r=>r.id===p.id&&r.placeable)||!Number.isFinite(p.x)||!Number.isFinite(p.z)||p.x<-26||p.x>-6||p.z<6||p.z>26)return null;
  const item={id:p.id,x:p.x,z:p.z,rotation:Number.isFinite(p.rotation)?p.rotation:0,harvested:Number.isFinite(p.harvested)?Math.min(elapsed,Math.max(0,p.harvested)):elapsed};
  if(['lamp','foundlamp','desklamp','homeradio','recordplayer'].includes(p.id))item.enabled=['recordplayer','homeradio'].includes(p.id)?p.enabled===true:p.enabled!==false;
+ if(p.id==='yardgate'){item.open=p.open===true;item.openSide=p.openSide===-1?-1:1;}
  if(p.id==='cropbed'){item.crop=Object.hasOwn(CROPS,p.crop)?p.crop:null;item.plantedAt=item.crop&&Number.isFinite(p.plantedAt)?Math.max(0,Math.min(elapsed,p.plantedAt)):null;if(Number.isFinite(p.rainGrowth)&&p.rainGrowth>0)item.rainGrowth=Math.min(p.rainGrowth,10000);}
  if(STATION_UPGRADES[p.id])item.upgrade=p.upgrade===1?1:0;
  if(p.id==='raincatcher')item.rainWater=Number.isFinite(p.rainWater)?Math.max(0,Math.min(collectorCapacity(item),p.rainWater)):0;
@@ -118,6 +123,7 @@ function cleanFurniture(p,elapsed) {
 export function validateSave(input) {
   if (!input || input.version !== 1) return null;
   const state = freshState();
+  state.cargo=cleanCargo(input.cargo,RESOURCES);state.storedCargo=cleanCargo(input.storedCargo,RESOURCES);state.strippedNodes=[...new Set((Array.isArray(input.strippedNodes)?input.strippedNodes:Object.keys(input.nodeLoot||{})).filter(id=>/^node-\d{1,3}$/.test(id)))];
   state.construction=cleanConstruction(input.construction);state.brokenNodes=[...new Set((Array.isArray(input.brokenNodes)?input.brokenNodes:[]).filter(id=>typeof id==='string'&&/^node-\d{1,3}$/.test(id)))].slice(0,500);
   state.openedGates=[...new Set((Array.isArray(input.openedGates)?input.openedGates:[]).filter(id=>GATES.some(g=>g.id===id)))];
   state.fishingBait=Object.hasOwn(BAITS,input.fishingBait)?input.fishingBait:'none';
@@ -177,7 +183,7 @@ export function validateSave(input) {
     const loot = {};
     for (const id of Object.keys(RESOURCES)) if (Number.isFinite(input.grave.loot?.[id]) && input.grave.loot[id] > 0) loot[id] = Math.min(100000, Math.floor(input.grave.loot[id]));
     const finds={};for(const id of Object.keys(FINDS)) if(Number.isInteger(input.grave.finds?.[id])&&input.grave.finds[id]>0) finds[id]=Math.min(99,input.grave.finds[id]);
-    state.grave = { ...(input.grave.finds?{finds}:{}), x: Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, input.grave.x)), z: Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, input.grave.z)), loot };
+    state.grave = { ...(input.grave.cargo?{cargo:cleanCargo(input.grave.cargo,RESOURCES)}:{}), ...(input.grave.finds?{finds}:{}), x: Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, input.grave.x)), z: Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, input.grave.z)), loot };
   }
   if (['garden', 'seedbed', 'purifier', 'recycler', 'rest'].includes(input.helper?.assignment)) state.helper.assignment = input.helper.assignment;
   if (Number.isFinite(input.helper?.cycles)) state.helper.cycles = Math.floor(Math.max(0, Math.min(100000000, input.helper.cycles)));
@@ -193,11 +199,12 @@ export function validateSave(input) {
   state.tutorial = input.tutorial !== false;
   state.chapterComplete = state.owned.includes('radio');
   state.settings.sound = input.settings?.sound !== false;
+  state.settings.music=input.settings?.music!==false;state.settings.musicVolume=Number.isFinite(input.settings?.musicVolume)?Math.max(0,Math.min(1,input.settings.musicVolume)):.5;
   state.settings.quality = input.settings?.quality === 'low' ? 'low' : 'high';
   return state;
 }
 export function bagWeight(state) {
-  return Object.entries(state.bag).reduce((n,[id,count])=>n+(RESOURCES[id]?.weight||0)*count,0)+Object.entries(state.finds).reduce((n,[id,count])=>n+(FINDS[id]?.weight||0)*count,0);
+  return (state.cargo||[]).reduce((n,c)=>n+CARGO_WEIGHT[c.machine],0)+Object.entries(state.bag).reduce((n,[id,count])=>n+(RESOURCES[id]?.weight||0)*count,0)+Object.entries(state.finds).reduce((n,[id,count])=>n+(FINDS[id]?.weight||0)*count,0);
 }
 export function capacity(state) {
   return RECIPES.find(r => r.id === state.equipment.bag)?.capacity || 26;
@@ -250,7 +257,7 @@ export function place(state, id, x, z, rotation = 0,obstacles=[]) {
   if (!recipe?.placeable || !craftStatus(state, recipe).ok) return false;
   if (x < -26 || x > -6 || z < 6 || z > 26) return false;
   if(!placementAllowed({id,x,z,rotation},obstacles,state.placed,-1,state.construction))return false;
-  if(id!=='rug'&&!['wallclock','fishtrophy','wallshelf'].includes(id)&&state.placed.some(p=>p.id!=='rug'&&!['wallclock','fishtrophy','wallshelf'].includes(p.id)&&overlaps(footprint({id,x,z,rotation}),footprint(p),.15))) return false;
+  if(!yardRouteClear(state,{id,x,z,rotation},obstacles))return false;
   if(recipe.foundOnly) {const stock=state.finds[id]>0?state.finds:state.storedFinds;stock[id]--;} else spend(state,recipe.cost);
   state.placed.push({id,x,z,rotation,harvested:state.elapsed,...(['lamp','foundlamp','desklamp','homeradio','recordplayer'].includes(id)?{enabled:!['recordplayer','homeradio'].includes(id)}:{}),...(id==='cropbed'?{crop:null,plantedAt:null}:{})});
   return true;
@@ -268,6 +275,7 @@ export function collect(state, loot) {
 }
 export function deposit(state) {
   let amount = 0;
+  const movedCargo=state.cargo.splice(0,Math.max(0,200-state.storedCargo.length));amount+=movedCargo.length;state.storedCargo.push(...movedCargo);
   const findHaul=Object.fromEntries(Object.entries(state.finds).filter(([,n])=>n>0));for(const [id,n] of Object.entries(state.finds)) {state.storedFinds[id]=(state.storedFinds[id]||0)+n;amount+=n;}state.finds={};
   const haul=Object.fromEntries(Object.entries(state.bag).filter(([,n])=>n>0));
   for (const [id, n] of Object.entries(state.bag)) { state.stash[id] = (state.stash[id] || 0) + n; amount += n; }
@@ -283,10 +291,10 @@ export function takeDamage(state, amount) {
 }
 export function respawn(state) {
   const previous = state.grave;
-  state.grave = {x:state.x,z:state.z,loot:{...state.bag},finds:{...state.finds}};
+  state.grave = {x:state.x,z:state.z,loot:{...state.bag},finds:{...state.finds},...((state.cargo.length||previous?.cargo?.length)?{cargo:[...(previous?.cargo||[]),...state.cargo]}:{})};
   if(previous) for(const [id,n] of Object.entries(previous.finds||{})) state.grave.finds[id]=(state.grave.finds[id]||0)+n;
   if (previous) for (const [id, n] of Object.entries(previous.loot)) state.grave.loot[id] = (state.grave.loot[id] || 0) + n;
-  state.bag = {};state.finds={}; state.x = HOME.x; state.z = HOME.z + 3;
+  state.bag = {};state.finds={};state.cargo=[]; state.x = HOME.x; state.z = HOME.z + 3;
   state.health = 65; state.stamina = 100;
 }
 export function useSupply(state, id) {
@@ -428,7 +436,7 @@ export function packFurniture(state,index) {
  state.packedFurniture.push({...item,packedAt:state.elapsed});state.placed.splice(index,1);return true;
 }
 export function unpackFurniture(state,index,x,z,rotation,obstacles=[]) {
- const saved=state.packedFurniture[index];if(!(state.x>=-27&&state.x<=-6&&state.z>=5&&state.z<=27)||!saved||state.placed.length>=70||!placementAllowed({...saved,x,z,rotation},obstacles,state.placed,-1,state.construction))return false;
+ const saved=state.packedFurniture[index];if(!(state.x>=-27&&state.x<=-6&&state.z>=5&&state.z<=27)||!saved||state.placed.length>=70||!yardRouteClear(state,{...saved,x,z,rotation},obstacles)||!placementAllowed({...saved,x,z,rotation},obstacles,state.placed,-1,state.construction))return false;
  const {packedAt,...item}=saved,paused=Math.max(0,state.elapsed-packedAt);
  item.harvested+=paused;if(Number.isFinite(item.dryingAt))item.dryingAt+=paused;if(Number.isFinite(item.plantedAt))item.plantedAt+=paused;
  Object.assign(item,{x,z,rotation});state.placed.push(item);state.packedFurniture.splice(index,1);return true;
@@ -477,3 +485,34 @@ export function dismantleStructure(state,part){
 
 export const COOKING_RECIPES=['meal','fishmeal','stew','tea'];
 export function atCookingStove(state){return state.placed.some(p=>p.id==='campstove'&&Math.hypot(state.x-p.x,state.z-p.z)<=2.5);}
+
+export function salvageStatus(state,node){
+ if(!node||node.find||!Object.hasOwn(CARGO_WEIGHT,node.machine)||!node.group?.visible||!Object.keys(node.loot).length)return {ok:false,reason:'Техника недоступна'};
+ if(node.accessGate&&!state.openedGates.includes(node.accessGate))return {ok:false,reason:'Сначала открой помещение'};
+ if(node.requires&&!state.owned.includes(node.requires))return {ok:false,reason:'Нужен подходящий инструмент'};
+ if(state.depleted[node.id]!==undefined&&state.elapsed-state.depleted[node.id]<(node.respawnTime||240))return {ok:false,reason:'Техника уже забрана'};
+ if(state.strippedNodes.includes(node.id))return {ok:false,reason:'Часть техники уже разобрана'};
+ if(bagWeight(state)+CARGO_WEIGHT[node.machine]>capacity(state))return {ok:false,reason:'Не хватает места для целой техники'};
+ return {ok:true};
+}
+export function takeSalvage(state,node){
+ const status=salvageStatus(state,node);if(!status.ok)return status;
+ state.cargo.push({machine:node.machine,node:node.id,loot:{...node.loot}});state.depleted[node.id]=state.elapsed;delete state.nodeLoot[node.id];return {ok:true};
+}
+export function processSalvage(state,index,stored=false){
+ if(Math.hypot(state.x+21,state.z-13)>=4.5)return {ok:false,reason:'Подойди к станции рецептов'};
+ const list=stored?state.storedCargo:state.cargo,cargo=list[index];if(!cargo)return {ok:false,reason:'Груз уже разобран'};
+ const received=cargoLoot(cargo);for(const [id,n]of Object.entries(received))state.stash[id]=(state.stash[id]||0)+n;list.splice(index,1);state.gathered+=Object.values(received).reduce((a,b)=>a+b,0);return {ok:true,received};
+}
+export function recoverCargo(state,cargo){
+ if(!cargo)return true;for(let i=0;i<cargo.length;){if(bagWeight(state)+CARGO_WEIGHT[cargo[i].machine]<=capacity(state)){state.cargo.push(cargo.splice(i,1)[0]);}else i++;}return !cargo.length;
+}
+
+export function toggleYardGate(state,item,obstacles=[]){
+ if(item?.id!=='yardgate'||!state.placed.includes(item)||Math.hypot(item.x-state.x,item.z-state.z)>2.4)return {ok:false,reason:'Подойди к калитке'};
+ const c=Math.cos(item.rotation||0),s=Math.sin(item.rotation||0),localZ=(state.x-item.x)*s+(state.z-item.z)*c;
+ const next={...item,open:!item.open,openSide:localZ>=0?1:-1},index=state.placed.indexOf(item),rects=furnitureColliders(next);
+ if(rects.some(r=>circleHitsRect(state.x,state.z,.32,r)||obstacles.some(o=>!o.disabled&&overlaps(r,o,.02))||state.placed.some((p,i)=>i!==index&&furnitureColliders(p).some(o=>overlaps(r,o,-1e-6)))))return {ok:false,reason:'Отойди от створки или освободи место'};
+ if(!yardRouteClear(state,next,obstacles,index))return {ok:false,reason:'Калитка перекроет выход к дому'};
+ Object.assign(item,next);return {ok:true};
+}

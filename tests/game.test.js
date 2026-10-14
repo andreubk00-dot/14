@@ -570,6 +570,34 @@ test('Melee damage resolves once at impact and respects retreat, angle, cover an
 import {expeditionLoot} from '../src/district.js';
 import {updateAwareness,reactToHit} from '../src/survival.js';
 import {atCookingStove,COOKING_RECIPES} from '../src/game.js';
+import {takeSalvage,processSalvage,recoverCargo,salvageStatus,toggleYardGate} from '../src/game.js';
+import {furnitureColliders,yardRouteClear} from '../src/layout.js';
+test('Whole salvage respects capacity, partial dismantling, duplicate pickup, station distance and storage',()=>{
+ const s=freshState(),n={id:'node-98',machine:'appliance',loot:{metal:3,wire:2},group:{visible:true},respawnTime:240};
+ s.bag={wood:20};assert.equal(takeSalvage(s,n).ok,false);s.bag={};assert.equal(takeSalvage(s,n).ok,true);assert.equal(bagWeight(s),8);assert.equal(takeSalvage(s,n).ok,false);
+ const before={...s.stash};s.x=0;s.z=0;assert.equal(processSalvage(s,0).ok,false);assert.deepEqual(s.stash,before);
+ s.x=-20;s.z=14;assert.equal(deposit(s),1);assert.equal(s.cargo.length,0);assert.equal(s.storedCargo.length,1);
+ const saved=validateSave(JSON.parse(JSON.stringify(s)));assert.deepEqual(saved.storedCargo,s.storedCargo);
+ assert.deepEqual(processSalvage(saved,0,true).received,{metal:3,wire:3,parts:2});assert.equal(processSalvage(saved,0,true).ok,false);
+ s.elapsed=241;s.strippedNodes=[n.id];assert.equal(salvageStatus(s,n).ok,false);s.strippedNodes=[];n.accessGate='salvage';assert.equal(salvageStatus(s,n).ok,false);
+});
+test('Whole cargo survives death, save validation and partial recovery without splitting its reward',()=>{
+ const s=freshState(),n={id:'node-50',machine:'motor',loot:{metal:6,parts:3},group:{visible:true}};
+ takeSalvage(s,n);respawn(s);assert.equal(s.cargo.length,0);assert.equal(s.grave.cargo.length,1);
+ const restored=validateSave(JSON.parse(JSON.stringify(s)));s.bag={wood:20};assert.equal(recoverCargo(s,s.grave.cargo),false);assert.equal(s.grave.cargo.length,1);
+ s.bag={};assert.equal(recoverCargo(s,s.grave.cargo),true);assert.equal(bagWeight(s),10);assert.deepEqual(restored.grave.cargo,s.cargo);
+ const broken=validateSave({...s,cargo:[{machine:'bad',node:'node-1',loot:{wood:4}},{machine:'motor',node:'node-1',loot:{wood:-5}}]});assert.equal(broken.cargo.length,0);
+});
+test('Yard sections meet without gaps, gate leaves stay solid and unsafe closing is rejected',()=>{
+ const s=freshState();s.stash={wood:100,stone:100,metal:100};s.x=-18;s.z=18;
+ assert.equal(place(s,'yardgate',-20,23),true);assert.equal(place(s,'yardfence',-22,23),true);assert.equal(place(s,'yardfence',-18,23),true);assert.equal(place(s,'yardpath',-20,23),true);
+ const gate=s.placed[0];s.x=-20;s.z=24.2;assert.equal(toggleYardGate(s,gate).ok,true);assert.equal(gate.open,true);
+ assert.equal(furnitureColliders(gate).some(r=>circleHitsRect(-20,23,.3,r)),false);assert.equal(furnitureColliders(gate).some(r=>circleHitsRect(-20.82,22.18,.3,r)),true);
+ s.x=-20;s.z=23;assert.equal(toggleYardGate(s,gate).ok,false);s.z=24.2;assert.equal(toggleYardGate(s,gate).ok,true);assert.equal(gate.open,false);
+ const restored=validateSave(JSON.parse(JSON.stringify(s)));assert.equal(restored.placed[0].open,false);
+ const wall={id:'yardfence',x:-18,z:23,rotation:0};assert.equal(yardRouteClear({...s,x:-18,z:23},wall,[]),false);
+ assert.equal(place(s,'yardpath',-18,15),false);
+});
 test('Repeat expeditions preserve initial loot and deterministic district supplies without multiplying rare filters',()=>{
  const pantry={id:'node-107',type:'crate',x:26,z:36,originalLoot:{vegetables:4,filterunit:1}};
  assert.deepEqual(expeditionLoot(pantry,0),pantry.originalLoot);assert.deepEqual(expeditionLoot(pantry,3),expeditionLoot(pantry,3));assert.equal(expeditionLoot(pantry,3).filterunit,1);

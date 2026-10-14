@@ -168,6 +168,9 @@
 #floating-text > div { display: flex; align-items: center; gap: 6px; font-size: 18px; }
 /* More specific than the legacy title styling. */
 .topbar .brand > span { font-size: 16px; letter-spacing: .5px; }
+/* These panels already have an almost opaque green gradient. Reblurring the
+   moving canvas beneath every HUD panel adds compositing work without useful detail. */
+#hud .glass, #toasts .toast { backdrop-filter: none; -webkit-backdrop-filter: none; }
 .topbar .brand small { font-size: 16px; letter-spacing: .2px; margin-top: 3px; }
 .panel .passive-badge, .panel .equipment-slots span { font-size: 16px; }
 @media (max-width: 760px) {
@@ -192,3 +195,5 @@
 
 .context .context-next{min-height:48px}
 .fish-ui .secondary kbd{color:#e8d5a3;background:#283e34;border:1px solid #c5b78166;border-radius:4px;padding:2px 6px;font-size:14px}
+
+#music-volume{min-height:44px;max-width:50%;accent-color:#dec28e}

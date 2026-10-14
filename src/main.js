@@ -1,3 +1,5 @@
+import {toggleYardGate} from './game.js';
+import {salvageStatus,takeSalvage,processSalvage,recoverCargo} from './game.js';
 import {COOKING_RECIPES,atCookingStove} from './game.js';
 import {swingProfile,swingCanHit,advanceSwing} from './combat.js';
 import {DRONE_TYPES,gearProfile,droneSees,attackCharge,updateAwareness,reactToHit} from './survival.js';
@@ -53,13 +55,21 @@ class QuietDistrict {
         const position = candidates[0] || HOME; this.world.move(position.x, position.z);
       }
       this.updateGrave(); this.bindInputs();
-      this.world.loadAssets(progress => this.ui.loading(progress)).then(() => {
+      this.frame = this.frame.bind(this);
+      this.world.loadAssets(progress => this.ui.loading(progress*.9)).then(async () => {
+        // Warm the final scene once, instead of compiling an incomplete scene
+        // during loading and compiling it again when models and lights arrive.
+        this.ui.loading(.95);
+        this.world.scene.updateMatrixWorld(true);this.world.camera.updateMatrixWorld(true);
+        if(this.world.renderer.extensions.has('KHR_parallel_shader_compile'))await this.world.renderer.compileAsync(this.world.scene,this.world.camera);
+        else this.world.renderer.compile(this.world.scene,this.world.camera);
+        this.world.update(0,false,false);
         this.ready = true; this.ui.ready(this.hasSave);
+        this.lastFrame=performance.now();requestAnimationFrame(this.frame);
       }).catch(error => {
         console.error('Asset loading failed', error);
         this.ui.fatal('Не удалось загрузить локальные 3D-модели. Проверь соединение с сервером игры и попробуй ещё раз.');
       });
-      this.lastFrame = performance.now(); this.frame = this.frame.bind(this); requestAnimationFrame(this.frame);
     } catch (error) {
       console.error('Renderer failed', error);
       this.ui.fatal('Для игры нужен браузер с WebGL 2. Попробуй актуальный Chrome, Edge или Firefox с аппаратным ускорением.');
@@ -147,7 +157,7 @@ class QuietDistrict {
   }
   start() {
     if (!this.ready || this.started) return;
-    this.started = true; this.audio.start(this.state.settings.sound); this.ui.start();
+    this.started = true; this.audio.start(this.state.settings.sound);this.audio.setMusic(this.state.settings.music,this.state.settings.musicVolume); this.ui.start();
     if(this.repairedFurniture) { this.ui.toast('Мебель, пересекавшая стены или проходы, переставлена на ближайшие свободные места.'); this.repairedFurniture=0; this.save(); }
     this.ui.region(this.world.location(), true); this.currentRegion = this.world.location().id;
     this.save(false);
@@ -159,12 +169,17 @@ class QuietDistrict {
     if (action === 'panel-open') { this.swing=null;this.world.clearWeaponEffect(); this.motion.reset(); this.path = []; this.target = null; this.job = null; this.keys.clear(); this.touchMovement = { x: 0, z: 0 }; this.ui.progress(null); this.cancelFishing(); return; }
     if (action === 'panel-close') { this.keys.clear(); return; }
     if (this.ui.pendingConfirm) return;
-    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders', 'helper', 'storage', 'garden','dryer','station','loadouts','architecture','cook'].includes(action)) {
+    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders', 'helper', 'storage', 'garden','dryer','station','loadouts','architecture','cook','salvage','salvage-workbench'].includes(action)) {
       if (action === 'storage' && !this.atHome()) { this.ui.toast('Подойди к хранилищу в убежище.'); return; }
       this.cancelBuild(); this.cancelFishing();
       if (this.ui.panel === action) this.ui.close(); else this.ui.open(action);
       return;
     }
+    if(action==='salvage-quick'||action==='salvage-take'){
+      const node=this.world.nodes.find(n=>n.id===this.ui.salvageNode);this.ui.close();if(!node||Math.hypot(node.x-this.state.x,node.z-this.state.z)>2.4)return;
+      if(action==='salvage-quick')this.harvest(node);else {const status=salvageStatus(this.state,node);if(!status.ok)this.ui.toast(status.reason);else {this.world.playCharacterAction('pickup');this.audio.collect();this.job={type:'haul',node,elapsed:0,duration:2.4,label:'Грузим технику…'};}}return;
+    }
+    if(action==='process-salvage'){const result=processSalvage(this.state,Number(data.index),data.stored==='true');if(!result.ok)this.ui.toast(result.reason);else {this.audio.craft();this.ui.selectedItem=null;this.ui.toast('Техника разобрана. Материалы на складе.','success');}this.changed();return;}
     if (action === 'hud-change') { this.save(false); return; }
     if (action === 'hotbar-assign') {
       if (assignHotbar(this.state, Number(data.index), data.id || null)) this.changed(); return;
@@ -246,6 +261,8 @@ class QuietDistrict {
       if (ok) { this.audio.collect(); this.world.playCharacterAction('use_item'); } this.changed(); return;
     }
     if (action === 'sound') { this.state.settings.sound = !this.state.settings.sound; this.audio.toggle(this.state.settings.sound); this.changed(); return; }
+    if(action==='music'){this.state.settings.music=!this.state.settings.music;this.audio.setMusic(this.state.settings.music,this.state.settings.musicVolume);this.changed();return;}
+    if(action==='music-volume'){this.state.settings.musicVolume=Number(data.value);this.audio.setMusic(this.state.settings.music,this.state.settings.musicVolume);this.save();return;}
     if (action === 'quality') { this.world.setQuality(this.state.settings.quality === 'high' ? 'low' : 'high'); this.changed(); return; }
     if (action === 'save') { this.save(true); return; }
     if (action === 'export-save') {
@@ -385,7 +402,7 @@ class QuietDistrict {
     const s = this.state, candidates = [];
     const add = (type, x, z, label, hint, entity, range = 2.4) => { const distance = Math.hypot(s.x - x, s.z - z); if (distance < range) candidates.push({ type, x, z, label, hint, entity, distance }); };
     for(const note of this.world.memories) add('note',note.x,note.z,'Прочитать запись',note.name,note,1.8);
-    for (const node of this.world.nodes) if (node.group.visible&&(!node.accessGate||s.openedGates.includes(node.accessGate))) add('node', node.x, node.z, `${({ tree: 'Рубить дерево', wood: 'Собрать доски', stone:'Добыть камень', ore: 'Добыть металл', herbs: 'Собрать растения', electronics: 'Разобрать электронику', crate: 'Открыть ящик', cloth: 'Собрать ткань', scrap: 'Разобрать лом', drop: 'Забрать добычу' })[node.type] || (node.find?'Забрать находку':'Собрать')} · ${node.name}`, node.requires && !s.owned.includes(node.requires) ? `Нужно: ${RECIPES.find(r => r.id === node.requires)?.name}` : node.find?`Вес находки: ${FINDS[node.find].weight}`:dismantleInfo(s.owned,node).kind?`${dismantleInfo(s.owned,node).duration.toFixed(1)} сек. · ${dismantleInfo(s.owned,node).fast?'инструмент ускоряет разбор':'ручной разбор'}`:'Добыча в рюкзак', node);
+    for (const node of this.world.nodes) if (node.group.visible&&(s.x-node.x)**2+(s.z-node.z)**2<2.4**2&&(!node.accessGate||s.openedGates.includes(node.accessGate))&&this.world.canSee(s.x,s.z,node.x,node.z,node.collider,true)) add('node', node.x, node.z, `${({ tree: 'Рубить дерево', wood: 'Собрать доски', stone:'Добыть камень', ore: 'Добыть металл', herbs: 'Собрать растения', electronics: 'Разобрать электронику', crate: 'Открыть ящик', cloth: 'Собрать ткань', scrap: 'Разобрать лом', drop: 'Забрать добычу' })[node.type] || (node.find?'Забрать находку':'Собрать')} · ${node.name}`, node.requires && !s.owned.includes(node.requires) ? `Нужно: ${RECIPES.find(r => r.id === node.requires)?.name}` : node.find?`Вес находки: ${FINDS[node.find].weight}`:dismantleInfo(s.owned,node).kind?`${dismantleInfo(s.owned,node).duration.toFixed(1)} сек. · ${dismantleInfo(s.owned,node).fast?'инструмент ускоряет разбор':'ручной разбор'}`:'Добыча в рюкзак', node);
     add('station', -21, 13, 'Станция рецептов', 'Создать снаряжение', null, 2.8);
     add('storage', -13.5, 17, 'Открыть хранилище', 'Склад убежища', null, 2.2);
     add('bed', -22, 17.7, 'Отдохнуть', 'Восстановить здоровье', null, 2);
@@ -397,6 +414,7 @@ class QuietDistrict {
     if (s.grave) add('grave', s.grave.x, s.grave.z, 'Вернуть оставленный рюкзак', 'Твои ресурсы', s.grave);
     for (const p of s.placed) {
       const info = productionInfo(s, p);
+      if(p.id==='yardgate')add('yardgate',p.x,p.z,p.open?'Закрыть калитку':'Открыть калитку','Ограда двора',p);
       if(p.id==='campstove')add('cook',p.x,p.z,'Кухонная печь','Готовить еду и чай',p,2.5);
       if(p.id==='dryrack')add('dryer',p.x,p.z,'Сушилка для улова',info.needsLoading?'Загрузить рыбу':info.remaining?`До готовности: ${Math.ceil(info.remaining)} сек.`:'Еда готова',p);
       if(['gearrack','toolcabinet'].includes(p.id))add('loadouts',p.x,p.z,p.id==='toolcabinet'?'Инструментальный шкаф':'Стеллаж комплектов','Выбрать снаряжение',p);
@@ -417,6 +435,7 @@ class QuietDistrict {
     if (!target) { this.ui.toast('Подойди ближе к находке или рабочей станции.'); return; }
     this.path = []; this.target = null; this.world.destination.visible = false;
     if(target.type==='dryer'){this.ui.stationIndex=undefined;this.ui.dryerIndex=this.state.placed.indexOf(target.entity);this.ui.open('dryer');return;}
+    if(target.type==='yardgate'){const result=toggleYardGate(this.state,target.entity,this.world.colliders);if(!result.ok)this.ui.toast(result.reason);else {this.world.renderDirty=true;this.world.syncFurniture();this.audio.playSample(target.entity.open?'door_open_1':'door_close_1',.3);this.changed();}return;}
     if(target.type==='cook'){this.ui.open('cook');return;}
     if(target.type==='loadouts'){this.ui.open('loadouts');return;}
     if(target.type==='gate') {if(!this.state.owned.includes(target.entity.tool)){this.ui.toast('Нужен '+RECIPES.find(r=>r.id===target.entity.tool).name);return;}this.job={type:'gate',gate:target.entity,elapsed:0,duration:target.entity.duration,label:target.entity.kind?'Разбираем завал…':'Открываем проход…'};return;}
@@ -447,12 +466,13 @@ class QuietDistrict {
     }
     if (target.type === 'grave') {
       const result = collect(this.state, this.state.grave.loot); this.showLoot(result.received, target.x, target.z);
-      const recovered=recoverFinds(this.state,this.state.grave.finds);
-      if (!Object.keys(result.remaining).length&&recovered) { this.state.grave = null; this.ui.toast('Все вещи снова с тобой.', 'success'); } else this.state.grave.loot = result.remaining;
+      const recovered=recoverFinds(this.state,this.state.grave.finds),cargoRecovered=recoverCargo(this.state,this.state.grave.cargo);
+      if (!Object.keys(result.remaining).length&&recovered&&cargoRecovered) { this.state.grave = null; this.ui.toast('Все вещи снова с тобой.', 'success'); } else this.state.grave.loot = result.remaining;
       this.updateGrave(); this.changed(); return;
     }
-    if (target.type === 'node') this.harvest(target.entity);
+    if (target.type === 'node') this.beginNode(target.entity);
   }
+  beginNode(node){if(!this.world.canSee(this.state.x,this.state.z,node.x,node.z,node.collider,true)){this.ui.toast('Подойди к находке со стороны открытого прохода.');return;}if(['appliance','motor'].includes(node.machine)){this.ui.salvageNode=node.id;this.ui.open('salvage');}else this.harvest(node);}
   harvest(node) {
     if (!node.group.visible || this.job||this.swing) return;
     if(node.accessGate&&!this.state.openedGates.includes(node.accessGate)){this.ui.toast('Сначала открой вход в помещение подходящим инструментом.');return;}
@@ -466,9 +486,11 @@ class QuietDistrict {
     const job = this.job; this.job = null; this.ui.progress(null);
     if (job.type === 'rest') { this.state.health = Math.max(this.state.health, job.max); this.state.stamina = 100; this.ui.toast('Силы вернулись. Дом ждёт новых находок.', 'success'); this.changed(); return; }
     if(job.type==='gate'){const result=openGate(this.state,job.gate.id);if(result.ok){this.world.syncGates();if(result.received)this.showLoot(result.received,job.gate.x,job.gate.z);this.audio.craft();this.ui.toast('Проход открыт.','success');this.changed();}else this.ui.toast(result.reason);return;}
+    if(job.type==='haul'){const result=takeSalvage(this.state,job.node);if(result.ok){this.world.syncNodes();this.audio.collect();this.ui.toast('Техника в рюкзаке. Можно разобрать на станции.','success');this.changed();}else this.ui.toast(result.reason);return;}
     const node=job.node;
     if(node.find) {const result=claimFind(this.state,node);if(!result.ok) this.ui.toast(result.reason);else {node.group.visible=false;node.marker.visible=false;if(node.collider)node.collider.disabled=true;this.world.floatingText(`+1 ${FINDS[node.find].name}`,node.x,node.z,'#e6cc98',[node.find]);this.audio.collect();}this.changed();return;}
     const wasBroken=this.state.brokenNodes.includes(node.id);const result=collect(this.state,node.loot);if(['standingtree','quarry'].includes(node.machine)&&Object.keys(result.received).length&&!this.state.brokenNodes.includes(node.id))this.state.brokenNodes.push(node.id);
+    if(['appliance','motor'].includes(node.machine)&&Object.keys(result.received).length&&Object.keys(result.remaining).length&&!this.state.strippedNodes.includes(node.id))this.state.strippedNodes.push(node.id);
     this.showLoot(result.received, node.x, node.z);
     node.loot = result.remaining;
     this.state.nodeLoot ||= {};
@@ -497,7 +519,7 @@ class QuietDistrict {
     if(ranged&&!target){this.ui.toast('В пределах досягаемости нет противника.');return;}
     const facing=target?Math.atan2(target.x-s.x,target.z-s.z):(this.world.facing||0);
     this.attackCooldown=w.cooldown;this.world.facing=facing;this.world.playerVisual.rotation.y=facing;
-    if(ranged){s.ammo--;this.world.shot(s.x,s.z,target.x,target.z);this.world.weaponEffect(w.id,facing);this.audio.shoot();this.damageEnemy(target,w);}
+    if(ranged){s.ammo--;this.world.shot(s.x,s.z,target.x,target.z);this.world.weaponEffect(w.id,facing);this.audio.shoot(w.id);this.damageEnemy(target,w);}
     else{this.swing={elapsed:0,resolved:false,weapon:{...w},profile:swingProfile(w.id),facing,target};this.world.weaponEffect(w.id,facing);this.audio.swing(w.id);}
     this.world.playCharacterAction(ranged?'1h_ranged_shoot':w.id==='spear'?'1h_melee_attack_stab':'1h_melee_attack_chop');
   }
@@ -623,7 +645,7 @@ class QuietDistrict {
     this.world.moveSpeed = Math.hypot(this.state.x - oldX, this.state.z - oldZ) / dt;
     if (moved) {
       this.world.facing = Math.atan2(this.state.x - oldX, this.state.z - oldZ); this.stepTimer += dt;
-      if (this.stepTimer > (result.running ? 0.22 : 0.34)) { this.audio.step(); this.stepTimer = 0; }
+      if (this.stepTimer > (result.running ? 0.22 : 0.34)) { this.audio.step(this.world.surfaceAt(this.state.x,this.state.z)); this.stepTimer = 0; }
       this.blockedTime = 0;
     } else if (this.path.length) {
       this.blockedTime = (this.blockedTime || 0) + dt;
@@ -653,9 +675,9 @@ class QuietDistrict {
       moving = this.movement(dt);this.updateSwing(dt); this.updateEnemies(dt); this.audio.tick(this.state.elapsed);const music=this.state.placed.filter(p=>p.id==='recordplayer'&&p.enabled).map(p=>Math.hypot(p.x-this.state.x,p.z-this.state.z));this.audio.record(this.state.elapsed,music.length?Math.min(...music):Infinity);const radios=this.state.placed.filter(p=>p.id==='homeradio'&&p.enabled).map(p=>Math.hypot(p.x-this.state.x,p.z-this.state.z));this.audio.radio(this.state.elapsed,radios.length?Math.min(...radios):Infinity);
       if (this.target) {
         const target = this.target, range = target.type === 'enemy' ? weapon(this.state).range : 2;
-        if (Math.hypot(target.entity.x - this.state.x, target.entity.z - this.state.z) <= range) {
+        if (Math.hypot(target.entity.x - this.state.x, target.entity.z - this.state.z) <= range&&(target.type!=='node'||this.world.canSee(this.state.x,this.state.z,target.entity.x,target.entity.z,target.entity.collider,true))) {
           this.path = []; this.world.destination.visible = false;
-          if (target.type === 'node') { this.harvest(target.entity); this.target = null; }
+          if (target.type === 'node') { this.beginNode(target.entity); this.target = null; }
           else if (target.type === 'station') { this.target = null; this.ui.open('craft'); }
           else this.attack(target.entity);
         }
@@ -665,7 +687,7 @@ class QuietDistrict {
           const j=this.job;j.nextStrike??=.2;j.nextSwing??=.65;
           if(j.elapsed>=j.nextSwing){this.world.playCharacterAction('1h_melee_attack_chop');this.audio.swing(j.node.requires);j.nextSwing+=.65;}
           if(j.elapsed>=j.nextStrike){this.world.resourceStrike(j.node);this.audio.resourceHit(j.node.machine);j.nextStrike+=.65;}
-        } this.ui.progress(this.job.label, this.job.elapsed / this.job.duration);
+        }else if(this.job.type==='harvest'&&['appliance','motor'].includes(this.job.node.machine)){const j=this.job;j.nextTap??=.4;if(j.elapsed>=j.nextTap){this.audio.variant('impact_metal_medium',2,.24);this.world.resourceStrike(j.node);j.nextTap+=.8;}} this.ui.progress(this.job.label, this.job.elapsed / this.job.duration);
         if (this.job.elapsed >= this.job.duration) this.finishJob();
       }
       this.uiTimer += dt; this.saveTimer += dt;

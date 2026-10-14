@@ -1,11 +1,13 @@
+import {AUDIO_FILES} from './audio-assets.js';
 export class DistrictAudio {
-  constructor() { this.enabled = true; this.context = null; this.nextBird = 0;this.nextRecord=0;this.recordStep=0; }
+  constructor() { this.enabled = true; this.context = null; this.nextBird = 0;this.nextRecord=0;this.recordStep=0;this.buffers=new Map();this.voices=new Set();this.musicEnabled=true;this.musicVolume=.5; }
   start(enabled = true) {
     this.enabled = enabled;
     if (!this.context) {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) return;
       this.context = new AudioContext(); this.master = this.context.createGain(); this.master.gain.value = enabled ? 0.22 : 0; this.master.connect(this.context.destination);
+      this.musicGain=this.context.createGain();this.musicGain.gain.value=0;this.musicGain.connect(this.master);
       const buffer = this.context.createBuffer(1, this.context.sampleRate * 3, this.context.sampleRate), data = buffer.getChannelData(0);
       let last = 0;
       for (let i = 0; i < data.length; i++) { last = (last + (Math.random() * 2 - 1) * 0.025) / 1.025; data[i] = last * 2.8; }
@@ -16,8 +18,21 @@ export class DistrictAudio {
       const gain = this.context.createGain(); gain.gain.value = 0.33;this.windGain=gain; noise.connect(filter).connect(gain).connect(this.master); noise.start();
     }
     this.context.resume().catch(() => {});
+    if(enabled)this.loadSamples();
   }
-  toggle(enabled) { this.enabled = enabled; if (this.context) this.master.gain.setTargetAtTime(enabled ? 0.22 : 0, this.context.currentTime, 0.15); }
+  loadSamples(){
+    if(this.loading)return this.loading;
+    this.loading=Promise.all(AUDIO_FILES.map(async id=>{try{const response=await fetch(globalThis.__quietAudio?.[id]||`/assets/audio/${id}.ogg`);if(!response.ok)throw Error(id);const buffer=await this.context.decodeAudioData(await response.arrayBuffer());this.buffers.set(id,buffer);}catch{(this.failed??=[]).push(id);}})).then(()=>{if(this.buffers.has('house-forest')&&!this.musicSource){this.musicSource=this.context.createBufferSource();this.musicSource.buffer=this.buffers.get('house-forest');this.musicSource.loop=true;this.musicSource.connect(this.musicGain);this.musicSource.start();this.updateMusic();}});
+    return this.loading;
+  }
+  playSample(id,volume=.35,rate=1){
+    if(!this.context||!this.enabled||this.context.state!=='running'||!this.buffers.has(id)||this.voices.size>=16)return false;
+    const source=this.context.createBufferSource(),gain=this.context.createGain();source.buffer=this.buffers.get(id);source.playbackRate.value=rate;gain.gain.value=volume;source.connect(gain).connect(this.master);this.voices.add(source);source.onended=()=>{this.voices.delete(source);source.disconnect();gain.disconnect();};source.start();return true;
+  }
+  variant(prefix,count=2,volume=.35){return this.playSample(`${prefix}_${String(Math.floor(Math.random()*count)).padStart(3,'0')}`,volume,.96+Math.random()*.08);}
+  updateMusic(){this.musicTarget=this.musicEnabled?this.musicVolume*(this.recordDistance<9?.22:.09):0;if(this.musicGain)this.musicGain.gain.setTargetAtTime(this.musicTarget,this.context.currentTime,.8);}
+  setMusic(enabled,volume=this.musicVolume){this.musicEnabled=enabled;this.musicVolume=Math.max(0,Math.min(1,volume));this.updateMusic();}
+  toggle(enabled) { this.enabled = enabled;if(enabled)this.start(true);if (this.context) this.master.gain.setTargetAtTime(enabled ? 0.22 : 0, this.context.currentTime, 0.15); }
   tone(freq = 440, duration = 0.15, volume = 0.15, type = 'sine', end = freq) {
     if (!this.context || !this.enabled || this.context.state !== 'running') return;
     const now = this.context.currentTime, oscillator = this.context.createOscillator(), gain = this.context.createGain();
@@ -26,16 +41,16 @@ export class DistrictAudio {
     oscillator.connect(gain).connect(this.master); oscillator.start(); oscillator.stop(now + duration);
     oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
   }
-  collect() { this.tone(620, 0.16, 0.15, 'sine', 950); setTimeout(() => this.tone(980, 0.24, 0.1), 100); }
-  craft() { [390, 490, 590].forEach((freq, i) => setTimeout(() => this.tone(freq, 0.4, 0.15), i * 90)); }
-  hit() { this.tone(100, 0.12, 0.35, 'triangle', 40); }
-  swing(id){this.tone(id==='spear'?180:130,.11,.07,'triangle',55);}
-  weaponHit(id){this.tone(id==='unarmed'?80:150,.1,.25,'triangle',38);if(id!=='unarmed')this.tone(740,.1,.06,'sine',210);}
-  resourceHit(kind){this.tone(kind==='quarry'?420:95,.12,.2,'triangle',kind==='quarry'?160:40);}
-  shoot() { this.tone(480, 0.13, 0.2, 'sawtooth', 90); }
-  step() { this.tone(80 + Math.random() * 30, 0.055, 0.06, 'triangle', 35); }
-  bite() { this.tone(720, 0.17, 0.25); setTimeout(() => this.tone(960, 0.23, 0.2), 160); }
-  water() { this.tone(230, 0.4, 0.1, 'sine', 60); }
+  collect() { this.playSample('handle_small_leather',.32); }
+  craft() { this.playSample('weapon_change',.4); }
+  hit() { this.playSample('enemy_hurt',.5); }
+  swing(id){this.playSample(id==='axe'?'chop':id==='spear'?'knife_slice_2':'knife_slice',.2);}
+  weaponHit(id){this.variant(id==='unarmed'?'impact_wood_medium':'impact_metal_medium',2,.5);}
+  resourceHit(kind){this.variant(kind==='quarry'?'impact_mining':'impact_wood_medium',2,.48);}
+  shoot(id='pistol') { this.playSample(id==='carbine'?'blaster_repeater':'blaster',.45); }
+  step(surface='grass') { this.variant(`footstep_${surface}`,3,.24); }
+  bite() { this.playSample('metal_click',.42); }
+  water() { this.playSample('handle_small_leather',.2); }
   tick(time) {
     if (time > this.nextBird) { this.nextBird = time + 15 + Math.random() * 25; this.tone(1500, 0.19, 0.018, 'sine', 2200); setTimeout(() => this.tone(1900, 0.16, 0.015, 'sine', 1250), 220); }
   }
@@ -49,11 +64,9 @@ export class DistrictAudio {
     if(kind==='room')this.tone(190,.18,.009,'triangle',135);
   }
   record(time,distance) {
-    if(distance>=9||time<this.nextRecord||!this.enabled||this.context?.state!=='running') return;
-    const melody=[261.63,329.63,392,329.63,293.66,349.23,440,349.23,261.63,392,523.25,392,246.94,293.66,392,293.66];
-    this.tone(melody[this.recordStep++%melody.length],.8,.07*(1-distance/9),'triangle');this.nextRecord=time+.65;
+    const near=distance<9;if(near!==(this.recordDistance<9)){this.recordDistance=distance;this.updateMusic();}
   }
-  radio(time,distance){if(distance>=7||time<(this.nextRadio||0)||!this.enabled)return;this.tone(240,.65,.025*(1-distance/7),'sine',265);this.nextRadio=time+4;}
+  radio(time,distance){if(distance>=7||time<(this.nextRadio||0)||!this.enabled)return;this.playSample('metal_click',.04*(1-distance/7));this.nextRadio=time+4;}
   pause() { this.context?.suspend().catch(() => {}); }
   resume() { this.context?.resume().catch(() => {}); }
 }

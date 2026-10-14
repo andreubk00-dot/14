@@ -1,4 +1,5 @@
 import {closedRooms,structureColliders,replacementPlan,partKey} from './construction.js';
+import {installLightCulling} from './render-budget.js';
 import {SpatialIndex} from './spatial.js';
 import {DistrictReflections} from './reflections.js';
 import {DRONE_TYPES,segmentHitsRect} from './survival.js';
@@ -7,14 +8,13 @@ import { GATES, gateForPoint, weatherAt } from './expedition.js';
 import { FINDS, MEMORIES, SCENES,RESOURCE_SITES, machineKind, cropInfo } from './homelife.js';
 import { LOCATIONS, ROADS, WORLD_LIMIT, expeditionLoot } from './district.js';
 export { LOCATIONS } from './district.js';
-import { circleHitsRect, footprint, solidFootprint, placementAllowed, repairFurniture } from './layout.js';
+import { circleHitsRect, furnitureColliders, yardRouteClear, footprint, solidFootprint, placementAllowed, repairFurniture } from './layout.js';
 import { isInsideBuilding, fadeOpacity } from './roofs.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { clone as cloneSkeleton } from 'three/addons/utils/SkeletonUtils.js';
 import { HOME, productionInfo } from './game.js';
@@ -22,7 +22,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const rand = seed => { let n = seed; return () => { n = (n * 1664525 + 1013904223) >>> 0; return n / 4294967296; }; };
 const rng = rand(1472);
-const overlapsPlayer=(item,state)=>item.id!=='rug'&&!['wallclock','fishtrophy','wallshelf'].includes(item.id) && circleHitsRect(state.x,state.z,.4,footprint(item));
+const overlapsPlayer=(item,state)=>furnitureColliders(item).some(r=>circleHitsRect(state.x,state.z,.4,r));
 const Y = new THREE.Vector3(0, 1, 0);
 const color = { ground: '#384339', road: '#3a4546', wall: '#77796c', rust: '#785b47', wood: '#766a50', leaf: '#546e4e', dark: '#283b39', cream: '#b3aa89', orange: '#f4bb77' };
 const materials = new Map();
@@ -35,6 +35,7 @@ const mat = (c, roughness = 0.88, metalness = 0) => {
 
 export class World {
   constructor(container, state) {
+    installLightCulling();
     this.state = state; this.container = container;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color('#273b3e');
@@ -43,6 +44,7 @@ export class World {
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.7));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.renderer.shadowMap.autoUpdate = false;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.35;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -55,15 +57,14 @@ export class World {
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.32, 0.7, 0.82);
     this.composer.addPass(this.bloom);
-    this.composer.addPass(new OutputPass());
-    this.grade = new ShaderPass({
-      uniforms: { tDiffuse: { value: null }, time: { value: 0 } },
-      vertexShader: 'varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
-      fragmentShader: `uniform sampler2D tDiffuse; uniform float time; varying vec2 vUv;
-        void main(){vec3 c=texture2D(tDiffuse,vUv).rgb;float v=smoothstep(.25,.92,length((vUv-.5)*vec2(1.,.85)));c*=1.-v*.26;
-        float grain=fract(sin(dot(vUv*vec2(1831.,921.)+floor(time*12.),vec2(12.9898,78.233)))*43758.5453);c+=(grain-.5)*.014;
-        gl_FragColor=vec4(c,1.);}`,
-    });
+    this.grade = new OutputPass();
+    this.grade.uniforms.time={value:0};
+    this.grade.material.fragmentShader=this.grade.material.fragmentShader.replace('uniform sampler2D tDiffuse;', 'uniform sampler2D tDiffuse; uniform float time;').replace(/\}\s*$/, `
+      float vignette=smoothstep(.25,.92,length((vUv-.5)*vec2(1.,.85)));
+      gl_FragColor.rgb*=1.-vignette*.26;
+      float grain=fract(sin(dot(vUv*vec2(1831.,921.)+floor(time*12.),vec2(12.9898,78.233)))*43758.5453);
+      gl_FragColor.rgb+=(grain-.5)*.014;
+    }`);
     this.composer.addPass(this.grade);
     this.canopies=[];this.mirrors=null;this.gates=[];this.memories=MEMORIES;this.buildings = []; this.colliders = [];this.collisionIndex=new SpatialIndex();this.shelterIndex=new SpatialIndex(); this.nodes = []; this.enemies = []; this.floating = []; this.lights = [];
     this.pickables = []; this.fogs = []; this.mixers = []; this.placedGroups = [];
@@ -83,7 +84,8 @@ export class World {
       if (mesh.userData.cutaway || mesh.userData.resourceStump || mesh.isInstancedMesh || !mesh.isMesh || excluded.has(mesh) || this.pickables.includes(mesh) || mesh.material.isShaderMaterial || mesh.material.transparent) return;
       let parent = mesh;
       while (parent) { if (this.gates.some(g=>g.group===parent) || parent === this.bridgeGroup || parent === this.solarRoof || parent === this.precisionTool || parent === this.receiverModel) return; parent = parent.parent; }
-      const key = mesh.material.uuid;
+      const center=new THREE.Vector3();mesh.getWorldPosition(center);
+      const key = `${mesh.material.uuid}:${Math.floor(center.x/24)}:${Math.floor(center.z/24)}`;
       if (!batches.has(key)) batches.set(key, { material: mesh.material, meshes: [] });
       batches.get(key).meshes.push(mesh);
     });
@@ -111,7 +113,7 @@ export class World {
     mesh.position.set(x, y, z); mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh); return mesh;
   }
   collider(x, z, w, d, rotation = 0) { const rect={x,z,w,d,rotation}; this.colliders.push(rect);this.collisionIndex.add(rect);return rect; }
-  wall(x,z,w,d,h,shade,parent=this.scene) { const mesh=this.box(x,h/2,z,w,h,d,shade,parent); const p=parent.position; this.collider(x+p.x,z+p.z,w,d); return mesh; }
+  wall(x,z,w,d,h,shade,parent=this.scene) { const mesh=this.box(x,h/2,z,w,h,d,shade,parent); const p=parent.position; this.collider(x+p.x,z+p.z,w,d).cover=true; return mesh; }
   texture(kind) {
     const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
     const ctx = canvas.getContext('2d');
@@ -154,6 +156,31 @@ export class World {
     const ctx = canvas.getContext('2d'), gradient = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
     gradient.addColorStop(0, 'rgba(255,255,255,.8)'); gradient.addColorStop(0.35, 'rgba(255,255,255,.28)'); gradient.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = gradient; ctx.fillRect(0, 0, 128, 128); this._glow = new THREE.CanvasTexture(canvas); return this._glow;
+  }
+  pinLight(source,owner){
+    // Keep the shader's light count stable when a collectible or the player
+    // changes visibility. Its scene light contributes zero while its owner is hidden.
+    const light=new THREE.PointLight(source.color,source.intensity,source.distance,source.decay);source.visible=false;this.scene.add(light);
+    (this.pinnedLights??=[]).push({source,owner,light});
+  }
+  updatePinnedLights(){
+    for(const {source,owner,light} of this.pinnedLights||[]){let visible=true;for(let p=owner;p;p=p.parent)if(!p.visible){visible=false;break;}light.intensity=visible?source.intensity:0;source.updateWorldMatrix(true,false);source.getWorldPosition(light.position);}
+  }
+  fitSunShadow(){
+    const camera=this.camera,shadow=this.sun.shadow,view=shadow.camera;
+    camera.updateMatrixWorld(true);this.sun.updateMatrixWorld(true);this.sun.target.updateMatrixWorld(true);shadow.updateMatrices(this.sun);
+    const scratch=this.shadowScratch??={origin:new THREE.Vector3(),direction:new THREE.Vector3(),point:new THREE.Vector3()};
+    scratch.direction.set(0,0,-1).transformDirection(camera.matrixWorld);
+    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+    // Cover both the main view and the reflected view, up to the tallest structures.
+    for(const x of [-1,1])for(const y of [-1,1])for(const height of [0,20])for(const reflected of [false,true]){
+      scratch.origin.set(x,y,-1).unproject(camera);const oy=reflected?.11-scratch.origin.y:scratch.origin.y,dy=reflected?-scratch.direction.y:scratch.direction.y;
+      const t=(height-oy)/dy;scratch.point.set(scratch.origin.x+scratch.direction.x*t,height,scratch.origin.z+scratch.direction.z*t).applyMatrix4(view.matrixWorldInverse);
+      minX=Math.min(minX,scratch.point.x);maxX=Math.max(maxX,scratch.point.x);minY=Math.min(minY,scratch.point.y);maxY=Math.max(maxY,scratch.point.y);
+    }
+    const width=Math.ceil((maxX-minX+8)/4)*4,height=Math.ceil((maxY-minY+8)/4)*4;
+    const cx=Math.round((minX+maxX)/2/(width/2048))*(width/2048),cy=Math.round((minY+maxY)/2/(height/2048))*(height/2048);
+    view.left=cx-width/2;view.right=cx+width/2;view.bottom=cy-height/2;view.top=cy+height/2;view.updateProjectionMatrix();
   }
   buildWorld() {
     const hemisphere = new THREE.HemisphereLight('#adc4c7', '#454532', 2.1); this.scene.add(hemisphere); this.ambient = hemisphere;
@@ -744,6 +771,10 @@ export class World {
     this.cutawayDetail(this.box(-55.64,1.7,34.5,.12,1.2,1.6,'#8ba9a3'),laundry);
     for(const z of [34,34.5,35])this.cutawayDetail(this.box(-55.54,1.7,z,.025,1.1,.035,'#c6c3a1'),laundry);
     this.lamp(-58,38.12,2.15,true,this.scene,true);this.mergeBuildingDetails(laundry,start);
+    // A linen store remains accessible through a full-width door in the partition.
+    for(const x of [-59.4,-56.6]){this.cutawayDetail(this.box(x,1.15,34.8,1.6,2.3,.16,'#93a59b'),laundry);this.collider(x,34.8,1.6,.16).cover=true;}
+    this.mergeBuildingDetails(laundry,laundry.wallMeshes.length-2);
+    for(const y of [.48,.96,1.44])this.box(-59.7,y,32.6,.65,.08,.6,'#aaac91');this.collider(-59.7,32.6,.65,.6);
     this.building(58,-36,6,6,3.8,'#6f858a','ДИСПЕТЧЕРСКАЯ',{pitch:.06,roofColor:'#9aa6a0',signOffset:.3});
     const dispatch=this.buildings.at(-1),detailStart=dispatch.wallMeshes.length;dispatch.ambience='metal';
     for(const x of [55.08,60.92])for(const z of [-38,-36,-34])this.cutawayDetail(this.box(x,1.8,z,.08,3.5,.08,'#a7b3ab'),dispatch);
@@ -752,6 +783,9 @@ export class World {
     this.box(59.8,1.43,-37.5,1.1,.08,1.9,'#b6b9a1');this.box(59.8,1.6,-37.7,.65,.3,.5,'#536d68');
     this.cylinder(59.65,1.65,-37.1,.09,.3,'#c4b794');this.box(59.8,1.5,-37.6,.1,.05,.7,'#dfca8d');
     this.box(58,.09,-32.5,1.6,.16,1.2,'#8c9c91');this.mergeBuildingDetails(dispatch,detailStart);
+    this.canopy(58,-31.8,5,1.8,2.8,'#899e98');
+    this.box(59.6,.68,-31.5,1,1.3,.6,'#8b927b');this.collider(59.6,-31.5,1,.6);this.box(59.6,1.38,-31.5,1.1,.1,.7,'#b6b5a0');
+    for(const x of [59.3,59.7])this.box(x,1.48,-31.5,.2,.12,.24,'#4e6868');
     // Distinct traces of use: patched windows, service pipes, cloth screens and garden frames.
     const tailor=this.buildings.find(b=>b.x===29),clinic=this.buildings.find(b=>b.x===-49),market=this.buildings.find(b=>b.x===13),greenhouse=this.buildings.find(b=>b.x===-42);
     for(const [b,x,z,shade]of [[tailor,26.2,11.15,'#b7a1b7'],[clinic,-52.2,36.65,'#aeb7a0'],[market,16.3,9.15,'#bda67c']]){
@@ -864,6 +898,10 @@ export class World {
       ['crate','Обрезки за рабочим столом',26.5,4,{cloth:4,wire:1}],
       ['crate','Сухой ящик рыбацкого дома',24,51.5,{fish:2,wood:2}],
       ['crate','Пакеты с семенами цветов',-40,-45.7,{seeds:3,flowers:1,cloth:1}],
+      ['crate','Запас перевязочной прачечной',-58.9,33.1,{cloth:4,medicine:2}],
+      ['crate','Ящик под служебным навесом',56.8,-31.5,{parts:3,wire:2}],
+      ['crate','Сухие травы кухонной кладовой',31,36.8,{herbs:4,seeds:2,cloth:1}],
+      ['crate','Запас ремонтной смены',54,9.5,{parts:3,metal:2}],
     ];
     definitions.forEach(([type, name, x, z, loot, requires, find, machine], i) => {
       const group = new THREE.Group(); group.position.set(x,this.furnitureElevation(x,z),z); this.scene.add(group);
@@ -891,6 +929,7 @@ export class World {
       const node = { id: `node-${i}`, type, name, x, z, loot: { ...(this.state.nodeLoot[`node-${i}`] || expeditionLoot({id:`node-${i}`,type,x,z,originalLoot:loot},this.state.depleted[`node-${i}`]===undefined?0:Math.floor(this.state.elapsed/(type==='herbs'?120:240)))) }, originalLoot: { ...loot }, requires, find, accessGate:gateForPoint(x,z), machine:kind, group, marker, respawnTime: type === 'herbs' ? 120 : 240 };
       if(kind||find||type==='crate') {const f=find?footprint({id:find,x:0,z:0}):null;const size=kind==='standingtree'?[.6,.6]:kind==='quarry'?[2.1,1.6]:find?(['wallclock','wallshelf'].includes(find)?[1.05,1.13]:[f.w*.6,f.d*.6]):type==='crate'?[1.05,1.13]:kind==='motor'?[1.35,.95]:kind==='appliance'?[1,.8]:kind==='radio'?[.9,.4]:[.9,.6];node.collider=this.collider(x,z,...size);}
       group.traverse(mesh => { mesh.userData.node = node; if (mesh.isMesh) this.pickables.push(mesh); });
+      const fieldLights=[];group.traverse(o=>{if(o.isPointLight)fieldLights.push(o);});for(const light of fieldLights)this.pinLight(light,group);
       if(this.state.depleted[node.id]!==undefined && this.state.elapsed-this.state.depleted[node.id]>=node.respawnTime && !this.state.nodeLoot[node.id]) this.state.nodeLoot[node.id]={...node.loot};
       if(kind==='standingtree'){node.stump=this.cylinder(x,.13,z,.24,.26,'#a58d65');node.stump.visible=false;node.stump.userData.resourceStump=true;}this.nodes.push(node);
     });
@@ -941,7 +980,7 @@ export class World {
     this.box(0, 1.42, 0, 0.4, 0.4, 0.4, '#c6b48b', this.fallback);
     this.shadow = new THREE.Mesh(new THREE.CircleGeometry(0.55, 24), new THREE.MeshBasicMaterial({ color: '#172b25', transparent: true, opacity: 0.26, depthWrite: false }));
     this.shadow.rotation.x = -Math.PI / 2; this.shadow.position.y = 0.03; this.player.add(this.shadow);
-    this.playerLight = new THREE.PointLight('#ffc585', 0, 9, 1.6); this.playerLight.position.set(0, 1.6, 0); this.player.add(this.playerLight);
+    this.playerLight = new THREE.PointLight('#ffc585', 0, 9, 1.6); this.playerLight.position.set(0, 1.6, 0); this.player.add(this.playerLight);this.pinLight(this.playerLight,this.player);
     this.weaponRoot = new THREE.Group(); this.weaponRoot.position.set(0.4, 0.9, -0.2); this.playerVisual.add(this.weaponRoot);
   }
   async loadAssets(onProgress) {
@@ -1001,15 +1040,16 @@ export class World {
         if (!child.isMesh) return;
         source.updateMatrixWorld(true);
         const geometry = child.geometry.clone().applyMatrix4(child.matrixWorld);
-        const instances = new THREE.InstancedMesh(geometry, child.material, 450);
+        const cells=new Map();
         const matrix = new THREE.Matrix4(), quaternion = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
         let used = 0;
         for (let i = 0; i < 1350 && used < 450; i++) {
           const x = rng() * 126 - 63, z = rng() * 126 - 63;
           if (this.onRoad(x,z,.5) || this.blocked(x, z, 1) || this.buildings.some(b=>isInsideBuilding(b,x,z))) continue;
-          p.set(x, 0.02, z); quaternion.setFromAxisAngle(Y, rng() * 6.28); s.setScalar(0.7 + rng() * 0.6); matrix.compose(p, quaternion, s); instances.setMatrixAt(used++, matrix);
+          p.set(x, 0.02, z); quaternion.setFromAxisAngle(Y, rng() * 6.28); s.setScalar(0.7 + rng() * 0.6); matrix.compose(p, quaternion, s);
+          const key=`${Math.floor(x/24)}:${Math.floor(z/24)}`;if(!cells.has(key))cells.set(key,[]);cells.get(key).push(matrix.clone());used++;
         }
-        instances.count = used; instances.receiveShadow = true; this.scene.add(instances);
+        for(const transforms of cells.values()){const instances=new THREE.InstancedMesh(geometry,child.material,transforms.length);transforms.forEach((m,i)=>instances.setMatrixAt(i,m));instances.computeBoundingSphere();instances.receiveShadow=true;instances.userData.groundCover=true;this.scene.add(instances);}
       });
     }
     this.updateEquipment();
@@ -1058,23 +1098,23 @@ export class World {
       let visible=node.find?!this.state.findClaims.includes(node.id):time===undefined||this.state.elapsed-time>=node.respawnTime;
       // A restored container must wait until the player leaves its footprint.
       if(visible&&!node.find&&time!==undefined&&node.collider&&circleHitsRect(this.state.x,this.state.z,.3,node.collider)) visible=false;
-      if (visible && !node.group.visible && !node.find) {this.state.brokenNodes=this.state.brokenNodes.filter(id=>id!==node.id); node.loot = {...(this.state.nodeLoot[node.id]||expeditionLoot(node,Math.floor(this.state.elapsed/node.respawnTime)))}; this.state.nodeLoot[node.id]={...node.loot}; }
+      if (visible && !node.group.visible && !node.find) {this.state.strippedNodes=this.state.strippedNodes.filter(id=>id!==node.id);this.state.brokenNodes=this.state.brokenNodes.filter(id=>id!==node.id); node.loot = {...(this.state.nodeLoot[node.id]||expeditionLoot(node,Math.floor(this.state.elapsed/node.respawnTime)))}; this.state.nodeLoot[node.id]={...node.loot}; }
       node.group.visible=visible||!!node.falling;node.marker.visible=visible;const broken=this.state.brokenNodes.includes(node.id);if(node.group.userData.standing){node.group.userData.standing.visible=!broken||!!node.falling;node.group.userData.shards.visible=broken&&!node.falling;}if(node.stump)node.stump.visible=!visible||broken;if(node.collider)node.collider.disabled=!visible||broken;
     }
   }
   onRoad(x,z,margin=0) {return [...ROADS,...SCENES,...this.canopies].some(r=>Math.abs(x-r.x)<r.w/2+margin&&Math.abs(z-r.z)<r.d/2+margin);}
-  canSee(ax,az,bx,bz){return ![...this.collisionIndex.query(Math.min(ax,bx),Math.min(az,bz),Math.max(ax,bx),Math.max(az,bz))].some(r=>!r.disabled&&(r.w>.45||r.d>.45)&&segmentHitsRect(ax,az,bx,bz,r))&&!this.state.placed.some(p=>!['rug','wallclock','fishtrophy','wallshelf'].includes(p.id)&&segmentHitsRect(ax,az,bx,bz,solidFootprint(p)));}
+  canSee(ax,az,bx,bz,ignore=null,wallsOnly=false){return ![...this.collisionIndex.query(Math.min(ax,bx),Math.min(az,bz),Math.max(ax,bx),Math.max(az,bz))].some(r=>r!==ignore&&!r.disabled&&(!wallsOnly||r.cover||r.construction)&&(r.w>.45||r.d>.45)&&segmentHitsRect(ax,az,bx,bz,r))&&!this.state.placed.some(p=>(!wallsOnly||['yardgate','yardfence'].includes(p.id))&&furnitureColliders(p).some(r=>segmentHitsRect(ax,az,bx,bz,r)));}
   blocked(x, z, radius = 0.3) {
     if (x < -WORLD_LIMIT || x > WORLD_LIMIT || z < -WORLD_LIMIT || z > WORLD_LIMIT) return true;
     if(Math.pow((x-30)/6.8,2)+Math.pow((z-59)/3.7,2)<1&&!(x>=25.2&&x<=29.5&&z<56.2))return true;
     // Pond shoreline; dock remains navigable.
     if (Math.pow((x - 23) / 9, 2) + Math.pow((z + 24) / 7.4, 2) < 1 && !(x < 21.5 && z > -18.1)) return true;
-    return [...this.collisionIndex.query(x-radius,z-radius,x+radius,z+radius)].some(c => !c.disabled && circleHitsRect(x,z,radius,c)) || this.state.placed.some(p=>p.id!=='rug'&&!['wallclock','fishtrophy','wallshelf'].includes(p.id) && circleHitsRect(x,z,radius,solidFootprint(p)));
+    return [...this.collisionIndex.query(x-radius,z-radius,x+radius,z+radius)].some(c => !c.disabled && circleHitsRect(x,z,radius,c)) || this.state.placed.some(p=>furnitureColliders(p).some(r=>circleHitsRect(x,z,radius,r)));
   }
   repairFurniture() { return repairFurniture(this.colliders,this.state.placed,this.state.construction); }
   furnitureElevation(x,z) { return this.buildings.some(b=>isInsideBuilding(b,x,z))||this.state.construction.some(p=>p.id==='floor'&&Math.abs(x-p.x)<=1&&Math.abs(z-p.z)<=1)?.205:.025; }
   canPlace(item,ignore=-1) {
-    if(item.id==='raincatcher'&&this.sheltered(item.x,item.z))return false;return placementAllowed(item,this.colliders,this.state.placed,ignore,this.state.construction) && !overlapsPlayer(item,this.state);
+    if(item.id==='raincatcher'&&this.sheltered(item.x,item.z))return false;return placementAllowed(item,this.colliders,this.state.placed,ignore,this.state.construction) && !overlapsPlayer(item,this.state)&&yardRouteClear(this.state,item,this.colliders,ignore);
   }
   move(x, z) {
     if (!this.blocked(x, this.state.z)) this.state.x = x;
@@ -1097,7 +1137,7 @@ export class World {
     return gridPath({x:sx,z:sz},{x:gx,z:gz},(x,z)=>this.blocked(x,z),(WORLD_LIMIT*2+3)**2,(ax,az,bx,bz)=>[...this.collisionIndex.query(Math.min(ax,bx)-.3,Math.min(az,bz)-.3,Math.max(ax,bx)+.3,Math.max(az,bz)+.3)].some(r=>r.construction&&!r.disabled&&segmentHitsRect(ax,az,bx,bz,{...r,w:r.w+.6,d:r.d+.6})));
   }
   enemyWaypoint(enemy,target,time){
-    const clear=(ax,az,bx,bz)=>![...this.collisionIndex.query(Math.min(ax,bx)-.5,Math.min(az,bz)-.5,Math.max(ax,bx)+.5,Math.max(az,bz)+.5)].some(r=>!r.disabled&&segmentHitsRect(ax,az,bx,bz,{...r,w:r.w+.7,d:r.d+.7}))&&!this.state.placed.some(p=>!['rug','wallclock','wallshelf','fishtrophy'].includes(p.id)&&segmentHitsRect(ax,az,bx,bz,{...solidFootprint(p),w:solidFootprint(p).w+.7,d:solidFootprint(p).d+.7}));
+    const clear=(ax,az,bx,bz)=>![...this.collisionIndex.query(Math.min(ax,bx)-.5,Math.min(az,bz)-.5,Math.max(ax,bx)+.5,Math.max(az,bz)+.5)].some(r=>!r.disabled&&segmentHitsRect(ax,az,bx,bz,{...r,w:r.w+.7,d:r.d+.7}))&&!this.state.placed.some(p=>furnitureColliders(p).some(r=>segmentHitsRect(ax,az,bx,bz,{...r,w:r.w+.7,d:r.d+.7})));
     // Reuse a direct course until its next quarter-second check; a detour is rebuilt at most once a second.
     if(enemy.courseAt===undefined||time-enemy.courseAt>.25||!enemy.courseTarget||Math.hypot(target.x-enemy.courseTarget.x,target.z-enemy.courseTarget.z)>1){enemy.courseAt=time;enemy.courseTarget={...target};enemy.direct=clear(enemy.x,enemy.z,target.x,target.z);}
     if(enemy.direct)return target;
@@ -1138,7 +1178,15 @@ export class World {
   refreshStation(item){const entry=this.placedGroups.find(e=>e.item===item);if(entry&&!entry.group.userData.stationUpgrade)this.decorateStation(item,entry.group);this.renderDirty=true;}
   makeFurniture(id, ghost = false,item=null) {
     const group = new THREE.Group();
-    if (id === 'lamp') {
+    if(id==='yardfence'||id==='yardgate'){
+      for(const x of [-.94,.94])this.box(x,.58,0,.12,1.16,.18,'#8a8066',group);
+      let panel=group;if(id==='yardgate'){panel=new THREE.Group();panel.position.x=-.82;panel.rotation.y=item?.open?(item.openSide||1)*Math.PI/2:0;panel.userData.yardGateLeaf=true;group.userData.gateLeaf=panel;group.add(panel);}
+      const offset=id==='yardgate'?.82:0,width=id==='yardgate'?1.64:1.88;
+      for(const y of [.38,.8])this.box(offset,y,0,width,.12,.12,'#a39470',panel);
+      if(id==='yardgate'){this.box(1.48,.68,.09,.09,.16,.06,'#b5b6a0',panel);}else for(const x of [-.6,0,.6])this.box(x,.57,0,.08,.9,.09,'#89785c',panel);
+    }else if(id==='yardpath'){
+      for(const x of [-.48,.48])for(const z of [-.48,.48])this.box(x,.025,z,.92,.045,.92,'#889286',group);
+    }else if (id === 'lamp') {
       group.userData.fixture={...this.lamp(0,0,2.5,!ghost,group),base:15};
     } else if(id==='campstove'){
       this.box(0,.54,0,1,.98,.8,'#81938c',group);this.box(0,1.08,0,1.06,.12,.86,'#adad93',group);for(const x of [-.25,.25])this.cylinder(x,1.16,0,.17,.035,'#3b514b',group,12);this.box(0,.55,.43,.65,.45,.03,'#344c45',group);for(const x of [-.3,.3])this.cylinder(x,.95,.45,.045,.04,'#d2b88a',group,8).rotation.x=Math.PI/2;
@@ -1206,15 +1254,16 @@ export class World {
       this.cylinder(0.4, 0.65, 0.63, 0.3, 0.1, '#b8b49a', group, 10).rotation.x = Math.PI / 2;
       for (let i = 0; i < 3; i++) this.box(-0.4, 0.4 + i * 0.2, 0.62, 0.35, 0.055, 0.04, '#384f45', group);
     }
-    if (ghost) group.traverse(mesh => { if (mesh.isMesh) { mesh.material = mesh.material.clone(); mesh.material.transparent = true; mesh.material.opacity = 0.5; mesh.castShadow = false; } });
+    if (ghost) group.traverse(mesh => { if(mesh.isPointLight)mesh.visible=false;if (mesh.isMesh) { mesh.material = mesh.material.clone(); mesh.material.transparent = true; mesh.material.opacity = 0.5; mesh.castShadow = false; } });
     if(!ghost)this.mergeFurnitureGeometry(group);return group;
   }
   mergeFurnitureGeometry(group) {
-    const batches=new Map(),fixture=group.userData.fixture;group.updateMatrixWorld(true);group.traverse(m=>{if(!m.isMesh||m===fixture?.glow||m===fixture?.spill||m.material.transparent)return;let p=m;while(p&&p!==group){if(p.userData.clockMinute||p.userData.clockHour||p.userData.gardenPlant||p.userData.cropLeaf||p.userData.cropFruit)return;p=p.parent;}const key=m.material.uuid;if(!batches.has(key))batches.set(key,[]);batches.get(key).push(m);});
+    const batches=new Map(),fixture=group.userData.fixture;group.updateMatrixWorld(true);group.traverse(m=>{if(!m.isMesh||m===fixture?.glow||m===fixture?.spill||m.material.transparent)return;let p=m;while(p&&p!==group){if(p.userData.yardGateLeaf||p.userData.clockMinute||p.userData.clockHour||p.userData.gardenPlant||p.userData.cropLeaf||p.userData.cropFruit)return;p=p.parent;}const key=m.material.uuid;if(!batches.has(key))batches.set(key,[]);batches.get(key).push(m);});
     for(const meshes of batches.values()){if(meshes.length<2)continue;group.updateMatrixWorld(true);const inverse=new THREE.Matrix4().copy(group.matrixWorld).invert();const pieces=meshes.map(m=>{let g=m.geometry.clone();if(g.index){const old=g;g=g.toNonIndexed();old.dispose();}return g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inverse,m.matrixWorld));});const geometry=mergeGeometries(pieces);pieces.forEach(g=>g.dispose());const mesh=new THREE.Mesh(geometry,meshes[0].material);mesh.castShadow=true;mesh.receiveShadow=true;for(const m of meshes){m.parent.remove(m);m.geometry.dispose();}group.add(mesh);}
   }
   syncFurniture() {
     for(const {item,group} of this.placedGroups) {
+      if(group.userData.gateLeaf)group.userData.gateLeaf.rotation.y=item.open?(item.openSide||1)*Math.PI/2:0;
       const f=group.userData.fixture;if(!f)continue;
       const on=item.enabled!==false&&(item.id!=='lamp'||this.state.owned.includes('generator'));
       f.light.intensity=on?f.base:0;f.glow.material.emissiveIntensity=on?2:0;if(f.spill)f.spill.material.opacity=on?.15:0;
@@ -1328,7 +1377,7 @@ export class World {
     if(!enemy.flashMaterials){enemy.flashMaterials=[];enemy.group.traverse(m=>{if(m.isMesh&&m.material.emissive){m.material=m.material.clone();enemy.flashMaterials.push({material:m.material,base:m.material.emissive.clone(),intensity:m.material.emissiveIntensity});}});}
   }
   resourceStrike(node) {
-    if(this.state.brokenNodes.includes(node.id))return;node.strikeTime=.18;this.emitFragments(node.x,node.machine==='quarry'?.6:.8,node.z,node.machine==='quarry'?'#acb7ae':'#c2a16c',8);
+    if(this.state.brokenNodes.includes(node.id))return;node.strikeTime=.18;this.emitFragments(node.x,node.machine==='quarry'?.6:.8,node.z,node.machine==='standingtree'?'#c2a16c':'#acb7ae',8);
   }
   breakResource(node,px,pz) {
     if(node.machine==='quarry'){this.emitFragments(node.x,.65,node.z,'#aeb5a6',12);return;}
@@ -1432,6 +1481,11 @@ export class World {
     this.sun.intensity = (1.3 + night * 1.7)*(1-weather.rain*.35); this.ambient.intensity = (1.55 + night * .55)*(1-weather.rain*.12);
     this.scene.fog.density = 0.016 + (1 - night) * 0.005+weather.rain*.006;
     this.player.visible = focus;
+    this.updatePinnedLights();
+    // The reflection and main image share the same directional shadow map.
+    // Three resets needsUpdate after the first render, avoiding a second shadow pass.
+    if(this.renderer.shadowMap.enabled)this.fitSunShadow();
+    this.renderer.shadowMap.needsUpdate=this.renderer.shadowMap.enabled;
     this.mirrors.update(this.time,this.camera,this.state.settings.quality!=='low',this.renderDirty);
     this.renderDirty = false;
     if (this.state.settings.quality === 'low') this.renderer.render(this.scene, this.camera); else this.composer.render();
@@ -1444,5 +1498,6 @@ export class World {
   }
   zoom(delta) { this.viewSize = THREE.MathUtils.clamp(this.viewSize + delta * 0.025, 23, 52); this.resize(); }
   setQuality(quality) { this.state.settings.quality = quality; this.renderer.setPixelRatio(quality === 'low' ? 1 : Math.min(devicePixelRatio, 1.7)); this.renderer.shadowMap.enabled = quality !== 'low'; if(this.reflection)this.reflection.visible=false;this.renderDirty=true; this.resize(); }
+  surfaceAt(x,z){if(this.buildings.some(b=>isInsideBuilding(b,x,z))||this.state.construction.some(p=>p.id==='floor'&&Math.abs(p.x-x)<=1&&Math.abs(p.z-z)<=1))return 'wood';if(this.state.placed.some(p=>p.id==='yardpath'&&circleHitsRect(x,z,.01,footprint(p))))return 'concrete';return ROADS.some(r=>Math.abs(x-r.x)<=r.w/2&&Math.abs(z-r.z)<=r.d/2)?'concrete':'grass';}
   location() { return LOCATIONS.reduce((best, location) => Math.hypot(this.state.x - location.x, this.state.z - location.z) < Math.hypot(this.state.x - best.x, this.state.z - best.z) ? location : best); }
 }

@@ -1,5 +1,7 @@
 // Geometry shared by movement, furnishing previews and district checks.
+import {gridPath} from './navigation.js';
 export const FURNITURE = {
+ yardfence:[2,.2],yardgate:[2,.2],yardpath:[2,2],
  campstove:[1.06,.86],toolcabinet:[1.4,.7],
   desklamp:[.75,.65],homeradio:[1,.65],wallshelf:[1.4,.24],raincatcher:[1.2,1.2],dryrack:[2.1,1.1],gearrack:[1.8,.7],fishtrophy:[.8,.15],foundlamp:[.8,.8],armchair:[1.4,1.3],recordplayer:[1.2,.75],wallclock:[.8,.15],cropbed:[2,1.6],bouquet:[.6,.6],lamp:[1.2,.5], bed:[1.5,2.3], garden:[2,1.6], seedbed:[2,1.6],
   chest:[1.32,1.4], sofa:[2.6,1.25], planter:[1,1], rug:[2.2,1.6],
@@ -10,6 +12,20 @@ export function footprint(item) {
   return {x:item.x,z:item.z,w,d,rotation:item.rotation||0,id:item.id};
 }
 export function solidFootprint(item) { const rect=footprint(item); return item.id==='lamp'?{...rect,w:.14,d:.14}:rect; }
+export function furnitureColliders(item){
+ if(['rug','yardpath','wallclock','wallshelf','fishtrophy'].includes(item.id))return [];
+ if(item.id!=='yardgate'||!item.open)return [solidFootprint(item)];
+ const c=Math.cos(item.rotation||0),s=Math.sin(item.rotation||0),rect=(x,z,w,d)=>({x:item.x+x*c+z*s,z:item.z-x*s+z*c,w,d,rotation:item.rotation||0});
+ return [rect(-.94,0,.12,.2),rect(.94,0,.12,.2),rect(-.82,-.82*(item.openSide||1),.14,1.64)];
+}
+export function yardRouteClear(state,item,obstacles,ignore=-1){
+ if(!['yardgate','yardfence'].includes(item.id))return true;
+ const solids=[...obstacles.filter(o=>!o.disabled),...state.placed.filter((_,i)=>i!==ignore).flatMap(furnitureColliders),...furnitureColliders(item)];
+ const blocked=(x,z)=>x<-52||x>-12||z<10||z>54||solids.some(r=>circleHitsRect(x/2,z/2,.3,r));
+ const start={x:Math.round(state.x*2),z:Math.round(state.z*2)},goal={x:-36,z:41};
+ if(blocked(start.x,start.z)||blocked(goal.x,goal.z))return false;
+ return (start.x===goal.x&&start.z===goal.z)||gridPath(start,goal,blocked,2000).length>0;
+}
 function axes(r) { const c=Math.cos(r.rotation||0),s=Math.sin(r.rotation||0); return [[c,-s],[s,c]]; }
 export function overlaps(a,b,gap=0) {
   const aa=axes(a),bb=axes(b),dx=b.x-a.x,dz=b.z-a.z;
@@ -25,6 +41,8 @@ export function circleHitsRect(x,z,radius,rect) {
   return ex*ex+ez*ez<radius*radius || (Math.abs(lx)<rect.w/2 && Math.abs(lz)<rect.d/2);
 }
 export function placementAllowed(item,obstacles,placed,ignore=-1,construction=[]) {
+  const yard=['yardfence','yardgate','yardpath'].includes(item.id),flat=item.id==='rug'||item.id==='yardpath';
+  if(yard&&(overlaps(footprint(item),{x:-18,z:15,w:12,d:9},.12)||construction.some(p=>p.id==='floor'&&overlaps(footprint(item),{...p,w:2,d:2},.05))))return false;
   if(['wallclock','fishtrophy','wallshelf'].includes(item.id)) {const anchor=clockAnchor(item.x,item.z,item.id,construction);return !!anchor&&Math.hypot(item.x-anchor.x,item.z-anchor.z)<.05&&Math.cos((item.rotation||0)-anchor.rotation)>.99&&placed.every((p,i)=>i===ignore||!['wallclock','fishtrophy','wallshelf'].includes(p.id)||Math.hypot(p.x-item.x,p.z-item.z)>(footprint(p).w+footprint(item).w)/2+.1);}
   const rect=footprint(item),c=Math.abs(Math.cos(rect.rotation)),s=Math.abs(Math.sin(rect.rotation));
   const ex=(rect.w*c+rect.d*s)/2,ez=(rect.w*s+rect.d*c)/2;
@@ -33,8 +51,8 @@ export function placementAllowed(item,obstacles,placed,ignore=-1,construction=[]
   // Keep doors, the yard gate and the approach to each interaction clear.
   const passages=[{x:-18,z:19.5,w:2.4,d:2.2},{x:-12,z:16,w:2.2,d:2.4},{x:-8.7,z:20,w:2,d:3},{x:-21,z:14.6,w:2.2,d:1},{x:-13.5,z:18.5,w:1.4,d:1},{x:-22,z:19,w:1.8,d:1}];
   const doors=construction.filter(p=>p.id==='door').map(p=>p.axis==='x'?{x:p.x,z:p.z,w:1.2,d:1.5}:{x:p.x,z:p.z,w:1.5,d:1.2});
-  if([...doors,...obstacles.filter(o=>!o.disabled),...passages].some(o=>overlaps(rect,o,.12))) return false;
-  return placed.every((p,i)=>i===ignore || item.id==='rug'||['wallclock','fishtrophy','wallshelf'].includes(item.id)||['wallclock','fishtrophy','wallshelf'].includes(p.id) || p.id==='rug' || !overlaps(rect,footprint(p),.15));
+  if([...doors,...obstacles.filter(o=>!o.disabled),...(flat?[]:passages)].some(o=>overlaps(rect,o,.12))) return false;
+  return placed.every((p,i)=>i===ignore || flat||p.id==='yardpath'||['wallclock','fishtrophy','wallshelf'].includes(item.id)||['wallclock','fishtrophy','wallshelf'].includes(p.id) || p.id==='rug' || !overlaps(rect,footprint(p),yard&&['yardfence','yardgate'].includes(p.id)?0:.15));
 }
 export function repairFurniture(obstacles,placed,construction=[]) {
   let moved=0;

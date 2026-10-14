@@ -12,6 +12,11 @@ const shell = path('M12 40Q0 8 32 7Q64 8 52 40L40 56H24Z','#c6a4b8')+line(18,18,
 const station = c => rect(8,23,48,33,c,4)+rect(14,10,36,15,dark)+rect(19,15,26,5,steel)+rect(14,32,20,17,dark)+circle(24,40,5,gold)+rect(39,31,11,5,steel)+rect(39,42,11,5,steel)+rect(13,56,7,4,dark)+rect(44,56,7,4,dark);
 const bed = rect(8,31,48,20,wood)+rect(10,23,44,16,'#7daa8a',4)+rect(12,20,13,16,'#eae0c2',3)+path('M29 24H53V45H29Z','#9fbd91')+rect(8,49,5,9,dark)+rect(51,49,5,9,dark);
 const art = {
+ 'cargo-appliance':rect(12,8,40,49,steel)+circle(32,36,14,dark)+circle(32,36,10,'#88a9ae')+rect(17,14,14,5,gold)+circle(44,17,3,wood),
+ 'cargo-motor':rect(11,25,43,27,dark)+rect(14,16,35,13,steel)+[19,31,43].map(x=>circle(x,17,5,gold)).join('')+rect(6,49,52,7,wood)+rect(54,33,5,12,steel),
+ yardfence:rect(7,11,6,46,wood)+rect(51,11,6,46,wood)+rect(10,23,44,7,gold)+rect(10,42,44,7,gold)+[22,32,42].map(x=>rect(x,17,4,38,wood)).join(''),
+ yardgate:rect(7,11,6,46,wood)+rect(51,11,6,46,wood)+rect(16,18,30,33,green)+rect(20,24,22,5,gold)+rect(20,40,22,5,gold)+circle(40,34,3,steel),
+ yardpath:[0,1,2,3].map(i=>rect(8+(i%2)*25,9+Math.floor(i/2)*25,23,23,steel,3)).join(''),
  campstove:rect(11,18,42,40,steel)+rect(8,12,48,9,dark)+circle(22,16,6,wood)+circle(42,16,6,wood)+rect(18,32,28,19,dark)+circle(20,25,3,gold)+circle(44,25,3,gold),
  toolcabinet:rect(9,7,46,49,green)+rect(13,12,18,39,steel)+rect(33,12,18,39,steel)+rect(25,28,3,11,gold)+rect(36,28,3,11,gold)+rect(12,56,7,5,dark)+rect(45,56,7,5,dark),
  stone:path('M7 42L13 17L34 8L54 23L58 45L33 57Z',steel)+path('M13 17L34 8L32 34L7 42Z','#c6d2ce')+path('M32 34L54 23L58 45L33 57Z',dark),
