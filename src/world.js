@@ -1,9 +1,10 @@
+import {STRUCTURES,buildAllowed,closedRooms,structureColliders} from './construction.js';
 import {SpatialIndex} from './spatial.js';
 import {DistrictReflections} from './reflections.js';
 import {DRONE_TYPES,segmentHitsRect} from './survival.js';
 import {gridPath} from './navigation.js';
 import { GATES, gateForPoint, weatherAt } from './expedition.js';
-import { FINDS, MEMORIES, SCENES, machineKind, cropInfo } from './homelife.js';
+import { FINDS, MEMORIES, SCENES,RESOURCE_SITES, machineKind, cropInfo } from './homelife.js';
 import { LOCATIONS, ROADS, WORLD_LIMIT, cycleLoot } from './district.js';
 export { LOCATIONS } from './district.js';
 import { circleHitsRect, footprint, solidFootprint, placementAllowed, repairFurniture } from './layout.js';
@@ -70,7 +71,7 @@ export class World {
     this.plane = new THREE.Plane(Y, 0); this.time = 0;
     this.buildWorld(); this.batchStaticGeometry(); this.buildPlayer(); this.resize();
     this.resizeObserver = new ResizeObserver(() => this.resize()); this.resizeObserver.observe(container);
-    this.applyProgress();
+    this.applyProgress();this.rebuildConstruction();
     for (const drop of state.drops) this.addDrop(drop);
   }
   batchStaticGeometry() {
@@ -79,7 +80,7 @@ export class World {
     const excluded = new Set([this.genIndicator, this.towerIndicator, this.water, this.destination, this.selectionRing,
       this.homeLamp.glow, this.homeLamp.spill, ...this.lights.flatMap(l => [l.glow, l.spill].filter(Boolean))]);
     this.scene.traverse(mesh => {
-      if (mesh.userData.cutaway || mesh.isInstancedMesh || !mesh.isMesh || excluded.has(mesh) || this.pickables.includes(mesh) || mesh.material.isShaderMaterial || mesh.material.transparent) return;
+      if (mesh.userData.cutaway || mesh.userData.resourceStump || mesh.isInstancedMesh || !mesh.isMesh || excluded.has(mesh) || this.pickables.includes(mesh) || mesh.material.isShaderMaterial || mesh.material.transparent) return;
       let parent = mesh;
       while (parent) { if (this.gates.some(g=>g.group===parent) || parent === this.bridgeGroup || parent === this.solarRoof || parent === this.precisionTool || parent === this.receiverModel) return; parent = parent.parent; }
       const key = mesh.material.uuid;
@@ -823,11 +824,13 @@ export class World {
       ['find','Лампа ремонтника',-9.5,-45,{},null,'desklamp'],
       ['find','Приёмник из кафе',26,38.5,{},null,'homeradio'],
       ['find','Упакованная полка',7,57.5,{},null,'wallshelf'],
+      ...RESOURCE_SITES.map(([type,x,z],i)=>[type,type==='tree'?`Дерево у тропы ${i+1}`:`Каменный валун ${i-5}`,x,z,type==='tree'?{wood:8,seeds:1}:{stone:6,metal:1},type==='tree'?'axe':'pick',null,type==='tree'?'standingtree':'quarry']),
     ];
     definitions.forEach(([type, name, x, z, loot, requires, find, machine], i) => {
       const group = new THREE.Group(); group.position.set(x,this.furnitureElevation(x,z),z); this.scene.add(group);
       const kind=machineKind({type,name,machine});
-      if(find==='wallshelf'){this.crate(0,0,1,group);}
+      if(kind==='standingtree'||kind==='quarry'){this.makeResourceNode(group,kind);}
+      else if(find==='wallshelf'){this.crate(0,0,1,group);}
       else if(find) {const model=this.makeFurniture(find);model.scale.setScalar(.6);group.add(model);if(find==='wallclock')this.crate(0,0,1,group);}
       else if(kind==='motor') {this.box(0,.55,0,1.15,.8,.8,'#667970',group);for(const xx of [-.4,0,.4])this.cylinder(xx,1.05,0,.13,.4,'#83958a',group,8);this.box(0,.075,0,1.35,.15,.95,'#857c62',group);}
       else if(kind==='radio') {this.box(0,.3,0,.9,.5,.4,'#83917d',group);this.cylinder(.3,.85,0,.015,.8,'#b2bca0',group,6);this.box(-.15,.35,.22,.4,.3,.025,'#4c6253',group);for(const x of [-.3,.3])for(const z of [-.15,.15])this.box(x,.025,z,.08,.05,.06,'#647564',group);}
@@ -847,10 +850,10 @@ export class World {
       }
       const marker = this.marker(x, 1.5, z, type === 'herbs' ? '#a9c181' : '#e7c993');
       const node = { id: `node-${i}`, type, name, x, z, loot: { ...(this.state.nodeLoot[`node-${i}`] || cycleLoot(`node-${i}`,loot,this.state.depleted[`node-${i}`]===undefined?0:Math.floor(this.state.elapsed/(type==='herbs'?120:240)))) }, originalLoot: { ...loot }, requires, find, accessGate:gateForPoint(x,z), machine:kind, group, marker, respawnTime: type === 'herbs' ? 120 : 240 };
-      if(kind||find||type==='crate') {const f=find?footprint({id:find,x:0,z:0}):null;const size=find?(['wallclock','wallshelf'].includes(find)?[1.05,1.13]:[f.w*.6,f.d*.6]):type==='crate'?[1.05,1.13]:kind==='motor'?[1.35,.95]:kind==='appliance'?[1,.8]:kind==='radio'?[.9,.4]:[.9,.6];node.collider=this.collider(x,z,...size);}
+      if(kind||find||type==='crate') {const f=find?footprint({id:find,x:0,z:0}):null;const size=kind==='standingtree'?[.6,.6]:kind==='quarry'?[2.1,1.6]:find?(['wallclock','wallshelf'].includes(find)?[1.05,1.13]:[f.w*.6,f.d*.6]):type==='crate'?[1.05,1.13]:kind==='motor'?[1.35,.95]:kind==='appliance'?[1,.8]:kind==='radio'?[.9,.4]:[.9,.6];node.collider=this.collider(x,z,...size);}
       group.traverse(mesh => { mesh.userData.node = node; if (mesh.isMesh) this.pickables.push(mesh); });
       if(this.state.depleted[node.id]!==undefined && this.state.elapsed-this.state.depleted[node.id]>=node.respawnTime && !this.state.nodeLoot[node.id]) this.state.nodeLoot[node.id]={...node.loot};
-      this.nodes.push(node);
+      if(kind==='standingtree'){node.stump=this.cylinder(x,.13,z,.24,.26,'#a58d65');node.stump.visible=false;node.stump.userData.resourceStump=true;}this.nodes.push(node);
     });
   }
   createEnemies() {
@@ -972,16 +975,20 @@ export class World {
     }
     this.updateEquipment();
   }
+  setHarvestTool(id) {if(this.harvestTool===id)return;this.harvestTool=id;this.updateEquipment();}
   updateEquipment() {
     this.renderDirty = true;
     this.playerLight.intensity = this.state.owned.includes('lantern') && this.state.lanternOn !== false ? 3.5 : 0;
-    this.weaponRoot.clear(); const id = this.state.equipment.weapon;
+    this.weaponRoot.traverse(m=>{if(m.userData.generatedHandItem)m.geometry.dispose();});this.weaponRoot.clear(); const id = this.harvestTool||this.state.equipment.weapon;
     if (!id) return;
-    if (id === 'pistol' || id === 'carbine') {
+    if(id==='axe'||id==='pick'){
+      const handle=this.cylinder(0,0,-.25,.035,.85,'#937954',this.weaponRoot,8);handle.rotation.x=.7;handle.userData.generatedHandItem=true;
+      const head=this.box(0,.29,-.5,id==='axe'?.34:.6,.12,.065,'#b5bab0',this.weaponRoot);head.userData.generatedHandItem=true;
+    }else if (id === 'pistol' || id === 'carbine') {
       if (!this.assets) return;
       const model = this.assets[id === 'pistol' ? 'blaster' : 'blaster-repeater'].scene.clone();
       const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3()); model.scale.setScalar(0.8 / Math.max(size.x, size.y, size.z)); this.weaponRoot.add(model);
-    } else { const pipe = this.cylinder(0, 0, -0.3, id === 'spear' ? 0.04 : 0.06, id === 'spear' ? 1.8 : 0.8, '#b2b8a0', this.weaponRoot, 6); pipe.rotation.x = 0.7; }
+    } else { const pipe = this.cylinder(0, 0, -0.3, id === 'spear' ? 0.04 : 0.06, id === 'spear' ? 1.8 : 0.8, '#b2b8a0', this.weaponRoot, 6); pipe.rotation.x = 0.7;pipe.userData.generatedHandItem=true; }
     this.playerLight.intensity = this.state.owned.includes('lantern') && this.state.lanternOn !== false ? 3.5 : 0;
   }
   playCharacterAction(name) {
@@ -1011,8 +1018,8 @@ export class World {
       let visible=node.find?!this.state.findClaims.includes(node.id):time===undefined||this.state.elapsed-time>=node.respawnTime;
       // A restored container must wait until the player leaves its footprint.
       if(visible&&!node.find&&time!==undefined&&node.collider&&circleHitsRect(this.state.x,this.state.z,.3,node.collider)) visible=false;
-      if (visible && !node.group.visible && !node.find) { node.loot = {...(this.state.nodeLoot[node.id]||cycleLoot(node.id,node.originalLoot,Math.floor(this.state.elapsed/node.respawnTime)))}; this.state.nodeLoot[node.id]={...node.loot}; }
-      node.group.visible=visible;node.marker.visible=visible;if(node.collider)node.collider.disabled=!visible;
+      if (visible && !node.group.visible && !node.find) {this.state.brokenNodes=this.state.brokenNodes.filter(id=>id!==node.id); node.loot = {...(this.state.nodeLoot[node.id]||cycleLoot(node.id,node.originalLoot,Math.floor(this.state.elapsed/node.respawnTime)))}; this.state.nodeLoot[node.id]={...node.loot}; }
+      node.group.visible=visible;node.marker.visible=visible;const broken=this.state.brokenNodes.includes(node.id);if(node.group.userData.standing){node.group.userData.standing.visible=!broken;node.group.userData.shards.visible=broken;}if(node.stump)node.stump.visible=!visible;if(node.collider)node.collider.disabled=!visible||broken;
     }
   }
   onRoad(x,z,margin=0) {return [...ROADS,...SCENES,...this.canopies].some(r=>Math.abs(x-r.x)<r.w/2+margin&&Math.abs(z-r.z)<r.d/2+margin);}
@@ -1025,9 +1032,9 @@ export class World {
     return [...this.collisionIndex.query(x-radius,z-radius,x+radius,z+radius)].some(c => !c.disabled && circleHitsRect(x,z,radius,c)) || this.state.placed.some(p=>p.id!=='rug'&&!['wallclock','fishtrophy','wallshelf'].includes(p.id) && circleHitsRect(x,z,radius,solidFootprint(p)));
   }
   repairFurniture() { return repairFurniture(this.colliders,this.state.placed); }
-  furnitureElevation(x,z) { return this.buildings.some(b=>isInsideBuilding(b,x,z))?.205:.025; }
+  furnitureElevation(x,z) { return this.buildings.some(b=>isInsideBuilding(b,x,z))||this.state.construction.some(p=>p.id==='floor'&&Math.abs(x-p.x)<=1&&Math.abs(z-p.z)<=1)?.205:.025; }
   canPlace(item,ignore=-1) {
-    return placementAllowed(item,this.colliders,this.state.placed,ignore) && !overlapsPlayer(item,this.state);
+    if(item.id==='raincatcher'&&this.sheltered(item.x,item.z))return false;return placementAllowed(item,this.colliders,this.state.placed,ignore) && !overlapsPlayer(item,this.state);
   }
   move(x, z) {
     if (!this.blocked(x, this.state.z)) this.state.x = x;
@@ -1047,7 +1054,7 @@ export class World {
       }
       if (!best) return []; gx = best.x; gz = best.z;
     }
-    return gridPath({x:sx,z:sz},{x:gx,z:gz},(x,z)=>this.blocked(x,z),(WORLD_LIMIT*2+3)**2);
+    return gridPath({x:sx,z:sz},{x:gx,z:gz},(x,z)=>this.blocked(x,z),(WORLD_LIMIT*2+3)**2,(ax,az,bx,bz)=>[...this.collisionIndex.query(Math.min(ax,bx)-.3,Math.min(az,bz)-.3,Math.max(ax,bx)+.3,Math.max(az,bz)+.3)].some(r=>r.construction&&!r.disabled&&segmentHitsRect(ax,az,bx,bz,{...r,w:r.w+.6,d:r.d+.6})));
   }
   pointer(clientX, clientY) {
     const rect = this.renderer.domElement.getBoundingClientRect(); this.mouse.set((clientX - rect.left) / rect.width * 2 - 1, -(clientY - rect.top) / rect.height * 2 + 1);
@@ -1152,6 +1159,72 @@ export class World {
       f.light.intensity=on?f.base:0;f.glow.material.emissiveIntensity=on?2:0;if(f.spill)f.spill.material.opacity=on?.15:0;
     }
   }
+  makeResourceNode(group,kind) {
+    const standing=new THREE.Group(),shards=new THREE.Group();group.add(standing,shards);group.userData.standing=standing;group.userData.shards=shards;
+    if(kind==='standingtree'){
+      this.cylinder(0,1.5,0,.18,3,'#65513c',standing);
+      for(const [y,r]of [[2.7,1.1],[3.5,.95],[4.2,.65]]){const m=new THREE.Mesh(new THREE.IcosahedronGeometry(r,0),mat('#526b47'));m.position.y=y;m.scale.y=.8;m.castShadow=true;standing.add(m);}
+      for(const z of [-.28,.28]){const m=this.cylinder(0,.17,z,.16,1.5,'#786344',shards);m.rotation.z=Math.PI/2;}
+    }else{
+      for(const [x,y,z,r]of [[0,.65,0,.8],[-.6,.4,.15,.5],[.55,.35,-.25,.45]]){const m=new THREE.Mesh(new THREE.DodecahedronGeometry(r,0),mat('#81877b'));m.position.set(x,y,z);m.scale.z=.85;m.castShadow=true;m.receiveShadow=true;standing.add(m);}
+      for(let i=0;i<5;i++)this.box((i%3-1)*.35,.1,Math.floor(i/3)*.35-.2,.26,.18,.25,'#8c9081',shards);
+    }
+    shards.visible=false;
+  }
+  makeStructurePart(part,parent) {
+    const group=new THREE.Group();group.position.set(part.x,0,part.z);group.rotation.y=part.axis==='z'?Math.PI/2:0;parent.add(group);
+    if(part.id==='floor'){
+      this.box(0,.09,0,2,.2,2,'#635d4d',group);
+      for(let i=0;i<8;i++)this.box(0,.195,(i-3.5)*.25,1.98,.015,.235,'#998267',group);
+    }else if(part.id==='wall')this.box(0,1.59,0,2,2.8,.16,'#8c8065',group);
+    else if(part.id==='door'){
+      for(const x of [-.8,.8])this.box(x,1.59,0,.4,2.8,.16,'#8c8065',group);
+      this.box(0,2.69,0,1.2,.6,.16,'#8c8065',group);
+      for(const x of [-.62,.62])this.box(x,1.29,0,.07,2.2,.17,'#c3b08c',group);
+    }else{
+      this.box(0,.64,0,2,.9,.16,'#8c8065',group);this.box(0,2.64,0,2,.7,.16,'#8c8065',group);
+      for(const x of [-.78,.78])this.box(x,1.69,0,.44,1.2,.16,'#8c8065',group);
+      const glass=mat('#80a7a0',.18,.25).clone();glass.transparent=true;glass.opacity=.38;glass.userData.baseOpacity=.38;this.box(0,1.69,0,1.12,1.2,.04,'',group,glass);
+      for(const x of [-.58,0,.58])this.box(x,1.69,0,.06,1.25,.16,'#c3b08c',group);
+      for(const y of [1.08,2.3])this.box(0,y,0,1.2,.06,.16,'#c3b08c',group);
+    }
+    group.traverse(m=>{if(m.isMesh&&!m.material.userData.baseOpacity)m.material=m.material.clone();});return group;
+  }
+  rebuildConstruction() {
+    if(this.constructionGroup){this.constructionGroup.traverse(m=>{if(m.isMesh){m.geometry.dispose();m.material.dispose();}});this.scene.remove(this.constructionGroup);}
+    this.colliders=this.colliders.filter(c=>!c.construction);this.collisionIndex=new SpatialIndex();for(const c of this.colliders)this.collisionIndex.add(c);
+    const root=new THREE.Group();this.scene.add(root);this.constructionGroup=root;const batches=new Map(),rooms=closedRooms(this.state.construction);this.constructionRooms=rooms;
+    for(const p of this.state.construction){this.makeStructurePart(p,root);for(const c of structureColliders(p)){c.construction=true;this.colliders.push(c);this.collisionIndex.add(c);}}
+    const floorMeshes=new Set();root.traverse(m=>{if(m.isMesh&&m.position.y<.3)floorMeshes.add(m);});
+    const roofMeshes=new Set();for(const room of rooms)for(const t of room.tiles)roofMeshes.add(this.box(t.x,3.04,t.z,2.16,.12,2.16,'#4d605b',root,mat('#4d605b').clone()));
+    root.updateMatrixWorld(true);root.traverse(m=>{if(!m.isMesh)return;const type=roofMeshes.has(m)?'roof':floorMeshes.has(m)?'floor':'wall',key=type+':'+m.material.color.getHexString()+':'+(m.material.userData.baseOpacity??1);if(!batches.has(key))batches.set(key,{type,material:m.material,meshes:[]});batches.get(key).meshes.push(m);});
+    this.constructionWalls=[];this.constructionRoofs=[];
+    for(const batch of batches.values()){
+      const pieces=batch.meshes.map(m=>{let g=m.geometry.clone();if(g.index){const old=g;g=g.toNonIndexed();old.dispose();}return g.applyMatrix4(m.matrixWorld);}),geometry=mergeGeometries(pieces);pieces.forEach(g=>g.dispose());
+      const material=batch.material.clone();material.transparent=batch.type!=='floor'||material.transparent;material.userData.baseOpacity=batch.material.userData.baseOpacity??1;
+      const mesh=new THREE.Mesh(geometry,material);mesh.castShadow=true;mesh.receiveShadow=true;root.add(mesh);
+      for(const m of batch.meshes){m.parent.remove(m);m.geometry.dispose();m.material.dispose();}
+      if(batch.type==='wall')this.constructionWalls.push(mesh);if(batch.type==='roof')this.constructionRoofs.push(mesh);
+    }
+    this.shelterIndex=new SpatialIndex();for(const r of [...this.buildings,...this.canopies])this.shelterIndex.add(r,.25);for(const room of rooms)for(const t of room.tiles)this.shelterIndex.add({...t,w:2.16,d:2.16});
+    for(const {item,group}of this.placedGroups)group.position.y=this.furnitureElevation(item.x,item.z);
+    this.updateConstructionRoofs(1);this.renderDirty=true;
+  }
+  updateConstructionRoofs(dt) {
+    const inside=this.buildings.some(b=>b.x===-18&&b.z===15&&isInsideBuilding(b,this.state.x,this.state.z))||this.state.construction.some(p=>p.id==='floor'&&Math.abs(p.x-this.state.x)<1&&Math.abs(p.z-this.state.z)<1);
+    for(const [meshes,target]of [[this.constructionWalls,inside?.13:1],[this.constructionRoofs,inside?.035:1]])for(const m of meshes||[]){m.material.opacity=fadeOpacity(m.material.opacity,target*(m.material.userData.baseOpacity??1),dt);m.material.depthWrite=m.material.opacity>.98;m.castShadow=!inside&&(m.material.userData.baseOpacity??1)>.8;}
+  }
+  canBuildStructure(part) {
+    const result=buildAllowed(this.state,part,this.colliders);if(!result.ok)return result;
+    if(Object.entries(STRUCTURES[part.id].cost).some(([id,n])=>(this.state.bag[id]||0)+(this.state.stash[id]||0)<n))return {ok:false,reason:'Недостаточно материалов'};return result;
+  }
+  createStructureGhost(id) {this.removeGhost();this.ghost=new THREE.Group();this.ghost.userData.structureId=null;this.scene.add(this.ghost);return this.ghost;}
+  updateStructureGhost(part,valid) {
+    const ghost=this.ghost;if(!ghost)return;ghost.visible=!!part;if(!part)return;
+    if(ghost.userData.structureId!==part.id){while(ghost.children.length){const c=ghost.children[0];c.traverse(m=>{if(m.isMesh){m.geometry.dispose();m.material.dispose();}});ghost.remove(c);}this.makeStructurePart({id:part.id,x:0,z:0,axis:'x'},ghost);ghost.traverse(m=>{if(m.isMesh){m.material.transparent=true;m.material.opacity=.45;m.material.depthWrite=false;m.castShadow=false;}});ghost.userData.structureId=part.id;}
+    ghost.position.set(part.x,0,part.z);ghost.rotation.y=part.axis==='z'?Math.PI/2:0;ghost.traverse(m=>{if(m.isMesh)m.material.color.set(valid?'#81d6ad':'#ed886e');});
+  }
+
   createGhost(id) { this.removeGhost(); this.ghost = this.makeFurniture(id, true); this.scene.add(this.ghost); return this.ghost; }
   removeGhost() {
     if (this.ghost) {
@@ -1174,7 +1247,7 @@ export class World {
     this.scene.add(line); this.effects ||= []; this.effects.push({ mesh: line, life: 0.15, max: 0.15 }); this.impact(tx, 1.1, tz);
   }
   update(dt, moving, focus = true) {
-    this.time += dt; this.updateRoofs(dt);this.syncFurniture();const weather=weatherAt(this.state.elapsed);this.updateRain(dt,weather);
+    this.time += dt; this.updateRoofs(dt);this.updateConstructionRoofs(dt);this.syncFurniture();const weather=weatherAt(this.state.elapsed);this.updateRain(dt,weather);
     const player = this.player;
     if (focus) {
       const desired = new THREE.Vector3(this.state.x + 1, 0, this.state.z - 1);

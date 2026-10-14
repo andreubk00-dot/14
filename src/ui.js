@@ -1,3 +1,4 @@
+import {STRUCTURES} from './construction.js';
 import {STATION_UPGRADES,dryingBatch,collectorCapacity} from './upgrades.js';
 import {gearProfile} from './survival.js';
 import {BAITS,FISHING_SPOTS,gameHour,weatherAt} from './expedition.js';
@@ -169,6 +170,7 @@ export class UI {
     const headers = {
       craft: ['МАСТЕРСКАЯ', 'Станция рецептов', 'Создавай то, что поможет идти дальше.'],
       inventory: ['СНАРЯЖЕНИЕ И ДОБЫЧА', 'Инвентарь', ''],
+      architecture:['ТВОЙ ДОМ','Строительство','Полы соединяются с входом. Крыша появляется над закрытым контуром. Разбор возвращает материалы.'],
       station:['ОБУСТРОЙСТВО','Рабочая станция','Улучшения устанавливаются на выбранный объект.'],
       dryer:['ЗАПАСЫ ДЛЯ ВЫЛАЗКИ','Сушилка для улова','Загрузи рыбу и траву. Готовая еда появится после цикла.'],
       loadouts:['ПОДГОТОВКА','Комплекты экипировки','Сохрани текущую экипировку в один из двух комплектов.'],
@@ -193,6 +195,7 @@ export class UI {
       const nearHome = state.x >= -27 && state.x <= -6 && state.z >= 5 && state.z <= 27;
       body += `<div class="station-status ${isBuild ? nearHome ? 'online' : '' : nearStation ? 'online' : ''}"><i></i>${isBuild ? nearHome ? 'Ты дома · можно строить' : 'Для строительства вернись в убежище' : nearStation ? 'Станция рядом · готова к работе' : 'Изготовление доступно рядом со станцией'}</div>`;
       if (!(isBuild ? nearHome : nearStation)) body += `<button class="station-route secondary full-width" data-action="${isBuild ? 'home' : 'station-route'}">${icon('pin', 17)} ${isBuild ? 'Проложить путь домой' : 'Проложить путь к станции'} ${icon('arrow', 15)}</button>`;
+      if(isBuild)body+='<button class="primary full-width" data-action="architecture">Пристройки · полы, стены и окна</button>';
       if (!isBuild) body += `<nav class="category-tabs">${Object.entries(categories).map(([id, name]) => `<button class="${id === category ? 'active' : ''}" data-action="category" data-category="${id}">${categoryIcon(id)}<span>${name}</span></button>`).join('')}</nav>`;
       body += `<div class="recipe-tools"><label>${icon('search', 17)}<input id="recipe-search" type="search" placeholder="${isBuild ? 'Найти постройку…' : 'Найти рецепт…'}" value="${escape(this.search)}" aria-label="Поиск рецептов"></label><button class="filter-button ${this.onlyAvailable ? 'active' : ''}" data-action="available-filter" aria-pressed="${this.onlyAvailable}" title="Показать только доступные">${icon('filter', 16)} Можно создать</button></div><div class="recipe-cost-guide">Материалы: в наличии / нужно · рюкзак и склад</div>`;
       const recipes = RECIPES.filter(r => r.category === category && (!isBuild || r.placeable) && r.name.toLocaleLowerCase('ru').includes(this.search.toLocaleLowerCase('ru')) && (!this.onlyAvailable || craftStatus(state, r).ok));
@@ -209,6 +212,7 @@ export class UI {
       if (isBuild) body += this.productionOverview();
       if(isBuild) body+=`<div class="furniture-controls">${state.placed.map((p,index)=>['lamp','foundlamp','desklamp','homeradio','recordplayer'].includes(p.id)?`<button class="secondary" data-action="toggle-furniture" data-index="${index}" ${!nearHome?'disabled':''}>${recipeIcon(p.id,26)} ${p.enabled?'Выключить':'Включить'} · ${RECIPES.find(r=>r.id===p.id).name}</button>`:'').join('')}</div>`;
     }
+    if(this.panel==='architecture')body=`<div class="recipe-list">${Object.entries(STRUCTURES).map(([id,spec])=>`<article class="recipe-card"><div class="recipe-top">${recipeIcon('build-'+id,42)}<div><h3>${spec.name}</h3><p>${spec.desc}</p></div></div><div class="costs">${costHTML(state,spec.cost)}</div><button class="primary full-width" data-action="structure-select" data-id="${id}" ${Object.entries(spec.cost).some(([r,n])=>total(state,r)<n)?'disabled':''}>${id==='dismantle'?'Выбрать деталь':'Разместить'}</button></article>`).join('')}</div>`;
     if (this.panel === 'inventory') {
       body = `<nav class="category-tabs inventory-tabs"><button data-action="inventory-tab" data-view="bag" class="${this.inventoryView !== 'hotbar' ? 'active' : ''}">${icon('bag',22)} Предметы</button><button data-action="inventory-tab" data-view="hotbar" class="${this.inventoryView === 'hotbar' ? 'active' : ''}">${icon('hotbar',22)} Хотбар</button></nav>`;
       if(this.inventoryView === 'hotbar') body += this.hotbarEditor();
@@ -247,7 +251,7 @@ export class UI {
     const nearbyFish=FISHING_SPOTS.some(p=>Math.hypot(p.x-state.x,p.z-state.z)<3),selectedBait=BAITS[state.fishingBait];
     const canCast=nearbyFish&&state.owned.includes('rod')&&(!selectedBait.tool||state.owned.includes(selectedBait.tool))&&(!selectedBait.resource||state.bag[selectedBait.resource]>0);
     const footer=this.panel==='fishing'?`<button class="primary full-width" data-action="cast-selected" ${canCast?'':'disabled'}>Забросить удочку ${icon('arrow',18)}</button>`:`${icon('clock',14)} Игра на паузе <span>ESC — закрыть</span>`;
-    element.innerHTML = `<header class="panel-header"><div class="eyebrow">${eyebrow}</div><button class="icon-button" data-action="close" aria-label="Закрыть меню">${icon('close')}</button><div class="panel-title"><span class="panel-title-icon">${icon(({ craft: 'craft', inventory: 'bag', storage: 'chest', build: 'build', map: 'map', journal: 'book', settings: 'settings', station:'craft', dryer:'dryrack',loadouts:'gearrack',fishing:'rod',garden:'herbs',note:'book',orders: 'board', helper: 'herbs' })[this.panel], 27)}</span><h2>${title}</h2></div>${subtitle ? `<p>${subtitle}</p>` : ''}</header><div class="panel-body">${body}</div><footer class="panel-footer">${footer}</footer>`;
+    element.innerHTML = `<header class="panel-header"><div class="eyebrow">${eyebrow}</div><button class="icon-button" data-action="close" aria-label="Закрыть меню">${icon('close')}</button><div class="panel-title"><span class="panel-title-icon">${icon(({ craft: 'craft', inventory: 'bag', storage: 'chest', build: 'build', map: 'map', journal: 'book', settings: 'settings', architecture:'build',station:'craft', dryer:'dryrack',loadouts:'gearrack',fishing:'rod',garden:'herbs',note:'book',orders: 'board', helper: 'herbs' })[this.panel], 27)}</span><h2>${title}</h2></div>${subtitle ? `<p>${subtitle}</p>` : ''}</header><div class="panel-body">${body}</div><footer class="panel-footer">${footer}</footer>`;
     element.querySelector('.panel-body').scrollTop = scroll;
     if (this.panel === 'map') {
       const canvas = document.getElementById('large-map'); this.renderMap(canvas, true);
@@ -369,7 +373,7 @@ export class UI {
   updateFishNeedle(value,tension) {const bar=document.querySelector('.line-tension i');if(bar)bar.style.width=`${(tension??.25)*100}%`; const needle = document.querySelector('.fish-meter i'); if (needle) needle.style.left = `${value}%`; }
   buildHint(recipe, valid, rotation) {
     const element = document.getElementById('build-hint'); element.hidden = !recipe;
-    if (recipe) element.innerHTML = `${icon('build', 20)}<div><strong>${recipe.name}</strong><span>${['wallclock','fishtrophy','wallshelf'].includes(recipe.id)?(valid?'Нажми, чтобы закрепить на стене':'Выбери стену внутри убежища'):valid?'Нажми на землю, чтобы разместить':'Выбери свободное место в убежище'}</span></div>${['wallclock','fishtrophy','wallshelf'].includes(recipe.id)?'':`<button data-action="rotate-build">${icon('rotate',17)} ${Math.round(rotation*180/Math.PI)}°</button>`}<button data-action="cancel-build" aria-label="Отменить строительство">${icon('close', 17)}</button>`;
+    if (recipe) element.innerHTML = `${icon('build', 20)}<div><strong>${recipe.name}</strong><span>${['wallclock','fishtrophy','wallshelf'].includes(recipe.id)?(valid?'Нажми, чтобы закрепить на стене':'Выбери стену внутри убежища'):valid?'Нажми на землю, чтобы разместить':'Выбери свободное место в убежище'}</span></div>${['wallclock','fishtrophy','wallshelf'].includes(recipe.id)||recipe.structural&&['floor','dismantle'].includes(recipe.id)?'':`<button data-action="rotate-build">${icon('rotate',17)} ${Math.round(rotation*180/Math.PI)}°</button>`}<button data-action="cancel-build" aria-label="Отменить строительство">${icon('close', 17)}</button>`;
   }
   floating(items, world) {
     const root = document.getElementById('floating-text'); root.replaceChildren();

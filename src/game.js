@@ -1,3 +1,4 @@
+import {STRUCTURES,buildAllowed,dismantleAllowed,cleanConstruction} from './construction.js';
 import {STATION_UPGRADES,collectorCapacity,dryingBatch} from './upgrades.js';
 import { GATES, BAITS, fishingProbabilities, weatherAt } from './expedition.js';
 import { FINDS, CROPS, MEMORIES, cropInfo } from './homelife.js';
@@ -5,6 +6,7 @@ import { footprint, overlaps, placementAllowed } from './layout.js';
 import { WORLD_LIMIT, LOCATIONS } from './district.js';
 export const SAVE_KEY = 'quiet-district-save-v1';
 export const RESOURCES = {
+ stone:{name:'Камень',desc:'Для оснований и деревянных стен. Добывается киркой из валунов.',color:'#a9b7b6',weight:1},
   filterunit:{name:'Сменный фильтр',desc:'Для двойного дождевого накопителя. Встречается в насосной и хозяйственных запасах.',color:'#b9cec0',weight:1},
   pumpmodule:{name:'Насосный узел',desc:'Для накопителя и сортировки лома. Ищи в насосной и ремонтных помещениях.',color:'#92b8bf',weight:2},
   battery:{name:'Аккумулятор',desc:'Питает улучшенную сушилку и сортировочный модуль. Сохранился в гаражной технике.',color:'#d3b774',weight:1.5},
@@ -92,7 +94,7 @@ export const FISH = [
 export const HOME = { x: -16, z: 16 };
 export function freshState() {
   return {
-    loadouts:[null,null],openedGates:[],packedFurniture:[],fishingBait:'none',visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
+    construction:[],brokenNodes:[],loadouts:[null,null],openedGates:[],packedFurniture:[],fishingBait:'none',visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
     version: 1, x: HOME.x + 1, z: HOME.z + 2, health: 100, stamina: 100,
     stash: { wood: 3, metal: 2, cloth: 2 }, bag: {}, owned: [],
     equipment: { weapon: 'pipe', armor: null, bag: null, boots: null },
@@ -116,6 +118,7 @@ function cleanFurniture(p,elapsed) {
 export function validateSave(input) {
   if (!input || input.version !== 1) return null;
   const state = freshState();
+  state.construction=cleanConstruction(input.construction);state.brokenNodes=[...new Set((Array.isArray(input.brokenNodes)?input.brokenNodes:[]).filter(id=>typeof id==='string'&&/^node-\d{1,3}$/.test(id)))].slice(0,500);
   state.openedGates=[...new Set((Array.isArray(input.openedGates)?input.openedGates:[]).filter(id=>GATES.some(g=>g.id===id)))];
   state.fishingBait=Object.hasOwn(BAITS,input.fishingBait)?input.fishingBait:'none';
   for(const field of ['finds','storedFinds','lastFindHaul']) for(const id of Object.keys(FINDS)) if(Number.isInteger(input[field]?.[id])&&input[field][id]>0) state[field][id]=Math.min(99,input[field][id]);
@@ -456,4 +459,17 @@ export function upgradeStation(state,item){
  if(item.upgrade===1)return {ok:false,reason:'Станция уже улучшена'};
  if(!spend(state,spec.cost))return {ok:false,reason:'Не хватает материалов для улучшения'};
  item.upgrade=1;return {ok:true};
+}
+
+export function buildStructure(state,part,obstacles=[]){
+ if(state.x<-27||state.x>-6||state.z<5||state.z>27)return {ok:false,reason:'Строительство доступно у убежища'};
+ const status=buildAllowed(state,part,obstacles);if(!status.ok)return status;
+ if(!spend(state,STRUCTURES[part.id].cost))return {ok:false,reason:'Не хватает материалов'};
+ state.construction.push({...part});return {ok:true};
+}
+export function dismantleStructure(state,part){
+ if(state.x<-27||state.x>-6||state.z<5||state.z>27)return {ok:false,reason:'Разбор доступен у убежища'};
+ const result=dismantleAllowed(state,part);if(!result.ok)return result;
+ for(const [id,n]of Object.entries(STRUCTURES[part.id].cost))state.stash[id]=(state.stash[id]||0)+n;
+ state.construction.splice(state.construction.indexOf(part),1);return {ok:true};
 }

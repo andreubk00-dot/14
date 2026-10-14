@@ -12,7 +12,8 @@ export const CROPS={
  vegetables:{name:'Корнеплоды',interval:180,cost:{seeds:2,water:1},loot:{vegetables:4},color:'#dd9e65'},
  flowers:{name:'Полевые цветы',interval:150,cost:{seeds:1,water:1},loot:{flowers:4},color:'#d69eb6'},
 };
-export const SCENES=[{x:-17,z:-11,w:22,d:3},{x:9,z:36,w:6,d:6},{x:-29,z:33,w:8,d:7},{x:54,z:21,w:7,d:6}];
+export const RESOURCE_SITES=[['tree',-29,14],['tree',-32,19],['tree',-35,13],['tree',-29,26],['tree',-7,30],['tree',7,29],['stone',-31,9],['stone',-30,28.5],['stone',-8,33],['stone',6,27]];
+export const SCENES=[...RESOURCE_SITES.map(([,x,z])=>({x,z,w:4,d:4})),{x:-17,z:-11,w:22,d:3},{x:9,z:36,w:6,d:6},{x:-29,z:33,w:8,d:7},{x:54,z:21,w:7,d:6}];
 export const MEMORIES=[
  {id:'pumpstation',name:'Бирка на фильтровом шкафу',x:46,z:-19.3,text:'«Фильтры хранить сухими. Два картриджа и малый насос подойдут для дворового накопителя. Подачу отключить перед заменой». Нижнюю строку размыло водой.'},
  {id:'garage',name:'Лист ремонта агрегатов',x:-10,z:-39,text:'«Аккумулятор для вентилятора отложен. Сортировщик тоже работает на малом насосе: меньше лома уходит в отходы. Калитку открыть болторезом — длинная дорога с грузом надоела». Последняя подпись осталась без даты.'},
@@ -33,7 +34,7 @@ export function machineKind(node) {
  return null;
 }
 export function dismantleInfo(owned,node) {
- const kind=machineKind(node),data={radio:{duration:2.8,tool:'wrench'},appliance:{duration:3.5,tool:'wrench'},switchboard:{duration:3.8,tool:'cutter'},motor:{duration:5,tool:'wrench'}}[kind];
+ const kind=machineKind(node),data={standingtree:{duration:4.5,tool:'axe'},quarry:{duration:4,tool:'pick'},radio:{duration:2.8,tool:'wrench'},appliance:{duration:3.5,tool:'wrench'},switchboard:{duration:3.8,tool:'cutter'},motor:{duration:5,tool:'wrench'}}[kind];
  if(!data) return {duration:['tree','ore'].includes(node.type)?1.8:1.1,kind:null,fast:false};
  const fast=owned.includes(data.tool);return {...data,kind,fast,duration:fast?data.duration*.5:data.duration};
 }

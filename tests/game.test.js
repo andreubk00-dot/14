@@ -510,3 +510,38 @@ test('New finds remain unique, retain switches through storage and fit the actua
 test('Reel tension makes surge pulls risky, release creates recovery time and repeated clicks do not grant free hits',()=>{
  const f={phase:'reel',timer:3.4,totalTime:3.4,tension:.7,needle:50,target:50,hits:0,misses:0};assert.equal(reelMood(f.timer),'surge');assert.equal(reelInput(f,'pull'),'escape');f.tension=.8;assert.equal(reelInput(f,'relax'),'relax');assert.equal(f.tension,.4);assert.equal(reelInput(f,'pull'),'hold');f.timer=4.3;f.tension=.3;assert.equal(reelInput(f,'pull'),'hit');assert.equal(f.hits,1);assert.equal(reelInput(f,'pull'),'hold');assert.equal(f.hits,1);f.timer=5;const prior=f.tension;assert.equal(advanceReel(f,.05),false);assert.ok(f.tension<prior);assert.equal(f.mood,'slack');f.timer=6;f.totalTime=23;assert.equal(advanceReel(f,.05),true);
 });
+
+import {buildStructure,dismantleStructure} from '../src/game.js';
+import {buildAllowed,closedRooms,dismantleAllowed,structureColliders,cleanConstruction} from '../src/construction.js';
+const annexState=()=>{const s=freshState();s.stash={wood:100,stone:100,metal:100,cloth:100};return s;};
+test('Annex placement spends only valid costs and keeps the home passage open',()=>{
+ const s=annexState(),before=structuredClone(s.stash);assert.equal(buildStructure(s,{id:'floor',x:-16,z:20.5}).ok,false);assert.deepEqual(s.stash,before);
+ assert.equal(buildStructure(s,{id:'floor',x:-18,z:20.5}).ok,true);assert.equal(s.stash.wood,96);assert.equal(s.stash.stone,98);
+ assert.equal(buildStructure(s,{id:'wall',x:-18,z:19.5,axis:'x'}).ok,false);
+ assert.equal(buildStructure(s,{id:'floor',x:-18,z:22.5}).ok,true);
+ assert.equal(buildStructure(s,{id:'wall',x:-18,z:21.5,axis:'x'}).ok,false);assert.equal(buildStructure(s,{id:'door',x:-18,z:21.5,axis:'x'}).ok,true);
+});
+test('Closed annex gets a roof, wall removal opens it, refund cannot repeat',()=>{
+ const s=annexState();buildStructure(s,{id:'floor',x:-18,z:20.5});
+ for(const p of [{id:'wall',x:-19,z:20.5,axis:'z'},{id:'window',x:-17,z:20.5,axis:'z'},{id:'door',x:-18,z:21.5,axis:'x'}])assert.equal(buildStructure(s,p).ok,true);
+ assert.equal(closedRooms(s.construction).length,1);assert.deepEqual(cleanConstruction(s.construction),s.construction);
+ assert.equal(validateSave(JSON.parse(JSON.stringify(s))).construction.length,4);
+ const wall=s.construction[1],before=s.stash.wood;assert.equal(dismantleStructure(s,wall).ok,true);assert.equal(s.stash.wood,before+3);assert.equal(closedRooms(s.construction).length,0);assert.equal(dismantleStructure(s,wall).ok,false);
+});
+test('Construction protects players, furniture, roots and old saves',()=>{
+ const s=annexState();s.construction=[{id:'floor',x:-18,z:20.5},{id:'floor',x:-18,z:22.5}];
+ assert.equal(dismantleAllowed(s,s.construction[0]).ok,false);s.placed=[{id:'bed',x:-18,z:22.5,rotation:0}];assert.equal(dismantleAllowed(s,s.construction[1]).ok,false);
+ s.x=-19;s.z=20.5;assert.equal(buildAllowed(s,{id:'wall',x:-19,z:20.5,axis:'z'}).ok,false);
+ assert.deepEqual(validateSave({...freshState(),construction:undefined}).construction,[]);assert.deepEqual(cleanConstruction([{id:'wall',x:0,z:0,axis:'x'}]),[]);
+ assert.equal(structureColliders({id:'door',x:0,z:0,axis:'x'}).length,2);
+});
+test('Navigation checks fractional walls between free grid points',()=>{
+ const blocked=(x,z)=>Math.abs(x)>2||Math.abs(z)>2;
+ assert.deepEqual(gridPath({x:0,z:0},{x:0,z:1},blocked,100,(ax,az,bx,bz)=>az<=.5&&bz>.5||bz<=.5&&az>.5),[]);
+});
+test('An unfinished extension keeps a closed neighbouring room roof and leaves outdoor rain collection available',()=>{
+ const s=annexState();s.construction=[{id:'floor',x:-18,z:20.5},{id:'floor',x:-18,z:22.5},{id:'wall',x:-19,z:20.5,axis:'z'},{id:'window',x:-17,z:20.5,axis:'z'},{id:'door',x:-18,z:21.5,axis:'x'}];
+ const rooms=closedRooms(s.construction);assert.equal(rooms.length,1);assert.equal(rooms[0].tiles.length,1);
+ s.placed=[{id:'raincatcher',x:-18,z:22.5,rotation:0}];assert.equal(buildAllowed(s,{id:'wall',x:-17,z:22.5,axis:'z'}).ok,true);
+ s.placed[0].z=20.5;s.construction.pop();assert.equal(buildAllowed(s,{id:'door',x:-18,z:21.5,axis:'x'}).ok,false);
+});

@@ -12,6 +12,12 @@ const shell = path('M12 40Q0 8 32 7Q64 8 52 40L40 56H24Z','#c6a4b8')+line(18,18,
 const station = c => rect(8,23,48,33,c,4)+rect(14,10,36,15,dark)+rect(19,15,26,5,steel)+rect(14,32,20,17,dark)+circle(24,40,5,gold)+rect(39,31,11,5,steel)+rect(39,42,11,5,steel)+rect(13,56,7,4,dark)+rect(44,56,7,4,dark);
 const bed = rect(8,31,48,20,wood)+rect(10,23,44,16,'#7daa8a',4)+rect(12,20,13,16,'#eae0c2',3)+path('M29 24H53V45H29Z','#9fbd91')+rect(8,49,5,9,dark)+rect(51,49,5,9,dark);
 const art = {
+ stone:path('M7 42L13 17L34 8L54 23L58 45L33 57Z',steel)+path('M13 17L34 8L32 34L7 42Z','#c6d2ce')+path('M32 34L54 23L58 45L33 57Z',dark),
+ 'build-floor':path('M5 29L31 10L59 29L33 54Z',wood)+[0,1,2].map(i=>line(13+i*10,23-i*2,38+i*5,45-i*5,gold,2)).join(''),
+ 'build-wall':rect(6,10,52,46,wood)+[21,32,43].map(y=>line(9,y,55,y,gold,2)).join(''),
+ 'build-window':rect(6,9,52,47,wood)+rect(17,17,30,27,'#94b6b3')+line(32,17,32,44,gold)+line(17,30,47,30,gold)+rect(13,44,38,5,gold),
+ 'build-door':rect(6,8,52,49,wood)+rect(21,22,22,35,dark)+rect(17,18,30,6,gold),
+ 'build-dismantle':line(12,55,45,10,wood,7)+path('M26 12H52V24H26Z',steel)+circle(33,18,3,gold),
  desklamp:rect(10,44,44,6,wood)+rect(14,49,5,10,dark)+rect(45,49,5,10,dark)+rect(29,21,5,23,steel)+path('M18 12H46L52 26H12Z',gold)+rect(23,40,20,4,steel),
  homeradio:rect(9,20,46,34,wood,5)+rect(14,25,23,23,dark)+[29,35,41].map(y=>line(18,y,33,y,steel,2)).join('')+circle(46,36,5,gold)+line(42,18,51,6,steel,2),
  wallshelf:rect(5,40,54,7,wood)+rect(10,47,5,12,dark)+rect(49,47,5,12,dark)+rect(12,20,13,20,'#bdc5aa')+rect(31,13,8,27,'#8dada6')+rect(41,17,10,23,gold),
