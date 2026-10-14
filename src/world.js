@@ -78,7 +78,7 @@ export class World {
     const excluded = new Set([this.genIndicator, this.towerIndicator, this.water, this.destination, this.selectionRing,
       this.homeLamp.glow, this.homeLamp.spill, ...this.lights.flatMap(l => [l.glow, l.spill].filter(Boolean))]);
     this.scene.traverse(mesh => {
-      if (mesh.userData.cutaway || !mesh.isMesh || excluded.has(mesh) || this.pickables.includes(mesh) || mesh.material.isShaderMaterial || mesh.material.transparent) return;
+      if (mesh.userData.cutaway || mesh.isInstancedMesh || !mesh.isMesh || excluded.has(mesh) || this.pickables.includes(mesh) || mesh.material.isShaderMaterial || mesh.material.transparent) return;
       let parent = mesh;
       while (parent) { if (this.gates.some(g=>g.group===parent) || parent === this.bridgeGroup || parent === this.solarRoof || parent === this.precisionTool || parent === this.receiverModel) return; parent = parent.parent; }
       const key = mesh.material.uuid;
@@ -168,7 +168,7 @@ export class World {
     this.mirrors=new DistrictReflections(this);this.reflection=this.mirrors.capture;
     for (let i = 0; i < 19; i++) this.puddle(rng() * 7 - 3.5, rng() * 78 - 39, 0.9 + rng() * 2.5, 0.5 + rng());
     this.mirrors.surface(-.8,17,2.5,1.15);this.mirrors.surface(-18,23,2,1);
-    this.buildHome(); this.buildMarket(); this.buildDepot(); this.furnishExpeditions(); this.buildOutskirts(); this.buildScenes(); this.buildExpandedDistrict(); this.buildNewQuarter(); this.buildPond(); this.buildTower();
+    this.buildHome(); this.buildMarket(); this.buildDepot(); this.furnishExpeditions(); this.buildOutskirts(); this.buildScenes(); this.buildExpandedDistrict(); this.buildNewQuarter(); this.buildDeepDistrict(); this.buildPond(); this.buildTower();
     // Treelines frame the district, leaving the traversable paths readable.
     for (let i = 0; i < 180; i++) {
       const x = rng() * 126 - 63, z = rng() * 126 - 63;
@@ -497,6 +497,17 @@ export class World {
   }
   sheltered(x,z) {return this.buildings.some(b=>isInsideBuilding(b,x,z))||this.canopies.some(c=>isInsideBuilding(c,x,z));}
   syncGates() {for(const g of this.gates){const opened=this.state.openedGates.includes(g.id);g.group.visible=!opened;g.collider.disabled=opened;}this.renderDirty=true;}
+  createReeds(){
+    this.reedBases=[];
+    for(const [x,z,rx,rz]of [[23,-24,10,8.5],[30,59,7.5,4.3]])for(let i=0;i<18;i++){const a=i*.35;const xx=x+Math.cos(a)*rx,zz=z+Math.sin(a)*rz;if(this.blocked(xx,zz,.2)||this.onRoad(xx,zz,.4))continue;for(let j=0;j<3;j++)this.reedBases.push({x:xx+Math.sin(j*2)*.22,z:zz+Math.cos(j*2)*.22,h:.6+(i%4)*.12,phase:i+j});}
+    this.reedStems=new THREE.InstancedMesh(new THREE.CylinderGeometry(.018,.026,1,5),mat('#829771'),this.reedBases.length);
+    this.reedHeads=new THREE.InstancedMesh(new THREE.CylinderGeometry(.055,.045,.23,6),mat('#a5966c'),this.reedBases.length);this.scene.add(this.reedStems,this.reedHeads);this.reedStems.frustumCulled=this.reedHeads.frustumCulled=false;this.updateReeds(true);
+  }
+  updateReeds(force=false){
+    if(!this.reedStems||!force&&(this.time-(this.reedTime||0)<.1||![[23,-24],[30,59]].some(([x,z])=>Math.hypot(x-this.state.x,z-this.state.z)<25)))return;
+    this.reedTime=this.time;const obj=new THREE.Object3D(),q=new THREE.Quaternion(),axis=new THREE.Vector3(0,0,1),tip=new THREE.Vector3();
+    this.reedBases.forEach((b,i)=>{q.setFromAxisAngle(axis,Math.sin(this.time*.85+b.phase)*.075);obj.quaternion.copy(q);obj.position.set(b.x,.06+b.h/2,b.z);obj.scale.set(1,b.h,1);obj.updateMatrix();this.reedStems.setMatrixAt(i,obj.matrix);tip.set(0,b.h/2,0).applyQuaternion(q);obj.position.add(tip);obj.scale.set(1,1,1);obj.updateMatrix();this.reedHeads.setMatrixAt(i,obj.matrix);});this.reedStems.instanceMatrix.needsUpdate=this.reedHeads.instanceMatrix.needsUpdate=true;
+  }
   createRain() {
     const count=240,positions=new Float32Array(count*6);this.rainSeeds=[];
     for(let i=0;i<count;i++)this.rainSeeds.push([rng()*34-17,rng()*34-17,rng()*10]);
@@ -517,6 +528,36 @@ export class World {
   partition(building,x,z,w,d,h=2.8) {
     const mesh=this.wall(x,z,w,d,h,'#999780');this.cutawayDetail(mesh,building);return mesh;
   }
+  buildDeepDistrict() {
+    this.building(49,-25,10,8,3.7,'#849b91','НАСОСНАЯ',{pitch:.09,roofColor:'#657f79',signOffset:.3});
+    const pump=this.buildings.at(-1);pump.ambience='water';for(const [x,h]of [[47.5,.8],[48.7,1.2],[50.3,.6]])this.cutawayDetail(this.box(x,.5+h/2,-28.86,.22,h,.012,'#607b69'),pump);this.canopy(49,-19.8,11,2.2,2.9,'#8a9b8d');
+    this.partition(pump,49,-26,6,.18,2.8);const feed=this.cylinder(49,1.5,-28.5,.09,6,'#89a39b');feed.rotation.z=Math.PI/2;this.cutawayDetail(feed,pump);for(const x of [47,50])this.cutawayDetail(this.box(x,1.45,-28.68,.1,.3,.4,'#657c71'),pump);
+    this.box(46,.65,-27.8,1.2,1.3,1.1,'#678f87');this.collider(46,-27.8,1.2,1.1);
+    for(const x of [46.5,49.5]){this.cylinder(x,.62,-25,.28,.9,'#78998e');this.box(x,.3,-25,1,.18,1,'#697e73');this.collider(x,-25,1,1);}
+    this.box(52,.75,-27.3,1.1,1.5,.8,'#9dac97');this.collider(52,-27.3,1.1,.8);
+    const basin=new THREE.Mesh(new THREE.PlaneGeometry(2.3,1.5),new THREE.MeshStandardMaterial({color:'#638c83',transparent:true,opacity:.65,roughness:.12,metalness:.35}));basin.rotation.x=-Math.PI/2;basin.position.set(52,.202,-25);this.scene.add(basin);
+    for(const z of [-27.5,-23.5]){this.box(53.65,.36,z,.12,.3,2.3,'#687c68');this.box(53.5,.205,z,.25,.02,2.4,'#45594c');}
+    this.building(-15,-48,13,10,4.7,'#8c8a78','ГАРАЖ БРИГАДЫ',{pitch:.12,roofStyle:'hip',roofColor:'#756f5e',signOffset:.35});
+    const garage=this.buildings.at(-1);garage.ambience='metal';for(const x of [-19.5,-18])this.cutawayDetail(this.box(x,2,-42.86,.16,.7,.012,'#80684c'),garage);this.canopy(-15,-41.8,14,2.4,3.3,'#9c9475');
+    for(const x of [-19,-11]){this.box(x,.4,-49,1.8,.8,3.8,'#6c7d70');this.collider(x,-49,1.8,3.8);this.box(x,.87,-49,1.9,.14,3.9,'#a3ab8d');}
+    this.box(-15,.21,-49,2.2,.025,4.5,'#45594f');for(const x of [-16.25,-13.75])this.box(x,.25,-49,.12,.1,4.6,'#ad9b75');
+    this.box(-19.2,.8,-44.8,2,1.6,.8,'#978369');this.collider(-19.2,-44.8,2,.8);
+    for(const x of [-20.8,-9.2]){const rack=this.box(x,2,-48,.12,3.6,.25,'#a59b79');this.cutawayDetail(rack,garage);}
+    for(const [z,d,h,shade,pitch]of [[50,8,3.3,'#b19a7d',.38],[59,6,3,'#8d9a89',.28]]){
+      this.building(10,z,8,d,h,shade,z===50?'ДОМ С КУХНЕЙ':'ШВЕЙНЫЙ ДОМ',{pitch,roofStyle:z===50?'gable':'hip',roofColor:z===50?'#86755e':'#657f71'});const b=this.buildings.at(-1);b.ambience='room';
+      this.partition(b,11.5,z-1,.15,2.6,2.5);this.canopy(10,z+d/2+.9,9,1.8,2.4,shade);
+      if(z===50){this.box(7.1,.7,48,1.2,1.4,1.5,'#91856e');this.collider(7.1,48,1.2,1.5);this.box(8.4,.8,51.5,1.5,.14,1,'#b2a07b');this.collider(8.4,51.5,1.5,1);for(const x of [7.82,8.98])for(const z of [51.15,51.85])this.box(x,.46,z,.09,.54,.09,'#857456');for(const x of [8,8.7])this.cylinder(x,.95,51.5,.09,.16,'#d2c6aa');}
+      else {this.box(7.4,.75,60,1.6,.15,1,'#b7a17d');this.collider(7.4,60,1.6,1);for(const x of [6.76,8.04])for(const zz of [59.65,60.35])this.box(x,.44,zz,.09,.5,.09,'#857456');this.box(7.3,1,60,.55,.4,.35,'#607c6e');this.box(12.7,.45,61.5,1,.9,1.6,'#7f8e79');this.collider(12.7,61.5,1,1.6);}
+    }
+    // Both fences can be walked around. Opening their gates keeps the direct route clear.
+    for(const [x,z,left,right]of [[-15,-37,-24,-6],[49,-16,42,56]]){
+      for(const [a,b]of [[left,x-1.5],[x+1.5,right]]){this.wall((a+b)/2,z,b-a,.16,1,'#7d876c');for(let xx=a;xx<=b;xx+=2)this.box(xx,.7,z,.15,1.4,.18,'#a19778');}
+    }
+    this.lamp(42,-18,3.6,true);this.lamp(-6,-39,3.7,true);this.lamp(4.8,56,3.2,true);
+    for(const [x,z,w,d]of [[44,-18,1.5,.8],[-12,-39,2,1],[13,56,1.6,.7]])this.mirrors.surface(x,z,w,d);
+    for(const [x,z]of [[46,-20.7],[-10,-42.6],[6.3,49]]){this.box(x,.215,z,.7,.012,.5,'#6c705d');this.box(x+.2,.22,z+.15,.15,.018,.18,'#a39774');}
+  }
+  ambience() {const b=this.buildings.find(b=>isInsideBuilding(b,this.state.x,this.state.z));if(!b)return 'outside';return b.ambience||'room';}
   buildNewQuarter() {
     this.building(26,36,12,8,3.8,'#a09579','КАФЕ У САДА',{roofStyle:'hip',pitch:.34,signOffset:.3});
     const cafe=this.buildings.at(-1);this.canopy(26,41.1,13,2.2,2.9,'#a59170');this.box(26,.025,41.1,13,.05,2.2,'#928667');
@@ -637,7 +678,7 @@ export class World {
     for(let x=25.5;x<29.5;x+=.4)this.box(x,.09,55.2,.34,.12,2,'#978967');
     this.marker(28,.9,55.2,'#87c5be');
     this.mirrors.surface(23,-24,9.5,9.5*.85,true);this.mirrors.surface(30,59,7,7*.55,true);
-    this.createRain();
+    this.createRain();this.createReeds();
     this.label('ЗАТОПЛЕННЫЙ ПРИЧАЛ', 13, 2.0, -14, 3.5, '#c7c4a6'); this.box(13, 0.9, -14.1, 0.07, 1.8, 0.07, '#77765f');
   }
   marker(x, y, z, c) {
@@ -747,6 +788,18 @@ export class World {
       ['crate','Монтажные запасы',-50,-23,{parts:4,metal:4}],
       ['scrap','Снятый генератор',-54,-11,{metal:6,parts:3},null,null,'motor'],
       ['crate','Ящик ремонтной бригады',-46,-24,{cloth:3,medicine:1}],
+      ['crate','Сухие фильтры насосной',47,-23,{filterunit:2,cloth:2}],
+      ['scrap','Резервный насос',51,-23,{pumpmodule:1,metal:3},'wrench',null,'motor'],
+      ['electronics','Контроллер насосной',51,-27.5,{battery:1,wire:3}],
+      ['crate','Запас уплотнений',47,-28,{parts:4,cloth:3}],
+      ['scrap','Агрегат на стенде',-19,-52,{pumpmodule:1,metal:4},'wrench',null,'motor'],
+      ['electronics','Батарейный шкаф',-11,-52,{battery:2,wire:3}],
+      ['crate','Ящик ремонтника',-15,-45,{parts:4,metal:3}],
+      ['wood','Сухие доски под навесом',-20,-40.8,{wood:6}],
+      ['crate','Хозяйственная полка',12.6,48,{filterunit:1,water:2}],
+      ['cloth','Ткани швейного дома',9,60,{cloth:5}],
+      ['crate','Кухонная кладовая',12.5,52,{vegetables:4,herbs:2}],
+      ['herbs','Сад переулка',17,58,{herbs:4,flowers:3}],
     ];
     definitions.forEach(([type, name, x, z, loot, requires, find, machine], i) => {
       const group = new THREE.Group(); group.position.set(x,this.furnitureElevation(x,z),z); this.scene.add(group);
@@ -989,8 +1042,16 @@ export class World {
   setDestination(x, z) { this.destination.position.set(x, 0.1, z); this.destination.visible = true; }
   addPlaced(item) {
     const group = this.makeFurniture(item.id); group.position.set(item.x, this.furnitureElevation(item.x,item.z), item.z); group.rotation.y = item.rotation; this.scene.add(group);
-    this.placedGroups.push({ item, group }); return group;
+    this.decorateStation(item,group);this.placedGroups.push({ item, group }); return group;
   }
+  decorateStation(item,group){
+    if(item.upgrade!==1)return;
+    if(item.id==='raincatcher'){this.cylinder(.32,.7,0,.22,.8,'#8ab9ac',group,10);this.box(-.22,1.5,0,.28,.4,.32,'#c6ccb0',group);}
+    if(item.id==='dryrack'){const fan=this.cylinder(0,1.45,.46,.22,.12,'#c2c5a4',group,12);fan.rotation.x=Math.PI/2;this.box(.65,.28,.3,.25,.45,.25,'#7c9b83',group);}
+    if(item.id==='recycler'){this.box(.52,1.3,0,.35,.6,.35,'#95bba5',group);this.box(0,.95,.54,.5,.15,.08,'#d0ba76',group);}
+    group.userData.stationUpgrade=1;
+  }
+  refreshStation(item){const entry=this.placedGroups.find(e=>e.item===item);if(entry&&!entry.group.userData.stationUpgrade)this.decorateStation(item,entry.group);this.renderDirty=true;}
   makeFurniture(id, ghost = false) {
     const group = new THREE.Group();
     if (id === 'lamp') {
@@ -1114,7 +1175,7 @@ export class World {
       const target = moving ? Math.sin(this.time * 10 + (i % 2) * Math.PI) * (i < 2 ? 0.4 : -0.25) : 0;
       this.limbs[i].rotation.x = THREE.MathUtils.lerp(this.limbs[i].rotation.x, target, Math.min(1, dt * 12));
     }
-    this.waterMaterial.uniforms.time.value = this.time;
+    this.waterMaterial.uniforms.time.value = this.time;this.updateReeds();
 
     for (const fog of this.fogs) fog.position.x = fog.userData.originX + Math.sin(this.time * 0.035 + fog.userData.phase) * 4;
     const pos = this.motes.geometry.attributes.position;

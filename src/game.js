@@ -1,9 +1,13 @@
+import {STATION_UPGRADES,collectorCapacity,dryingBatch} from './upgrades.js';
 import { GATES, BAITS, fishingProbabilities, weatherAt } from './expedition.js';
 import { FINDS, CROPS, MEMORIES, cropInfo } from './homelife.js';
 import { footprint, overlaps, placementAllowed } from './layout.js';
 import { WORLD_LIMIT, LOCATIONS } from './district.js';
 export const SAVE_KEY = 'quiet-district-save-v1';
 export const RESOURCES = {
+  filterunit:{name:'Сменный фильтр',desc:'Для двойного дождевого накопителя. Встречается в насосной и хозяйственных запасах.',color:'#b9cec0',weight:1},
+  pumpmodule:{name:'Насосный узел',desc:'Для накопителя и сортировки лома. Ищи в насосной и ремонтных помещениях.',color:'#92b8bf',weight:2},
+  battery:{name:'Аккумулятор',desc:'Питает улучшенную сушилку и сортировочный модуль. Сохранился в гаражной технике.',color:'#d3b774',weight:1.5},
   medicine:{name:'Медицинские материалы',color:'#d9c9b3',weight:.25},
   vegetables:{name:'Овощи',color:'#dda06b',weight:.5},
   flowers:{name:'Цветы',color:'#dca4b8',weight:.1},
@@ -104,8 +108,9 @@ function cleanFurniture(p,elapsed) {
  const item={id:p.id,x:p.x,z:p.z,rotation:Number.isFinite(p.rotation)?p.rotation:0,harvested:Number.isFinite(p.harvested)?Math.min(elapsed,Math.max(0,p.harvested)):elapsed};
  if(['lamp','foundlamp','recordplayer'].includes(p.id))item.enabled=p.id==='recordplayer'?p.enabled===true:p.enabled!==false;
  if(p.id==='cropbed'){item.crop=Object.hasOwn(CROPS,p.crop)?p.crop:null;item.plantedAt=item.crop&&Number.isFinite(p.plantedAt)?Math.max(0,Math.min(elapsed,p.plantedAt)):null;if(Number.isFinite(p.rainGrowth)&&p.rainGrowth>0)item.rainGrowth=Math.min(p.rainGrowth,10000);}
- if(p.id==='raincatcher')item.rainWater=Number.isFinite(p.rainWater)?Math.max(0,Math.min(6,p.rainWater)):0;
- if(p.id==='dryrack')item.dryingAt=Number.isFinite(p.dryingAt)?Math.max(0,Math.min(elapsed,p.dryingAt)):null;
+ if(STATION_UPGRADES[p.id])item.upgrade=p.upgrade===1?1:0;
+ if(p.id==='raincatcher')item.rainWater=Number.isFinite(p.rainWater)?Math.max(0,Math.min(collectorCapacity(item),p.rainWater)):0;
+ if(p.id==='dryrack'){item.dryingAt=Number.isFinite(p.dryingAt)?Math.max(0,Math.min(elapsed,p.dryingAt)):null;if(item.dryingAt!==null)item.dryingOutput=p.dryingOutput===4?4:2;}
  return item;
 }
 export function validateSave(input) {
@@ -323,7 +328,7 @@ export function deliverContract(state, id) {
 export function productionInfo(state,item) {
   if(item.id==='cropbed') return cropInfo(state,item);
   if(item.id==='raincatcher'){const n=Math.floor(item.rainWater||0);return {loot:{water:n},remaining:n?0:1,waitingForRain:!n,name:`Собрать воду · ${n}`};}
-  if(item.id==='dryrack')return {loot:{},mealOutput:2,needsLoading:!Number.isFinite(item.dryingAt),remaining:Number.isFinite(item.dryingAt)?Math.max(0,100-(state.elapsed-item.dryingAt)):1,name:'Забрать 2 порции еды'};
+  if(item.id==='dryrack')return {loot:{},mealOutput:item.dryingOutput===4?4:2,needsLoading:!Number.isFinite(item.dryingAt),remaining:Number.isFinite(item.dryingAt)?Math.max(0,100-(state.elapsed-item.dryingAt)):1,name:`Забрать ${item.dryingOutput===4?4:2} порции еды`};
   const recipes = {
     seedbed: { interval: 120, loot: { herbs: 6 }, name: 'Собрать редкие травы' },
     garden: { interval: 90, loot: { herbs: 3 }, name: 'Собрать травы' },
@@ -331,10 +336,10 @@ export function productionInfo(state,item) {
     recycler: { interval: 120, loot: { parts: 2, wire: 1 }, cost: { metal: 3 }, name: 'Переработать лом' },
   };
   const info = recipes[item.id]; if (!info) return null;
-  let interval = info.interval;
+  let interval = item.id==='recycler'&&item.upgrade===1?90:info.interval;
   if (['garden', 'seedbed'].includes(item.id) && state.owned.includes('pump')) interval *= 0.75;
   if (state.owned.includes('solar')) interval *= 0.75;
-  const loot=item.id==='recycler'&&state.owned.includes('tooling')?{parts:3,wire:1}:info.loot;
+  const loot=item.id==='recycler'?{parts:(item.upgrade===1?4:2)+(state.owned.includes('tooling')?1:0),wire:item.upgrade===1?2:1}:info.loot;
   return { ...info, loot, interval, remaining: Math.max(0, interval - (state.elapsed - item.harvested)) };
 }
 export function harvestProduction(state, item) {
@@ -343,7 +348,7 @@ export function harvestProduction(state, item) {
   if(info.needsLoading)return {ok:false,reason:'Сначала загрузи улов'};
   if(info.waitingForRain)return {ok:false,reason:'Накопитель ожидает дождь'};
   if (info.remaining > 0) return { ok: false, reason: `До готовности ${Math.ceil(info.remaining)} сек.` };
-  if(info.mealOutput){state.meals+=info.mealOutput;item.dryingAt=null;item.harvested=state.elapsed;return {ok:true,received:{},mealOutput:info.mealOutput};}
+  if(info.mealOutput){state.meals+=info.mealOutput;item.dryingAt=null;delete item.dryingOutput;item.harvested=state.elapsed;return {ok:true,received:{},mealOutput:info.mealOutput};}
   const weight = Object.entries(info.loot).reduce((n, [id, count]) => n + RESOURCES[id].weight * count, 0);
   // Fees can free bag space, but readiness is atomic: nothing is spent until output fits.
   const freed = info.cost ? Object.entries(info.cost).reduce((n, [id, count]) => n + Math.max(0, count - (state.stash[id] || 0)) * RESOURCES[id].weight, 0) : 0;
@@ -426,15 +431,15 @@ export function unpackFurniture(state,index,x,z,rotation,obstacles=[]) {
 }
 export function updateRainCrops(state,dt,isInside) {
  const rain=weatherAt(state.elapsed).rain;if(!rain||!Number.isFinite(dt)||dt<=0)return false;
- for(const p of state.placed)if(p.id==='raincatcher'&&!isInside(p.x,p.z))p.rainWater=Math.min(6,(p.rainWater||0)+dt*rain/35);
+ for(const p of state.placed)if(p.id==='raincatcher'&&!isInside(p.x,p.z))p.rainWater=Math.min(collectorCapacity(p),(p.rainWater||0)+dt*rain/35);
  for(const p of state.placed)if(p.id==='cropbed'&&p.crop&&!isInside(p.x,p.z))p.rainGrowth=Math.min(10000,(p.rainGrowth||0)+dt*rain*.25);
  return true;
 }
 
 export function startDrying(state,item){
  if(!state.placed.includes(item)||item.id!=='dryrack'||Number.isFinite(item.dryingAt))return {ok:false,reason:'Сушилка уже занята'};
- if(!spend(state,{fish:2,herbs:1}))return {ok:false,reason:'Нужно 2 рыбы и 1 трава'};
- item.dryingAt=state.elapsed;return {ok:true};
+ const batch=dryingBatch(item);if(!spend(state,batch.cost))return {ok:false,reason:`Нужно ${batch.cost.fish} рыбы и ${batch.cost.herbs} травы`};
+ item.dryingAt=state.elapsed;item.dryingOutput=batch.output;return {ok:true};
 }
 export function saveLoadout(state,index){if(![0,1].includes(index)||!state.placed.some(p=>p.id==='gearrack')||state.x<-27||state.x>-6||state.z<5||state.z>27)return false;state.loadouts[index]={...state.equipment};return true;}
 export function applyLoadout(state,index){
@@ -442,4 +447,12 @@ export function applyLoadout(state,index){
  for(const [slot,id] of Object.entries(e))if(id!==null&&!(id==='pipe'&&slot==='weapon')&&!RECIPES.some(r=>r.id===id&&r.slot===slot&&state.owned.includes(id)))return {ok:false,reason:'Снаряжение недоступно'};
  const limit=RECIPES.find(r=>r.id===e.bag)?.capacity||26;if(bagWeight(state)>limit)return {ok:false,reason:'Сначала разгрузи рюкзак'};
  state.equipment={...e};state.hotbarSelected=state.hotbar.indexOf(e.weapon);return {ok:true};
+}
+
+export function upgradeStation(state,item){
+ const spec=STATION_UPGRADES[item?.id];
+ if(!spec||!state.placed.includes(item)||state.x<-27||state.x>-6||state.z<5||state.z>27)return {ok:false,reason:'Улучшение доступно у установленной станции дома'};
+ if(item.upgrade===1)return {ok:false,reason:'Станция уже улучшена'};
+ if(!spend(state,spec.cost))return {ok:false,reason:'Не хватает материалов для улучшения'};
+ item.upgrade=1;return {ok:true};
 }

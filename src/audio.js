@@ -13,7 +13,7 @@ export class DistrictAudio {
       const rainSource=this.context.createBufferSource();rainSource.buffer=rainBuffer;rainSource.loop=true;const rainFilter=this.context.createBiquadFilter();rainFilter.type='lowpass';rainFilter.frequency.value=1800;this.rainGain=this.context.createGain();this.rainGain.gain.value=0;rainSource.connect(rainFilter).connect(this.rainGain).connect(this.master);rainSource.start();
       const noise = this.context.createBufferSource(); noise.buffer = buffer; noise.loop = true;
       const filter = this.context.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 360;
-      const gain = this.context.createGain(); gain.gain.value = 0.33; noise.connect(filter).connect(gain).connect(this.master); noise.start();
+      const gain = this.context.createGain(); gain.gain.value = 0.33;this.windGain=gain; noise.connect(filter).connect(gain).connect(this.master); noise.start();
     }
     this.context.resume().catch(() => {});
   }
@@ -37,6 +37,14 @@ export class DistrictAudio {
     if (time > this.nextBird) { this.nextBird = time + 15 + Math.random() * 25; this.tone(1500, 0.19, 0.018, 'sine', 2200); setTimeout(() => this.tone(1900, 0.16, 0.015, 'sine', 1250), 220); }
   }
   rain(strength,sheltered) {const value=strength*(sheltered?.035:.13);if(!this.rainGain||Math.abs((this.rainLevel||0)-value)<.005)return;this.rainLevel=value;this.rainGain.gain.setTargetAtTime(value,this.context.currentTime,.4);}
+  environment(kind,sheltered,time){
+    if(!this.context||!this.enabled||this.context.state!=='running')return;
+    const roomKey=kind+':'+sheltered;if(roomKey!==this.roomKind){this.roomKind=roomKey;this.nextRoom=time+2;this.windGain?.gain.setTargetAtTime(sheltered?.13:.33,this.context.currentTime,.6);}
+    if(time<(this.nextRoom||0))return;this.nextRoom=time+7+(kind==='room'?7:0);
+    if(kind==='water')this.tone(510,.12,.035,'sine',170);
+    if(kind==='metal')this.tone(115,.65,.018,'triangle',92);
+    if(kind==='room')this.tone(190,.18,.009,'triangle',135);
+  }
   record(time,distance) {
     if(distance>=9||time<this.nextRecord||!this.enabled||this.context?.state!=='running') return;
     const melody=[261.63,329.63,392,329.63,293.66,349.23,440,349.23,261.63,392,523.25,392,246.94,293.66,392,293.66];

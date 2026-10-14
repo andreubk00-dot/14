@@ -362,7 +362,7 @@ test('Roofs fade on entering each building and restore outside without changing 
     g.state.x=5;g.state.z=4;for(let i=0;i<60;i++)w.updateRoofs(1/60);
     return {glazing:w.buildings.find(b=>b.x===-42).roofMeshes.find(m=>m.material.userData.baseOpacity<1).material.opacity,count,geometries,transition,inside,wall,outside:b.roofMeshes[0].material.opacity,collision:before===w.blocked(8,4)};
   });
-  expect(result.glazing).toBeCloseTo(.5);expect(result.count).toBe(14); expect(result.geometries.every(n=>n>=2)).toBe(true);
+  expect(result.glazing).toBeCloseTo(.5);expect(result.count).toBe(18); expect(result.geometries.every(n=>n>=2)).toBe(true);
   expect(result.transition).toBeGreaterThan(.035); expect(result.transition).toBeLessThan(1);
   expect(result.inside).toBeLessThan(.04);expect(result.wall).toBeLessThan(.14);expect(result.outside).toBeGreaterThan(.99);expect(result.collision).toBe(true);
 });
@@ -432,7 +432,7 @@ test('District audit: entrances, solid walls, repaired bridge, loot access and s
   expect(audit.solar).toBeCloseTo(-.22);expect(audit.lamp).toEqual([-18,0,10.85]);
   expect(audit.repaired).toBe(1);expect(audit.savedProduction).toBe(321);expect(audit.legal).toBe(true);
   expect(audit.noLeakedLight).toBe(true);expect(audit.outsideDepth).toBe(true);expect(audit.insideDepth).toBe(true);
-  expect(audit.nodeCount).toBe(72);expect(audit.roofCounts.length).toBe(14);expect(audit.roofCounts.every(n=>n>=2)).toBe(true);
+  expect(audit.nodeCount).toBe(84);expect(audit.roofCounts.length).toBe(18);expect(audit.roofCounts.every(n=>n>=2)).toBe(true);
 });
 
 test('Solid containers disappear after collection and wait for the player before restoring',async({page})=>{
@@ -620,7 +620,7 @@ test('Rain and distinct architecture preserve sheltered interiors, canopy cutawa
   g.state.x=34;g.state.z=53;w.updateRoofs(1);const outside=canopy.material.opacity>.98;
   return {rainy,under,outside,shelter:w.sheltered(27,54.8),exposed:!w.sheltered(28,57),fish:!w.blocked(28,55.2),water:w.blocked(30,59),buildings:w.buildings.length,gates:w.gates.length};
  });
- expect(audit.rainy&&audit.under&&audit.outside&&audit.shelter&&audit.exposed&&audit.fish&&audit.water).toBe(true);expect(audit.buildings).toBe(14);expect(audit.gates).toBe(2);
+ expect(audit.rainy&&audit.under&&audit.outside&&audit.shelter&&audit.exposed&&audit.fish&&audit.water).toBe(true);expect(audit.buildings).toBe(18);expect(audit.gates).toBe(4);
 });
 
 
@@ -660,4 +660,22 @@ test('High quality reflections share a live target, update with the camera and t
  test.setTimeout(150000);const errors=[];page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});await start(page,{x:0,z:17,owned:['generator']});
  const result=await page.evaluate(()=>{const g=window.__quietDistrict,w=g.world;g.visibilityPaused=true;w.setQuality('high');let captures=0;const original=w.mirrors.capture.onBeforeRender;w.mirrors.capture.onBeforeRender=(...args)=>{captures++;return original.apply(w.mirrors.capture,args);};w.update(.016,false,true);const first=[...w.mirrors.projection.elements],one=captures;w.update(.02,false,true);const throttled=captures===one;w.cameraCenter.x+=2;w.update(.2,false,true);const changed=w.mirrors.projection.elements.some((n,i)=>Math.abs(n-first[i])>1e-6);const shared=w.mirrors.surfaces.every(m=>m.material.uniforms.reflection.value===w.mirrors.capture.getRenderTarget().texture);w.setQuality('low');w.update(.2,false,true);return {one,throttled,changed,shared,surfaces:w.mirrors.surfaces.length,disabled:w.mirrors.surfaces.every(m=>m.material.uniforms.strength.value===0),hidden:!w.mirrors.capture.visible};});
  expect(result.one).toBe(1);expect(result.throttled&&result.changed&&result.shared&&result.disabled&&result.hidden).toBe(true);expect(result.surfaces).toBeGreaterThan(20);expect(errors).toEqual([]);
+});
+
+test('Station upgrades install through the real window, preserve active batches and reload their models',async({page})=>{
+ test.setTimeout(180000);await start(page,{x:-20,z:23,elapsed:50,stash:{battery:3,pumpmodule:2,filterunit:2,metal:40,cloth:12,parts:10,fish:4,herbs:2},placed:[{id:'dryrack',x:-20,z:23,rotation:0,harvested:0,dryingAt:10},{id:'raincatcher',x:-13,z:23,rotation:0,harvested:0,rainWater:5},{id:'recycler',x:-16,z:12,rotation:0,harvested:0}]});
+ await page.keyboard.press('KeyE');await expect(page.locator('#panel')).toContainText('До готовности');await page.locator('[data-action="upgrade-station"]').click();await expect(page.locator('#panel')).toContainText('установлено');expect(await page.evaluate(()=>window.__quietDistrict.state.placed[0].dryingOutput)).toBe(2);
+ await page.evaluate(()=>{const g=window.__quietDistrict;g.state.elapsed=g.state.placed[0].dryingAt+100;g.ui.renderPanel();});await page.locator('[data-action="harvest-dryer"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.meals)).toBe(2);await page.locator('[data-action="load-dryer"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.placed[0].dryingOutput)).toBe(4);
+ await page.keyboard.press('Escape');await page.keyboard.press('KeyB');await page.locator('[data-action="station-details"][data-index="1"]').click();await page.locator('[data-action="upgrade-station"]').click();await expect(page.locator('#panel')).toContainText('/ 12');await page.keyboard.press('Escape');await page.keyboard.press('KeyB');await page.locator('[data-action="station-details"][data-index="2"]').click();await page.locator('[data-action="upgrade-station"]').click();await expect(page.locator('#panel')).toContainText('4 детали и 2 провода');
+ await page.evaluate(()=>window.__quietDistrict.save(false));const context=page.context();await page.close();const restored=await context.newPage(),errors=[];restored.on('pageerror',e=>errors.push(e.message));await restored.goto('/');await expect(restored.locator('[data-action="start"]')).toBeEnabled({timeout:60000});expect(await restored.evaluate(()=>{const g=window.__quietDistrict;return g.state.placed.every(p=>p.upgrade===1)&&g.world.placedGroups.every(e=>e.group.userData.stationUpgrade===1)&&g.state.placed[0].dryingOutput===4;})).toBe(true);expect(errors).toEqual([]);await restored.close();
+});
+test('New districts have reachable rare supplies, shortcut gates open physically and reeds stay instanced',async({page})=>{
+ test.setTimeout(180000);await start(page,{x:-15,z:-35.7,owned:['cutter','wrench']});
+ const before=await page.evaluate(()=>{const g=window.__quietDistrict;g.visibilityPaused=true;const w=g.world,gate=w.gates.find(g=>g.id==='garage-path');return {closed:w.blocked(-15,-37),walkAround:w.pathTo(-15,-48).length>0,first72:w.nodes[71].name,rare:w.nodes.slice(72).filter(n=>Object.keys(n.originalLoot).some(id=>['battery','pumpmodule','filterunit'].includes(id))).length,reeds:w.reedStems.isInstancedMesh&&w.reedStems.parent===w.scene&&w.reedStems.count>0};});
+ expect(before.closed&&before.walkAround&&before.reeds).toBe(true);expect(before.rare).toBe(6);expect(before.first72).toBe('Ящик ремонтной бригады');await page.keyboard.press('KeyE');await page.evaluate(()=>{const g=window.__quietDistrict;g.job.elapsed=g.job.duration;g.finishJob();});expect(await page.evaluate(()=>!window.__quietDistrict.world.blocked(-15,-37))).toBe(true);
+ await page.evaluate(()=>{const g=window.__quietDistrict,w=g.world;g.state.x=48;g.state.z=-23;w.cameraCenter.set(48,0,-23);w.update(.1,false);g.ui.context(g.nearestInteraction());});await page.keyboard.press('KeyE');await page.evaluate(()=>{const g=window.__quietDistrict;g.job.elapsed=g.job.duration;g.finishJob();});expect(await page.evaluate(()=>window.__quietDistrict.state.bag.filterunit)).toBe(2);
+ const sounds=await page.evaluate(()=>{const g=window.__quietDistrict;g.audio.toggle(true);g.audio.environment('water',true,10);const water=g.audio.roomKind;g.audio.toggle(false);g.audio.environment('metal',true,20);return {water,muted:g.audio.roomKind===water};});expect(sounds).toEqual({water:'water:true',muted:true});
+});
+test('Mobile station windows show rare part artwork and usable upgrade controls without horizontal overflow',async({browser})=>{
+ const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});const page=await context.newPage();await start(page,{x:-20,z:23,stash:{battery:1,metal:6,cloth:4},placed:[{id:'dryrack',x:-20,z:23,rotation:0,harvested:0}]});await page.getByRole('button',{name:'Взаимодействовать',exact:true}).click();const button=page.locator('[data-action="upgrade-station"]');await expect(button).toBeEnabled();const box=await button.boundingBox();expect(box.width).toBeGreaterThan(180);expect(box.height).toBeGreaterThanOrEqual(40);expect(await page.locator('#panel .recipe-card .costs .item-icon').count()).toBe(3);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await button.click();await expect(page.locator('#panel')).toContainText('установлено');await context.close();
 });

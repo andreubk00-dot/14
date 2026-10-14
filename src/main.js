@@ -1,5 +1,5 @@
 import {DRONE_TYPES,gearProfile,droneSees,attackCharge} from './survival.js';
-import {startDrying,saveLoadout,applyLoadout} from './game.js';
+import {upgradeStation,startDrying,saveLoadout,applyLoadout} from './game.js';
 import { GATES,FISHING_SPOTS,BAITS,gameHour,weatherAt,gateForPoint } from './expedition.js';
 import {openGate,consumeBait,packFurniture,unpackFurniture,updateRainCrops} from './game.js';
 import { CROPS, FINDS, MEMORIES, dismantleInfo } from './homelife.js';
@@ -151,7 +151,7 @@ class QuietDistrict {
     if (action === 'panel-open') { this.motion.reset(); this.path = []; this.target = null; this.job = null; this.keys.clear(); this.touchMovement = { x: 0, z: 0 }; this.ui.progress(null); this.cancelFishing(); return; }
     if (action === 'panel-close') { this.keys.clear(); return; }
     if (this.ui.pendingConfirm) return;
-    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders', 'helper', 'storage', 'garden','dryer','loadouts'].includes(action)) {
+    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders', 'helper', 'storage', 'garden','dryer','station','loadouts'].includes(action)) {
       if (action === 'storage' && !this.atHome()) { this.ui.toast('Подойди к хранилищу в убежище.'); return; }
       this.cancelBuild(); this.cancelFishing();
       if (this.ui.panel === action) this.ui.close(); else this.ui.open(action);
@@ -182,9 +182,13 @@ class QuietDistrict {
       const result=action==='plant-crop'?plantCrop(this.state,item,data.id):harvestProduction(this.state,item);if(!result.ok)this.ui.toast(result.reason);else {this.audio.collect();this.world.renderDirty=true;}this.changed();return;
     }
     if(action==='toggle-furniture') {const p=this.state.placed[Number(data.index)];if(!p||!this.atHome()||!['lamp','foundlamp','recordplayer'].includes(p.id))return;p.enabled=!p.enabled;this.world.renderDirty=true;this.world.syncFurniture();this.changed();return;}
+    if(action==='station-details'){if(!this.atHome())return;this.ui.stationIndex=Number(data.index);this.ui.open('station');return;}
+    if(action==='upgrade-station'||action==='harvest-station'){
+      const item=this.state.placed[Number(data.index)];if(!item||!this.atHome()||action==='harvest-station'&&Math.hypot(item.x-this.state.x,item.z-this.state.z)>3)return;const result=action==='upgrade-station'?upgradeStation(this.state,item):harvestProduction(this.state,item);if(!result.ok)this.ui.toast(result.reason);else {if(action==='upgrade-station'){this.world.refreshStation(item);this.audio.craft();}else this.audio.collect();this.ui.toast(action==='upgrade-station'?'Улучшение установлено.':'Продукция получена.','success');}this.changed();return;
+    }
     if(action==='load-dryer'||action==='harvest-dryer'){
       const item=this.state.placed[Number(data.index)];if(!item||!this.atHome()||Math.hypot(item.x-this.state.x,item.z-this.state.z)>3)return;
-      const result=action==='load-dryer'?startDrying(this.state,item):harvestProduction(this.state,item);if(!result.ok)this.ui.toast(result.reason);else this.ui.toast(result.mealOutput?'Готово: 2 порции походной еды.':'Улов загружен.','success');this.changed();return;
+      const result=action==='load-dryer'?startDrying(this.state,item):harvestProduction(this.state,item);if(!result.ok)this.ui.toast(result.reason);else this.ui.toast(result.mealOutput?`Готово: ${result.mealOutput} порции походной еды.`:'Улов загружен.','success');this.changed();return;
     }
     if(action==='save-loadout'||action==='apply-loadout'){
       const index=Number(data.index);if(action==='save-loadout'){if(saveLoadout(this.state,index))this.ui.toast('Комплект сохранён.','success');}
@@ -397,7 +401,7 @@ class QuietDistrict {
     const target = this.nearestInteraction();
     if (!target) { this.ui.toast('Подойди ближе к находке или рабочей станции.'); return; }
     this.path = []; this.target = null; this.world.destination.visible = false;
-    if(target.type==='dryer'){this.ui.dryerIndex=this.state.placed.indexOf(target.entity);this.ui.open('dryer');return;}
+    if(target.type==='dryer'){this.ui.stationIndex=undefined;this.ui.dryerIndex=this.state.placed.indexOf(target.entity);this.ui.open('dryer');return;}
     if(target.type==='loadouts'){this.ui.open('loadouts');return;}
     if(target.type==='gate') {if(!this.state.owned.includes(target.entity.tool)){this.ui.toast('Нужен '+RECIPES.find(r=>r.id===target.entity.tool).name);return;}this.job={type:'gate',gate:target.entity,elapsed:0,duration:target.entity.duration,label:'Открываем проход…'};return;}
     if(target.type==='note') {if(!this.state.notes.includes(target.entity.id))this.state.notes.push(target.entity.id);this.ui.noteId=target.entity.id;this.ui.open('note');this.save(false);return;}
@@ -619,7 +623,7 @@ class QuietDistrict {
     let moving = false;
     if (active) {
       this.state.elapsed += dt;updateRainCrops(this.state,dt,(x,z)=>this.world.sheltered(x,z));
-      this.audio.rain(weatherAt(this.state.elapsed).rain,this.world.sheltered(this.state.x,this.state.z));
+      this.audio.rain(weatherAt(this.state.elapsed).rain,this.world.sheltered(this.state.x,this.state.z));this.audio.environment(this.world.ambience(),this.world.sheltered(this.state.x,this.state.z),this.state.elapsed);
       if (updateHelper(this.state)) this.ui.update(); this.attackCooldown = Math.max(0, this.attackCooldown - dt);
       moving = this.movement(dt); if(discover(this.state,this.world.nodes)) this.save(false); this.updateEnemies(dt); this.audio.tick(this.state.elapsed);const music=this.state.placed.filter(p=>p.id==='recordplayer'&&p.enabled).map(p=>Math.hypot(p.x-this.state.x,p.z-this.state.z));this.audio.record(this.state.elapsed,music.length?Math.min(...music):Infinity);
       if (this.target) {

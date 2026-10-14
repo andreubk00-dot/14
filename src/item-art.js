@@ -12,6 +12,9 @@ const shell = path('M12 40Q0 8 32 7Q64 8 52 40L40 56H24Z','#c6a4b8')+line(18,18,
 const station = c => rect(8,23,48,33,c,4)+rect(14,10,36,15,dark)+rect(19,15,26,5,steel)+rect(14,32,20,17,dark)+circle(24,40,5,gold)+rect(39,31,11,5,steel)+rect(39,42,11,5,steel)+rect(13,56,7,4,dark)+rect(44,56,7,4,dark);
 const bed = rect(8,31,48,20,wood)+rect(10,23,44,16,'#7daa8a',4)+rect(12,20,13,16,'#eae0c2',3)+path('M29 24H53V45H29Z','#9fbd91')+rect(8,49,5,9,dark)+rect(51,49,5,9,dark);
 const art = {
+ filterunit:rect(15,11,34,44,steel,6)+rect(20,16,24,34,'#d6d8bf')+[22,29,36,43].map(y=>line(23,y,41,y,dark,2)).join('')+rect(24,6,16,6,gold),
+ pumpmodule:rect(9,23,39,29,'#7eaaa9',5)+circle(27,36,11,steel)+circle(27,36,5,dark)+rect(45,29,12,10,gold)+rect(15,13,23,12,dark)+rect(11,52,37,5,wood),
+ battery:rect(12,13,40,43,'#6b8676',5)+rect(18,7,8,7,steel)+rect(38,7,8,7,gold)+rect(17,19,30,31,dark)+path('M34 21L23 37H31L28 48L42 31H34Z',gold),
  raincatcher: rect(15,24,34,32,'#83a89c',6)+rect(11,20,42,9,steel)+path('M11 20L22 8H42L53 20Z',gold)+circle(32,37,7,'#486f69')+rect(40,46,14,6,gold),
  dryrack: rect(8,10,5,48,wood)+rect(51,10,5,48,wood)+rect(8,10,48,5,gold)+rect(12,31,40,4,steel)+rect(12,49,40,4,steel)+[23,40].map(x=>path(`M${x} 17Q${x+13} 27 ${x} 38Q${x-13} 27 ${x} 17`,'#a8beb0')).join(''),
  gearrack: rect(6,8,5,49,dark)+rect(53,8,5,49,dark)+[10,32,55].map(y=>rect(6,y,52,4,wood)).join('')+rect(15,16,15,13,'#b9c3a4')+rect(35,39,15,13,'#89aba8'),

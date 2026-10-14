@@ -1,7 +1,7 @@
 import { RESOURCES, RECIPES, DEFAULT_WEAPON, capacity, bagWeight } from './game.js';
 export const EQUIPMENT_SLOTS = { weapon: 'Оружие', armor: 'Броня', bag: 'Рюкзак', boots: 'Ботинки' };
 export function inventoryItems(state, storage=false) {
-  const resources = Object.entries(storage ? state.stash : state.bag).filter(([,n])=>n>0).map(([id,count])=>({ id, count, name: RESOURCES[id].name, kind: 'resource', desc: `Материал для рецептов. Вес единицы: ${RESOURCES[id].weight}.` }));
+  const resources = Object.entries(storage ? state.stash : state.bag).filter(([,n])=>n>0).map(([id,count])=>({ id, count, name: RESOURCES[id].name, kind: 'resource', desc: `${RESOURCES[id].desc||'Материал для рецептов.'} Вес единицы: ${RESOURCES[id].weight}.` }));
   const finds=Object.entries(storage?state.storedFinds:state.finds).filter(([,n])=>n>0).map(([id,count])=>({...RECIPES.find(r=>r.id===id),count,kind:'find'}));
   if (storage) return [...resources,...finds];
   const supplies = [['medkit','medkits'],['meal','meals'],['tea','teas'],['ammo','ammo']].filter(([,field])=>state[field]>0).map(([id,field])=>({...RECIPES.find(r=>r.id===id), count:state[field], kind:'supply'}));

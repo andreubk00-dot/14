@@ -2,6 +2,8 @@
 export const GATES=[
  {id:'yard',name:'Цепь на двери кладовой',x:-44,z:61,w:2.7,d:.32,tool:'cutter',duration:3,bounds:{x:-44,z:56,w:10,d:10}},
  {id:'salvage',name:'Заклинившая дверь склада',x:51,z:-45,w:2.7,d:.32,tool:'wrench',duration:4,bounds:{x:51,z:-50,w:14,d:10}},
+ {id:'garage-path',name:'Калитка ремонтного двора',x:-15,z:-37,w:2.8,d:.22,tool:'cutter',duration:2.5},
+ {id:'pump-path',name:'Сервисная калитка',x:49,z:-16,w:2.8,d:.22,tool:'wrench',duration:2.5},
 ];
 export const FISHING_SPOTS=[
  {id:'pond',name:'Затопленный причал',x:19.7,z:-17,desc:'Окунь в камышах. В темноте к настилу подходит форель.'},
@@ -29,4 +31,4 @@ export function fishingProbabilities(upgraded,conditions={}) {
  const sum=p.reduce((a,b)=>a+b,0);return p.map(v=>v/sum);
 }
 
-export function gateForPoint(x,z,margin=0) {return GATES.find(g=>Math.abs(x-g.bounds.x)<g.bounds.w/2+margin&&Math.abs(z-g.bounds.z)<g.bounds.d/2+margin)?.id;}
+export function gateForPoint(x,z,margin=0) {return GATES.find(g=>g.bounds&&Math.abs(x-g.bounds.x)<g.bounds.w/2+margin&&Math.abs(z-g.bounds.z)<g.bounds.d/2+margin)?.id;}

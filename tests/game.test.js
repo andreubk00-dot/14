@@ -464,3 +464,25 @@ test('Drone vision respects cones, distance, cover and low-visibility equipment'
 test('Attacks give a warning window and cancel when the player leaves range or uses cover',()=>{
  const e={kind:'guardian',cooldown:0,windup:0};assert.equal(attackCharge(e,.3,true,true),false);assert.ok(e.windup>0);assert.equal(attackCharge(e,.3,true,false),false);assert.equal(e.windup,0);assert.equal(attackCharge(e,.9,true,true),true);assert.ok(e.cooldown>1);assert.equal(attackCharge(e,1,true,true),false);
 });
+
+import {upgradeStation} from '../src/game.js';
+import {STATION_UPGRADES,collectorCapacity,dryingBatch} from '../src/upgrades.js';
+test('Station upgrades are per object, require installed furniture and spend materials atomically',()=>{
+ const s=freshState(),a={id:'raincatcher',x:-13,z:23,harvested:0,rainWater:5.7},b={...a};s.placed=[a,b];s.stash={pumpmodule:1,filterunit:1,metal:8};const before=structuredClone(s);assert.equal(upgradeStation(s,a).ok,false);assert.deepEqual(s,before);s.stash.filterunit=2;assert.equal(upgradeStation(s,{...a}).ok,false);assert.equal(upgradeStation(s,a).ok,true);assert.equal(a.upgrade,1);assert.equal(b.upgrade,undefined);assert.equal(a.rainWater,5.7);assert.equal(s.stash.filterunit,0);const paid=structuredClone(s);assert.equal(upgradeStation(s,a).ok,false);assert.deepEqual(s,paid);assert.equal(collectorCapacity(a),12);assert.equal(collectorCapacity(b),6);
+ s.elapsed=200;updateRainCrops(s,2000,()=>false);assert.equal(a.rainWater,12);assert.equal(b.rainWater,6);const clean=validateSave(s);assert.equal(clean.placed[0].rainWater,12);assert.equal(clean.placed[0].upgrade,1);assert.equal(clean.placed[1].upgrade,0);
+});
+test('Upgrading an active dryer preserves its original batch and the next load uses double capacity',()=>{
+ const s=freshState(),d={id:'dryrack',x:-16,z:23,harvested:0};s.placed=[d];s.stash={fish:8,herbs:4,...STATION_UPGRADES.dryrack.cost};assert.equal(startDrying(s,d).ok,true);s.elapsed=50;assert.equal(upgradeStation(s,d).ok,true);assert.equal(productionInfo(s,d).mealOutput,2);assert.equal(productionInfo(s,d).remaining,50);const saved=validateSave(s),sd=saved.placed[0];assert.equal(sd.upgrade,1);assert.equal(sd.dryingOutput,2);saved.elapsed=100;assert.equal(harvestProduction(saved,sd).mealOutput,2);assert.equal(harvestProduction(saved,sd).ok,false);assert.equal(startDrying(saved,sd).ok,true);assert.equal(sd.dryingOutput,4);assert.equal(saved.stash.fish,2);saved.elapsed=200;assert.equal(harvestProduction(saved,sd).mealOutput,4);assert.equal(saved.meals,6);
+});
+test('Packed upgraded stations retain capacity and pause batch age across save and unpack',()=>{
+ const s=freshState();s.x=-16;s.z=22;s.elapsed=40;s.placed=[{id:'dryrack',x:-20,z:23,harvested:0,upgrade:1,dryingAt:10,dryingOutput:4}];assert.equal(packFurniture(s,0),true);s.elapsed=400;const saved=validateSave(s);assert.equal(saved.packedFurniture[0].upgrade,1);assert.equal(unpackFurniture(saved,0,-20,23,0),true);assert.equal(productionInfo(saved,saved.placed[0]).remaining,70);assert.equal(productionInfo(saved,saved.placed[0]).mealOutput,4);
+});
+test('Sorting module improves output once and both manual collection and helper share its cycle',()=>{
+ const s=freshState(),r={id:'recycler',x:-16,z:12,harvested:0};s.placed=[r];s.stash={...STATION_UPGRADES.recycler.cost,metal:6};assert.equal(upgradeStation(s,r).ok,true);assert.deepEqual(productionInfo(s,r).loot,{parts:4,wire:2});s.owned=['tooling','helper'];s.helper.assignment='recycler';assert.equal(productionInfo(s,r).loot.parts,5);s.elapsed=90;assert.equal(updateHelper(s),1);assert.equal(s.stash.metal,3);assert.equal(s.stash.parts,5);assert.equal(harvestProduction(s,r).ok,false);assert.equal(updateHelper(s),0);s.elapsed=180;s.owned.push('receiver');assert.equal(harvestProduction(s,r).ok,true);assert.equal(s.stash.metal,0);assert.equal(s.stash.parts,10);
+});
+test('Legacy production and new rare resource inventory survive validation without invented upgrades',()=>{
+ const s=freshState();s.stash={filterunit:2,pumpmodule:1,battery:2};s.placed=[{id:'dryrack',x:-16,z:23,harvested:0,dryingAt:0},{id:'recycler',x:-16,z:12,harvested:0,upgrade:999}];s.elapsed=25;const clean=validateSave(s);assert.deepEqual(clean.stash,s.stash);assert.equal(clean.placed[0].upgrade,0);assert.equal(clean.placed[0].dryingOutput,2);assert.equal(productionInfo(clean,clean.placed[0]).remaining,75);assert.equal(productionInfo(clean,clean.placed[1]).interval,120);assert.equal(dryingBatch(clean.placed[0]).output,2);
+});
+test('Shortcut gates persist without treating their open yards as locked rooms',()=>{
+ const s=freshState(),gate=GATES.find(g=>g.id==='garage-path');s.x=gate.x;s.z=gate.z;s.owned=['cutter'];assert.equal(gateForPoint(-15,-48),undefined);assert.equal(openGate(s,gate.id).ok,true);assert.deepEqual(validateSave(s).openedGates,['garage-path']);assert.equal(openGate(s,gate.id).ok,false);
+});
