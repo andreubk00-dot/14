@@ -445,9 +445,9 @@ export function startDrying(state,item){
  const batch=dryingBatch(item);if(!spend(state,batch.cost))return {ok:false,reason:`Нужно ${batch.cost.fish} рыбы и ${batch.cost.herbs} травы`};
  item.dryingAt=state.elapsed;item.dryingOutput=batch.output;return {ok:true};
 }
-export function saveLoadout(state,index){if(![0,1].includes(index)||!state.placed.some(p=>p.id==='gearrack')||state.x<-27||state.x>-6||state.z<5||state.z>27)return false;state.loadouts[index]={...state.equipment};return true;}
+export function saveLoadout(state,index){if(![0,1].includes(index)||!state.placed.some(p=>['gearrack','toolcabinet'].includes(p.id))||state.x<-27||state.x>-6||state.z<5||state.z>27)return false;state.loadouts[index]={...state.equipment};return true;}
 export function applyLoadout(state,index){
- const e=state.loadouts[index];if(!e||!state.placed.some(p=>p.id==='gearrack')||state.x<-27||state.x>-6||state.z<5||state.z>27)return {ok:false,reason:'Комплект доступен у стеллажа дома'};
+ const e=state.loadouts[index];if(!e||!state.placed.some(p=>['gearrack','toolcabinet'].includes(p.id))||state.x<-27||state.x>-6||state.z<5||state.z>27)return {ok:false,reason:'Комплект доступен у стеллажа дома'};
  for(const [slot,id] of Object.entries(e))if(id!==null&&!(id==='pipe'&&slot==='weapon')&&!RECIPES.some(r=>r.id===id&&r.slot===slot&&state.owned.includes(id)))return {ok:false,reason:'Снаряжение недоступно'};
  const limit=RECIPES.find(r=>r.id===e.bag)?.capacity||26;if(bagWeight(state)>limit)return {ok:false,reason:'Сначала разгрузи рюкзак'};
  state.equipment={...e};state.hotbarSelected=state.hotbar.indexOf(e.weapon);return {ok:true};
@@ -474,3 +474,6 @@ export function dismantleStructure(state,part){
  for(const [id,n]of Object.entries(STRUCTURES[part.id].cost))state.stash[id]=(state.stash[id]||0)+n;
  state.construction.splice(state.construction.indexOf(part),1);return {ok:true};
 }
+
+export const COOKING_RECIPES=['meal','fishmeal','stew','tea'];
+export function atCookingStove(state){return state.placed.some(p=>p.id==='campstove'&&Math.hypot(state.x-p.x,state.z-p.z)<=2.5);}

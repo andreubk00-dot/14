@@ -1,3 +1,4 @@
+import {COOKING_RECIPES,atCookingStove} from './game.js';
 import {STRUCTURES} from './construction.js';
 import {STATION_UPGRADES,dryingBatch,collectorCapacity} from './upgrades.js';
 import {gearProfile} from './survival.js';
@@ -168,6 +169,7 @@ export class UI {
     const scroll = resetScroll ? 0 : document.querySelector('#panel .panel-body')?.scrollTop || 0;
     const element = document.getElementById('panel'), state = this.state;
     const headers = {
+      cook:['ДОМАШНЯЯ КУХНЯ','Кухонная печь','Еда и чай из добычи. Подойди к установленной печи.'],
       craft: ['МАСТЕРСКАЯ', 'Станция рецептов', 'Создавай то, что поможет идти дальше.'],
       inventory: ['СНАРЯЖЕНИЕ И ДОБЫЧА', 'Инвентарь', ''],
       architecture:['ТВОЙ ДОМ','Строительство','Выбери другой тип стены, чтобы заменить её. Полы соединяются с входом. Крыша появляется над закрытым контуром. Разбор возвращает материалы.'],
@@ -188,27 +190,27 @@ export class UI {
     const [eyebrow, title, subtitle] = headers[this.panel];
     element.className = `panel ${this.panel === 'map' || this.panel === 'inventory' ? 'wide-panel' : ''}`;
     let body = '';
-    if (this.panel === 'craft' || this.panel === 'build') {
-      const isBuild = this.panel === 'build';
-      const category = isBuild ? 'shelter' : this.category;
-      const nearStation = Math.hypot(state.x + 21, state.z - 13) < 4.5;
+    if (this.panel === 'craft' || this.panel === 'build'||this.panel==='cook') {
+      const isBuild = this.panel === 'build',isCooking=this.panel==='cook';
+      const category = isBuild ? 'shelter' : isCooking?'supplies':this.category;
       const nearHome = state.x >= -27 && state.x <= -6 && state.z >= 5 && state.z <= 27;
-      body += `<div class="station-status ${isBuild ? nearHome ? 'online' : '' : nearStation ? 'online' : ''}"><i></i>${isBuild ? nearHome ? 'Ты дома · можно строить' : 'Для строительства вернись в убежище' : nearStation ? 'Станция рядом · готова к работе' : 'Изготовление доступно рядом со станцией'}</div>`;
-      if (!(isBuild ? nearHome : nearStation)) body += `<button class="station-route secondary full-width" data-action="${isBuild ? 'home' : 'station-route'}">${icon('pin', 17)} ${isBuild ? 'Проложить путь домой' : 'Проложить путь к станции'} ${icon('arrow', 15)}</button>`;
+      const nearStation=isCooking?nearHome&&atCookingStove(state):Math.hypot(state.x+21,state.z-13)<4.5;
+      body += `<div class="station-status ${isBuild ? nearHome ? 'online' : '' : nearStation ? 'online' : ''}"><i></i>${isBuild ? nearHome ? 'Ты дома · можно строить' : 'Для строительства вернись в убежище' : nearStation ? isCooking?'Печь рядом · можно готовить':'Станция рядом · готова к работе' : isCooking?'Подойди к установленной кухонной печи':'Изготовление доступно рядом со станцией'}</div>`;
+      if (!isCooking&&!(isBuild ? nearHome : nearStation)) body += `<button class="station-route secondary full-width" data-action="${isBuild ? 'home' : 'station-route'}">${icon('pin', 17)} ${isBuild ? 'Проложить путь домой' : 'Проложить путь к станции'} ${icon('arrow', 15)}</button>`;
       if(isBuild)body+='<button class="primary full-width" data-action="architecture">Пристройки · полы, стены и окна</button>';
-      if (!isBuild) body += `<nav class="category-tabs">${Object.entries(categories).map(([id, name]) => `<button class="${id === category ? 'active' : ''}" data-action="category" data-category="${id}">${categoryIcon(id)}<span>${name}</span></button>`).join('')}</nav>`;
+      if (!isBuild&&!isCooking) body += `<nav class="category-tabs">${Object.entries(categories).map(([id, name]) => `<button class="${id === category ? 'active' : ''}" data-action="category" data-category="${id}">${categoryIcon(id)}<span>${name}</span></button>`).join('')}</nav>`;
       body += `<div class="recipe-tools"><label>${icon('search', 17)}<input id="recipe-search" type="search" placeholder="${isBuild ? 'Найти постройку…' : 'Найти рецепт…'}" value="${escape(this.search)}" aria-label="Поиск рецептов"></label><button class="filter-button ${this.onlyAvailable ? 'active' : ''}" data-action="available-filter" aria-pressed="${this.onlyAvailable}" title="Показать только доступные">${icon('filter', 16)} Можно создать</button></div><div class="recipe-cost-guide">Материалы: в наличии / нужно · рюкзак и склад</div>`;
-      const recipes = RECIPES.filter(r => r.category === category && (!isBuild || r.placeable) && r.name.toLocaleLowerCase('ru').includes(this.search.toLocaleLowerCase('ru')) && (!this.onlyAvailable || craftStatus(state, r).ok));
+      const recipes = RECIPES.filter(r => (!isCooking||COOKING_RECIPES.includes(r.id))&&r.category === category && (!isBuild || r.placeable) && r.name.toLocaleLowerCase('ru').includes(this.search.toLocaleLowerCase('ru')) && (!this.onlyAvailable || craftStatus(state, r).ok));
       if (!recipes.length) body += `<div class="panel-empty">${icon('search', 36)}<h3>Пока ничего не найдено</h3><p>Измени поиск или отключи фильтр доступных рецептов.</p></div>`;
       body += `<div class="recipe-list">${recipes.map(r => {
         const status = craftStatus(state, r), equipped = Object.values(state.equipment).includes(r.id);
         const canEquip = status.owned && r.slot && r.slot !== 'tool';
-        const canAct = canEquip || (status.ok && (isBuild ? nearHome : nearStation));
+        const canAct = canEquip || (status.ok && (isBuild ? nearHome : isCooking?nearHome&&atCookingStove(state):nearStation));
         return `<article class="recipe-card ${status.owned ? 'owned' : ''}"><div class="recipe-top"><span class="recipe-icon">${recipeIcon(r.id, 28)}</span><div><div class="recipe-heading"><h3>${r.name}</h3><span class="availability-badge ${status.owned ? 'made' : status.ok ? 'ready' : 'locked'}">${status.owned ? icon('check', 12) : status.ok ? icon('check', 12) : icon(r.requires && !state.owned.includes(r.requires) ? 'lock' : 'bag', 12)} ${status.owned ? 'Готово' : status.ok ? r.foundOnly?'Вещь найдена':'Есть материалы' : r.requires && !state.owned.includes(r.requires) ? 'Закрыто' : r.foundOnly?'Находка':'Нужны ресурсы'}</span></div><p>${r.desc}</p></div></div><div class="recipe-bottom"><div class="costs">${status.owned ? `<span class="owned-text">${equipped ? 'Экипировано' : 'Изготовлено'}</span>` : r.foundOnly?`<span class="owned-text">${(state.finds[r.id]||0)+(state.storedFinds[r.id]||0)} в запасе</span>`:costHTML(state,r.cost)}</div><button class="craft-button" data-action="${canEquip ? 'equip' : 'make'}" data-id="${r.id}" ${!canAct || equipped ? 'disabled' : ''}>${canEquip ? equipped ? 'Надето' : 'Надеть' : status.owned ? 'Готово' : r.placeable ? 'Разместить' : 'Создать'}</button></div>${!status.ok && !status.owned ? `<small class="recipe-reason">${icon('info', 13)} ${status.reason}</small>` : ''}</article>`;
       }).join('')}</div>`;
       if (isBuild && state.placed.length) body += `<div class="section-title"><h3>Уже дома</h3><span>Можно переставить</span></div><div class="owned-items">${state.placed.map((p, index) => `<div class="furniture-row">${recipeIcon(p.id,36)}<span>${RECIPES.find(r=>r.id===p.id).name}${p.upgrade===1?' · улучшено':''}</span>${STATION_UPGRADES[p.id]?`<button class="secondary" data-action="station-details" data-index="${index}" ${!nearHome?'disabled':''}>Станция</button>`:''}<button class="secondary" data-action="move-furniture" data-index="${index}" ${!nearHome?'disabled':''}>Переставить</button><button class="text-button" data-action="pack-furniture" data-index="${index}" ${!nearHome?'disabled':''}>На склад</button></div>`).join('')}</div>`;
       if(isBuild)body+=this.packedOverview();
-      if(isBuild&&state.placed.some(p=>p.id==='gearrack'))body+='<button class="secondary full-width" data-action="loadouts">Открыть комплекты экипировки</button>';
+      if(isBuild&&state.placed.some(p=>['gearrack','toolcabinet'].includes(p.id)))body+='<button class="secondary full-width" data-action="loadouts">Открыть комплекты экипировки</button>';
       if (isBuild) body += this.productionOverview();
       if(isBuild) body+=`<div class="furniture-controls">${state.placed.map((p,index)=>['lamp','foundlamp','desklamp','homeradio','recordplayer'].includes(p.id)?`<button class="secondary" data-action="toggle-furniture" data-index="${index}" ${!nearHome?'disabled':''}>${recipeIcon(p.id,26)} ${p.enabled?'Выключить':'Включить'} · ${RECIPES.find(r=>r.id===p.id).name}</button>`:'').join('')}</div>`;
     }
@@ -251,7 +253,7 @@ export class UI {
     const nearbyFish=FISHING_SPOTS.some(p=>Math.hypot(p.x-state.x,p.z-state.z)<3),selectedBait=BAITS[state.fishingBait];
     const canCast=nearbyFish&&state.owned.includes('rod')&&(!selectedBait.tool||state.owned.includes(selectedBait.tool))&&(!selectedBait.resource||state.bag[selectedBait.resource]>0);
     const footer=this.panel==='fishing'?`<button class="primary full-width" data-action="cast-selected" ${canCast?'':'disabled'}>Забросить удочку ${icon('arrow',18)}</button>`:`${icon('clock',14)} Игра на паузе <span>ESC — закрыть</span>`;
-    element.innerHTML = `<header class="panel-header"><div class="eyebrow">${eyebrow}</div><button class="icon-button" data-action="close" aria-label="Закрыть меню">${icon('close')}</button><div class="panel-title"><span class="panel-title-icon">${icon(({ craft: 'craft', inventory: 'bag', storage: 'chest', build: 'build', map: 'map', journal: 'book', settings: 'settings', architecture:'build',station:'craft', dryer:'dryrack',loadouts:'gearrack',fishing:'rod',garden:'herbs',note:'book',orders: 'board', helper: 'herbs' })[this.panel], 27)}</span><h2>${title}</h2></div>${subtitle ? `<p>${subtitle}</p>` : ''}</header><div class="panel-body">${body}</div><footer class="panel-footer">${footer}</footer>`;
+    element.innerHTML = `<header class="panel-header"><div class="eyebrow">${eyebrow}</div><button class="icon-button" data-action="close" aria-label="Закрыть меню">${icon('close')}</button><div class="panel-title"><span class="panel-title-icon">${icon(({ craft: 'craft',cook:'meal', inventory: 'bag', storage: 'chest', build: 'build', map: 'map', journal: 'book', settings: 'settings', architecture:'build',station:'craft', dryer:'dryrack',loadouts:'gearrack',fishing:'rod',garden:'herbs',note:'book',orders: 'board', helper: 'herbs' })[this.panel], 27)}</span><h2>${title}</h2></div>${subtitle ? `<p>${subtitle}</p>` : ''}</header><div class="panel-body">${body}</div><footer class="panel-footer">${footer}</footer>`;
     element.querySelector('.panel-body').scrollTop = scroll;
     if (this.panel === 'map') {
       const canvas = document.getElementById('large-map'); this.renderMap(canvas, true);
@@ -298,7 +300,7 @@ export class UI {
     return `<div class="crop-status">${recipeIcon(item.id,64)}<h3>${RECIPES.find(r=>r.id===item.id).name}</h3>${work}${near?'':'<p>Для загрузки и сбора подойди к станции.</p>'}</div><article class="recipe-card"><h3>${spec.name}${item.upgrade===1?' · установлено':''}</h3><p>${spec.desc}</p>${item.upgrade===1?'':`<div class="costs">${costHTML(s,spec.cost)}</div><button class="primary full-width" data-action="upgrade-station" data-index="${index}" ${Object.entries(spec.cost).some(([id,n])=>total(s,id)<n)?'disabled':''}>Установить улучшение</button>`}</article>`;
   }
   loadoutWindow(){
-    const s=this.state,rack=s.placed.some(p=>p.id==='gearrack');if(!rack)return '<p class="panel-note">Размести стеллаж комплектов в убежище.</p>';
+    const s=this.state,rack=s.placed.some(p=>['gearrack','toolcabinet'].includes(p.id));if(!rack)return '<p class="panel-note">Размести стеллаж комплектов в убежище.</p>';
     return `<div class="recipe-list">${s.loadouts.map((e,index)=>`<article class="recipe-card"><h3>Комплект ${index+1}</h3><div class="haul-items">${e?Object.values(e).filter(Boolean).map(id=>`<span>${recipeIcon(id,36)} ${id==='pipe'?'Стальная труба':RECIPES.find(r=>r.id===id)?.name}</span>`).join(''):'<p>Комплект пока пуст.</p>'}</div><div class="storage-actions"><button class="secondary" data-action="save-loadout" data-index="${index}">Сохранить текущий</button><button class="primary" data-action="apply-loadout" data-index="${index}" ${!e?'disabled':''}>Надеть комплект</button></div></article>`).join('')}</div>`;
   }
   gardenWindow() {

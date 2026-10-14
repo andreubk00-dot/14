@@ -566,3 +566,24 @@ test('Melee damage resolves once at impact and respects retreat, angle, cover an
  assert.equal(advanceSwing(swing,.1),false);assert.equal(advanceSwing(swing,.2),true);assert.equal(advanceSwing(swing,1),false);assert.equal(swingCanHit(swing,player,enemy,true),true);
  assert.equal(swingCanHit(swing,player,{...enemy,z:4},true),false);assert.equal(swingCanHit(swing,player,{...enemy,x:2,z:0},true),false);assert.equal(swingCanHit(swing,player,enemy,false),false);assert.equal(swingCanHit(swing,player,{...enemy,health:0},true),false);
 });
+
+import {expeditionLoot} from '../src/district.js';
+import {updateAwareness,reactToHit} from '../src/survival.js';
+import {atCookingStove,COOKING_RECIPES} from '../src/game.js';
+test('Repeat expeditions preserve initial loot and deterministic district supplies without multiplying rare filters',()=>{
+ const pantry={id:'node-107',type:'crate',x:26,z:36,originalLoot:{vegetables:4,filterunit:1}};
+ assert.deepEqual(expeditionLoot(pantry,0),pantry.originalLoot);assert.deepEqual(expeditionLoot(pantry,3),expeditionLoot(pantry,3));assert.equal(expeditionLoot(pantry,3).filterunit,1);
+ const cycles=[1,2,3].map(i=>expeditionLoot(pantry,i));assert.ok(cycles.some(l=>l.herbs||l.water));assert.ok(cycles.every(l=>!l.battery&&!l.pumpmodule&&!l.metal));
+ const textiles=expeditionLoot({...pantry,x:29,z:6,originalLoot:{cloth:3}},2);assert.ok(Object.keys(textiles).every(k=>['cloth','wire'].includes(k)));
+});
+test('New useful finds follow normal unique claims, capacity, placement and loadout storage',()=>{
+ const s=freshState();s.storedFinds={campstove:1,toolcabinet:1};s.x=-20;s.z=23;
+ assert.equal(place(s,'campstove',-20,23),true);assert.equal(atCookingStove(s),true);assert.deepEqual(COOKING_RECIPES,['meal','fishmeal','stew','tea']);assert.equal(place(s,'campstove',-16,23),false);
+ assert.equal(place(s,'toolcabinet',-16,23),true);assert.equal(saveLoadout(s,0),true);assert.equal(validateSave(structuredClone(s)).placed.length,2);
+ s.x=-16;s.z=14;assert.equal(atCookingStove(s),false);
+});
+test('Detection gives a warning, decays behind cover and close contact or a hit triggers a bounded search',()=>{
+ const e={originX:0,originZ:0,windup:.5},s={x:0,z:5};assert.equal(updateAwareness(e,.2,true,s,5),false);assert.ok(e.suspicion>0&&e.suspicion<1);updateAwareness(e,.6,false,s,5);assert.equal(e.suspicion,0);
+ updateAwareness(e,.7,true,s,5);assert.equal(e.alert,3);assert.deepEqual(e.lastSeen,s);updateAwareness(e,4,false,s,5);assert.equal(e.alert,0);
+ updateAwareness(e,.01,true,s,1);assert.equal(e.suspicion,1);reactToHit(e,{x:100,z:100});assert.ok(Math.hypot(e.lastSeen.x,e.lastSeen.z)<=8.5+.001);assert.equal(e.windup,0);assert.equal(e.stagger,.18);
+});

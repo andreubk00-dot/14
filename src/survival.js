@@ -25,3 +25,15 @@ export function attackCharge(enemy,dt,inReach,visible) {
  if(enemy.windup<type.windup)return false;
  enemy.windup=0;enemy.cooldown=1.6;return true;
 }
+
+export function updateAwareness(enemy,dt,seen,player,distance){
+ enemy.suspicion=Math.max(0,Math.min(1,(enemy.suspicion||0)+(seen?dt/.65:-dt*.8)));
+ if(seen&&distance<1.8)enemy.suspicion=1;
+ if(seen&&enemy.suspicion>=1){enemy.alert=3;enemy.lastSeen={x:player.x,z:player.z};}
+ else enemy.alert=Math.max(0,(enemy.alert||0)-dt);
+ return enemy.alert>0;
+}
+export function reactToHit(enemy,player){
+ enemy.alert=3;enemy.suspicion=1;enemy.stagger=.18;enemy.windup=0;enemy.route=null;enemy.routeAt=-Infinity;
+ const dx=player.x-enemy.originX,dz=player.z-enemy.originZ,d=Math.hypot(dx,dz)||1,f=Math.min(1,8.5/d);enemy.lastSeen={x:enemy.originX+dx*f,z:enemy.originZ+dz*f};
+}

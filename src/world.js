@@ -5,7 +5,7 @@ import {DRONE_TYPES,segmentHitsRect} from './survival.js';
 import {gridPath} from './navigation.js';
 import { GATES, gateForPoint, weatherAt } from './expedition.js';
 import { FINDS, MEMORIES, SCENES,RESOURCE_SITES, machineKind, cropInfo } from './homelife.js';
-import { LOCATIONS, ROADS, WORLD_LIMIT, cycleLoot } from './district.js';
+import { LOCATIONS, ROADS, WORLD_LIMIT, expeditionLoot } from './district.js';
 export { LOCATIONS } from './district.js';
 import { circleHitsRect, footprint, solidFootprint, placementAllowed, repairFurniture } from './layout.js';
 import { isInsideBuilding, fadeOpacity } from './roofs.js';
@@ -170,7 +170,7 @@ export class World {
     this.mirrors=new DistrictReflections(this);this.reflection=this.mirrors.capture;
     for (let i = 0; i < 19; i++) this.puddle(rng() * 7 - 3.5, rng() * 78 - 39, 0.9 + rng() * 2.5, 0.5 + rng());
     this.mirrors.surface(-.8,17,2.5,1.15);this.mirrors.surface(-18,23,2,1);
-    this.buildHome(); this.buildMarket(); this.buildDepot(); this.furnishExpeditions(); this.buildOutskirts(); this.buildScenes(); this.buildExpandedDistrict(); this.buildNewQuarter(); this.buildDeepDistrict(); this.buildPond(); this.buildTower();
+    this.buildHome(); this.buildMarket(); this.buildDepot(); this.furnishExpeditions(); this.buildOutskirts(); this.buildScenes(); this.buildExpandedDistrict(); this.buildNewQuarter(); this.buildDeepDistrict(); this.buildPond(); this.buildTower();this.buildExpeditionDetails();
     // Treelines frame the district, leaving the traversable paths readable.
     for (let i = 0; i < 180; i++) {
       const x = rng() * 126 - 63, z = rng() * 126 - 63;
@@ -450,7 +450,7 @@ export class World {
     for(const x of [-27.4,-26.8])this.cylinder(x,.14,32.2,.08,.14,'#c6bea3');
     this.box(52,.5,22,2,1,1,'#817b62');this.collider(52,22,2,1);
     this.cylinder(54.5,.55,23.5,.4,1.1,'#6e8274');this.collider(54.5,23.5,.8,.8);
-    for(const n of MEMORIES) {const h=n.id==='bus'?.7:n.id==='yard'?1.01:n.id==='salvage'?.21:.065;this.box(n.x,h,n.z,.3,.012,.23,'#e0d6b8');}
+    for(const n of MEMORIES) {const h=n.id==='dispatch'?1.48:n.id==='laundry'?1.61:n.id==='bus'?.7:n.id==='yard'?1.01:n.id==='salvage'?.21:.065;this.box(n.x,h,n.z,.3,.012,.23,'#e0d6b8');}
   }
   buildExpandedDistrict() {
     // Three silhouettes: a low timber hut, a tall factory and a house with veranda.
@@ -735,6 +735,35 @@ export class World {
     this.label('ВОДОНАПОРНАЯ БАШНЯ', 27, 2.2, -30, 4); this.box(27, 1, -30.1, 0.1, 2, 0.1, '#7c876d');
     this.collider(x, z, 4.3, 4.3);
   }
+  buildExpeditionDetails() {
+    this.building(-58,35,5,6,3.1,'#a5b6ae','ПРАЧЕЧНАЯ',{roofStyle:'hip',pitch:.3,roofColor:'#7b9087'});
+    const laundry=this.buildings.at(-1),start=laundry.wallMeshes.length;
+    this.canopy(-58,38.8,6,1.6,2.4,'#adb4a1');this.box(-58,.09,38.5,1.2,.16,1.2,'#8a9687');
+    this.box(-59.7,.8,36.6,.65,1.6,.7,'#839b90');this.collider(-59.7,36.6,.65,.7);
+    for(const y of [.38,.8,1.2])this.box(-59.7,y,36.98,.5,.055,.07,'#c4c5aa');
+    this.cutawayDetail(this.box(-55.64,1.7,34.5,.12,1.2,1.6,'#8ba9a3'),laundry);
+    for(const z of [34,34.5,35])this.cutawayDetail(this.box(-55.54,1.7,z,.025,1.1,.035,'#c6c3a1'),laundry);
+    this.lamp(-58,38.12,2.15,true,this.scene,true);this.mergeBuildingDetails(laundry,start);
+    this.building(58,-36,6,6,3.8,'#6f858a','ДИСПЕТЧЕРСКАЯ',{pitch:.06,roofColor:'#9aa6a0',signOffset:.3});
+    const dispatch=this.buildings.at(-1),detailStart=dispatch.wallMeshes.length;dispatch.ambience='metal';
+    for(const x of [55.08,60.92])for(const z of [-38,-36,-34])this.cutawayDetail(this.box(x,1.8,z,.08,3.5,.08,'#a7b3ab'),dispatch);
+    this.cutawayDetail(this.cylinder(59.4,4.75,-37.5,.045,2,'#b5bfaa'),dispatch,true);this.cutawayDetail(this.box(59.4,5.4,-37.5,1.5,.035,.035,'#9baea3'),dispatch,true);
+    this.box(59.8,.7,-37.5,1,1.4,1.8,'#7f968b');this.collider(59.8,-37.5,1,1.8);
+    this.box(59.8,1.43,-37.5,1.1,.08,1.9,'#b6b9a1');this.box(59.8,1.6,-37.7,.65,.3,.5,'#536d68');
+    this.cylinder(59.65,1.65,-37.1,.09,.3,'#c4b794');this.box(59.8,1.5,-37.6,.1,.05,.7,'#dfca8d');
+    this.box(58,.09,-32.5,1.6,.16,1.2,'#8c9c91');this.mergeBuildingDetails(dispatch,detailStart);
+    // Distinct traces of use: patched windows, service pipes, cloth screens and garden frames.
+    const tailor=this.buildings.find(b=>b.x===29),clinic=this.buildings.find(b=>b.x===-49),market=this.buildings.find(b=>b.x===13),greenhouse=this.buildings.find(b=>b.x===-42);
+    for(const [b,x,z,shade]of [[tailor,26.2,11.15,'#b7a1b7'],[clinic,-52.2,36.65,'#aeb7a0'],[market,16.3,9.15,'#bda67c']]){
+      const k=b.wallMeshes.length;for(const y of [1.2,1.5,1.8]){const board=this.box(x,y,z,1.2,.12,.055,shade);board.rotation.z=y===1.5?.12:-.08;this.cutawayDetail(board,b);}this.mergeBuildingDetails(b,k);
+    }
+    for(const [x,z]of [[-37,-40],[-47,-39]]){this.box(x,.18,z,1.3,.3,.8,'#869877');this.collider(x,z,1.3,.8);for(const xx of [-.4,0,.4])this.bush(x+xx,z,.25).position.y=.4;}
+    const gardenStart=greenhouse.wallMeshes.length;for(const x of [-43,-41])this.cutawayDetail(this.box(x,2.8,-47.9,.08,.12,.8,'#bcad84'),greenhouse);this.mergeBuildingDetails(greenhouse,gardenStart);
+    for(const [x,z]of [[-54.8,39],[54.5,-31.5]])this.mirrors.surface(x,z,1.25,.7);
+    for(const x of [-60,-56]){this.box(x,1.35,40.6,.1,2.7,.1,'#8fa18a');this.collider(x,40.6,.1,.1);}this.box(-58,2.4,40.6,4,.035,.035,'#b7b8a0');
+    for(const x of [-59,-57])this.box(x,2,40.6,.6,.6,.025,'#c9c7b3');
+  }
+
   createNodes() {
     const definitions = [
       ['scrap', 'Куча металлолома', -7, 17, { metal: 4, parts: 1 }],
@@ -825,6 +854,16 @@ export class World {
       ['find','Приёмник из кафе',26,38.5,{},null,'homeradio'],
       ['find','Упакованная полка',7,57.5,{},null,'wallshelf'],
       ...RESOURCE_SITES.map(([type,x,z],i)=>[type,type==='tree'?`Дерево у тропы ${i+1}`:`Каменный валун ${i-5}`,x,z,type==='tree'?{wood:8,seeds:1}:{stone:6,metal:1},type==='tree'?'axe':'pick',null,type==='tree'?'standingtree':'quarry']),
+      ['cloth','Корзина чистого белья',-57.6,33.8,{cloth:6,medicine:1}],
+      ['scrap','Машина прачечной',-56.7,36.2,{metal:3,wire:2},null,null,'appliance'],
+      ['crate','Запас диспетчера',56.8,-37,{parts:4,wire:3},'cutter'],
+      ['electronics','Пульт с резервным питанием',59,-34.2,{wire:4,battery:1},'wrench'],
+      ['find','Печь из общей кухни',12.2,50,{},null,'campstove'],
+      ['find','Шкаф ремонтной смены',53,11,{},null,'toolcabinet'],
+      ['crate','Сухая корзина под навесом',-56,40,{cloth:3,herbs:2,medicine:1}],
+      ['crate','Обрезки за рабочим столом',26.5,4,{cloth:4,wire:1}],
+      ['crate','Сухой ящик рыбацкого дома',24,51.5,{fish:2,wood:2}],
+      ['crate','Пакеты с семенами цветов',-40,-45.7,{seeds:3,flowers:1,cloth:1}],
     ];
     definitions.forEach(([type, name, x, z, loot, requires, find, machine], i) => {
       const group = new THREE.Group(); group.position.set(x,this.furnitureElevation(x,z),z); this.scene.add(group);
@@ -849,7 +888,7 @@ export class World {
         for (let j = 0; j < 4; j++) this.box((rng() - 0.5) * 0.7, 0.2 + j * 0.12, (rng() - 0.5) * 0.6, 0.6 + rng() * 0.3, 0.25, 0.5, j % 2 ? '#7f897a' : '#626f67', group).rotation.y = rng() * 3;
       }
       const marker = this.marker(x, 1.5, z, type === 'herbs' ? '#a9c181' : '#e7c993');
-      const node = { id: `node-${i}`, type, name, x, z, loot: { ...(this.state.nodeLoot[`node-${i}`] || cycleLoot(`node-${i}`,loot,this.state.depleted[`node-${i}`]===undefined?0:Math.floor(this.state.elapsed/(type==='herbs'?120:240)))) }, originalLoot: { ...loot }, requires, find, accessGate:gateForPoint(x,z), machine:kind, group, marker, respawnTime: type === 'herbs' ? 120 : 240 };
+      const node = { id: `node-${i}`, type, name, x, z, loot: { ...(this.state.nodeLoot[`node-${i}`] || expeditionLoot({id:`node-${i}`,type,x,z,originalLoot:loot},this.state.depleted[`node-${i}`]===undefined?0:Math.floor(this.state.elapsed/(type==='herbs'?120:240)))) }, originalLoot: { ...loot }, requires, find, accessGate:gateForPoint(x,z), machine:kind, group, marker, respawnTime: type === 'herbs' ? 120 : 240 };
       if(kind||find||type==='crate') {const f=find?footprint({id:find,x:0,z:0}):null;const size=kind==='standingtree'?[.6,.6]:kind==='quarry'?[2.1,1.6]:find?(['wallclock','wallshelf'].includes(find)?[1.05,1.13]:[f.w*.6,f.d*.6]):type==='crate'?[1.05,1.13]:kind==='motor'?[1.35,.95]:kind==='appliance'?[1,.8]:kind==='radio'?[.9,.4]:[.9,.6];node.collider=this.collider(x,z,...size);}
       group.traverse(mesh => { mesh.userData.node = node; if (mesh.isMesh) this.pickables.push(mesh); });
       if(this.state.depleted[node.id]!==undefined && this.state.elapsed-this.state.depleted[node.id]>=node.respawnTime && !this.state.nodeLoot[node.id]) this.state.nodeLoot[node.id]={...node.loot};
@@ -857,7 +896,7 @@ export class World {
     });
   }
   createEnemies() {
-    for (const [i, [x, z]] of [[8, -4], [26, 11], [-11, -18], [-22, -24], [50,20], [56,12],[-47,-21],[-56,-13]].entries()) {
+    for (const [i, [x, z]] of [[8, -4], [26, 11], [-11, -18], [-22, -24], [50,20], [56,12],[-47,-21],[-56,-13],[53.5,-35]].entries()) {
       const group = new THREE.Group(); group.position.set(x, 1, z); this.scene.add(group);
       const core = this.box(0, 0, 0, 0.65, 0.35, 0.65, '#646f67', group);
       this.box(0, 0, 0.34, 0.35, 0.07, 0.05, '#e39b6b', group, new THREE.MeshStandardMaterial({ color: '#e39b6b', emissive: '#db7847', emissiveIntensity: 2 }));
@@ -867,7 +906,7 @@ export class World {
       group.traverse(mesh => { mesh.userData.enemy = enemy; if (mesh.isMesh) this.pickables.push(mesh); }); const type=DRONE_TYPES[kind],vertices=[0,0,0];for(let a=-type.angle/2;a<=type.angle/2+.001;a+=type.angle/24)vertices.push(Math.sin(a)*type.vision,0,Math.cos(a)*type.vision);
       const geo=new THREE.BufferGeometry(),indices=[];geo.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));for(let j=1;j<vertices.length/3-1;j++)indices.push(0,j+1,j);geo.setIndex(indices);geo.computeVertexNormals();
       enemy.cone=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:kind==='scout'?'#9ab6ac':'#c6a875',transparent:true,opacity:.06,depthWrite:false,side:THREE.DoubleSide}));enemy.cone.position.set(x,.058,z);this.scene.add(enemy.cone);
-      enemy.warning=new THREE.Mesh(new THREE.RingGeometry(.65,.74,32),new THREE.MeshBasicMaterial({color:'#f2a36b',transparent:true,opacity:.8,depthWrite:false}));enemy.warning.rotation.x=-Math.PI/2;enemy.warning.visible=false;this.scene.add(enemy.warning);this.enemies.push(enemy);
+      enemy.warning=new THREE.Mesh(new THREE.RingGeometry(.65,.74,32),new THREE.MeshBasicMaterial({color:'#f2a36b',transparent:true,opacity:.8,depthWrite:false}));enemy.warning.rotation.x=-Math.PI/2;enemy.warning.visible=false;this.scene.add(enemy.warning);enemy.signal=new THREE.Sprite(new THREE.SpriteMaterial({map:this.glowTexture(),color:'#f5cd86',transparent:true,opacity:.65,depthWrite:false}));enemy.signal.scale.setScalar(.28);enemy.signal.position.set(x,2,z);enemy.signal.visible=false;this.scene.add(enemy.signal);this.enemies.push(enemy);
     }
   }
   addDrop(drop) {
@@ -985,8 +1024,9 @@ export class World {
       const handle=this.cylinder(0,0,-.25,.035,.85,'#937954',this.weaponRoot,8);handle.rotation.x=.7;handle.userData.generatedHandItem=true;
       const head=this.box(0,.29,-.5,id==='axe'?.34:.6,.12,.065,'#b5bab0',this.weaponRoot);head.userData.generatedHandItem=true;
     }else if (id === 'pistol' || id === 'carbine') {
-      if (!this.assets) return;
-      const model = this.assets[id === 'pistol' ? 'blaster' : 'blaster-repeater'].scene.clone();
+      const asset = this.assets?.[id === 'pistol' ? 'blaster' : 'blaster-repeater'];
+      if (!asset) return;
+      const model = asset.scene.clone();
       const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3()); model.scale.setScalar(0.8 / Math.max(size.x, size.y, size.z)); this.weaponRoot.add(model);
     } else { const pipe = this.cylinder(0, 0, -0.3, id === 'spear' ? 0.04 : 0.06, id === 'spear' ? 1.8 : 0.8, '#b2b8a0', this.weaponRoot, 6); pipe.rotation.x = 0.7;pipe.userData.generatedHandItem=true; }
     this.playerLight.intensity = this.state.owned.includes('lantern') && this.state.lanternOn !== false ? 3.5 : 0;
@@ -1018,7 +1058,7 @@ export class World {
       let visible=node.find?!this.state.findClaims.includes(node.id):time===undefined||this.state.elapsed-time>=node.respawnTime;
       // A restored container must wait until the player leaves its footprint.
       if(visible&&!node.find&&time!==undefined&&node.collider&&circleHitsRect(this.state.x,this.state.z,.3,node.collider)) visible=false;
-      if (visible && !node.group.visible && !node.find) {this.state.brokenNodes=this.state.brokenNodes.filter(id=>id!==node.id); node.loot = {...(this.state.nodeLoot[node.id]||cycleLoot(node.id,node.originalLoot,Math.floor(this.state.elapsed/node.respawnTime)))}; this.state.nodeLoot[node.id]={...node.loot}; }
+      if (visible && !node.group.visible && !node.find) {this.state.brokenNodes=this.state.brokenNodes.filter(id=>id!==node.id); node.loot = {...(this.state.nodeLoot[node.id]||expeditionLoot(node,Math.floor(this.state.elapsed/node.respawnTime)))}; this.state.nodeLoot[node.id]={...node.loot}; }
       node.group.visible=visible||!!node.falling;node.marker.visible=visible;const broken=this.state.brokenNodes.includes(node.id);if(node.group.userData.standing){node.group.userData.standing.visible=!broken||!!node.falling;node.group.userData.shards.visible=broken&&!node.falling;}if(node.stump)node.stump.visible=!visible||broken;if(node.collider)node.collider.disabled=!visible||broken;
     }
   }
@@ -1056,6 +1096,19 @@ export class World {
     }
     return gridPath({x:sx,z:sz},{x:gx,z:gz},(x,z)=>this.blocked(x,z),(WORLD_LIMIT*2+3)**2,(ax,az,bx,bz)=>[...this.collisionIndex.query(Math.min(ax,bx)-.3,Math.min(az,bz)-.3,Math.max(ax,bx)+.3,Math.max(az,bz)+.3)].some(r=>r.construction&&!r.disabled&&segmentHitsRect(ax,az,bx,bz,{...r,w:r.w+.6,d:r.d+.6})));
   }
+  enemyWaypoint(enemy,target,time){
+    const clear=(ax,az,bx,bz)=>![...this.collisionIndex.query(Math.min(ax,bx)-.5,Math.min(az,bz)-.5,Math.max(ax,bx)+.5,Math.max(az,bz)+.5)].some(r=>!r.disabled&&segmentHitsRect(ax,az,bx,bz,{...r,w:r.w+.7,d:r.d+.7}))&&!this.state.placed.some(p=>!['rug','wallclock','wallshelf','fishtrophy'].includes(p.id)&&segmentHitsRect(ax,az,bx,bz,{...solidFootprint(p),w:solidFootprint(p).w+.7,d:solidFootprint(p).d+.7}));
+    // Reuse a direct course until its next quarter-second check; a detour is rebuilt at most once a second.
+    if(enemy.courseAt===undefined||time-enemy.courseAt>.25||!enemy.courseTarget||Math.hypot(target.x-enemy.courseTarget.x,target.z-enemy.courseTarget.z)>1){enemy.courseAt=time;enemy.courseTarget={...target};enemy.direct=clear(enemy.x,enemy.z,target.x,target.z);}
+    if(enemy.direct)return target;
+    if(!enemy.route||time-(enemy.routeAt||0)>1||Math.hypot(target.x-(enemy.routeGoal?.x??Infinity),target.z-(enemy.routeGoal?.z??Infinity))>2){
+      enemy.routeAt=time;enemy.routeGoal={...target};const free=(x,z)=>Math.hypot(x-enemy.originX,z-enemy.originZ)<=10.5&&!this.blocked(x,z,.35);
+      const starts=[],goals=[];for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++){const a={x:Math.round(enemy.x)+dx,z:Math.round(enemy.z)+dz},b={x:Math.round(target.x)+dx,z:Math.round(target.z)+dz};if(free(a.x,a.z)&&clear(enemy.x,enemy.z,a.x,a.z))starts.push(a);if(free(b.x,b.z))goals.push(b);}
+      starts.sort((a,b)=>Math.hypot(a.x-enemy.x,a.z-enemy.z)-Math.hypot(b.x-enemy.x,b.z-enemy.z));goals.sort((a,b)=>Math.hypot(a.x-target.x,a.z-target.z)-Math.hypot(b.x-target.x,b.z-target.z));
+      enemy.route=starts[0]&&goals[0]?gridPath(starts[0],goals[0],(x,z)=>!free(x,z),900,(ax,az,bx,bz)=>!clear(ax,az,bx,bz)):[];if(starts[0]&&enemy.route.length)enemy.route.unshift(starts[0]);
+    }
+    while(enemy.route.length&&Math.hypot(enemy.route[0].x-enemy.x,enemy.route[0].z-enemy.z)<.2)enemy.route.shift();return enemy.route[0]||null;
+  }
   pointer(clientX, clientY) {
     const rect = this.renderer.domElement.getBoundingClientRect(); this.mouse.set((clientX - rect.left) / rect.width * 2 - 1, -(clientY - rect.top) / rect.height * 2 + 1);
     this.raycaster.setFromCamera(this.mouse, this.camera);
@@ -1087,6 +1140,10 @@ export class World {
     const group = new THREE.Group();
     if (id === 'lamp') {
       group.userData.fixture={...this.lamp(0,0,2.5,!ghost,group),base:15};
+    } else if(id==='campstove'){
+      this.box(0,.54,0,1,.98,.8,'#81938c',group);this.box(0,1.08,0,1.06,.12,.86,'#adad93',group);for(const x of [-.25,.25])this.cylinder(x,1.16,0,.17,.035,'#3b514b',group,12);this.box(0,.55,.43,.65,.45,.03,'#344c45',group);for(const x of [-.3,.3])this.cylinder(x,.95,.45,.045,.04,'#d2b88a',group,8).rotation.x=Math.PI/2;
+    } else if(id==='toolcabinet'){
+      this.box(0,.95,0,1.4,1.8,.7,'#789084',group);for(const x of [-.35,.35]){this.box(x,.95,.36,.66,1.7,.04,'#a4aa8f',group);this.box(x+(x<0?.22:-.22),1.03,.405,.045,.3,.045,'#d5bb82',group);}for(const x of [-.55,.55])for(const z of [-.23,.23])this.box(x,.09,z,.12,.18,.12,'#435b50',group);
     } else if(id==='raincatcher') {
       this.cylinder(0,.6,0,.48,1.2,'#819a90',group,12);this.cylinder(0,1.22,0,.54,.12,'#b5b99f',group,12);this.cylinder(0,1.3,0,.4,.035,'#4c716d',group,12);this.box(0,.3,.52,.12,.12,.18,'#b4ad86',group);
     } else if(id==='dryrack') {
@@ -1350,7 +1407,7 @@ export class World {
     const pos = this.motes.geometry.attributes.position;
     for (let i = 0; i < pos.count; i++) { pos.setX(i, this.moteOrigins[i * 3] + Math.sin(this.time * 0.16 + this.motePhases[i]) * 0.6); pos.setY(i, this.moteOrigins[i * 3 + 1] + Math.sin(this.time * 0.25 + this.motePhases[i]) * 0.4); }
     pos.needsUpdate = true;
-    for(const e of this.enemies){const near=Math.hypot(e.x-this.state.x,e.z-this.state.z)<13&&e.health>0;e.cone.visible=near;e.cone.position.set(e.x,.058,e.z);e.cone.rotation.y=e.facing;e.cone.material.opacity=e.alert>0?.1:.04;e.warning.visible=near&&e.windup>0;e.warning.position.set(e.x,.065,e.z);e.warning.scale.setScalar(1+(e.windup||0));}
+    for(const e of this.enemies){const near=Math.hypot(e.x-this.state.x,e.z-this.state.z)<13&&e.health>0;e.cone.visible=near;e.cone.position.set(e.x,.058,e.z);e.cone.rotation.y=e.facing;e.cone.material.opacity=e.alert>0?.1:.04;e.warning.visible=near&&e.windup>0;e.warning.position.set(e.x,.065,e.z);e.warning.scale.setScalar(1+(e.windup||0));e.signal.visible=near&&((e.suspicion||0)>.05||e.alert>0);e.signal.position.set(e.x,2.05,e.z);e.signal.material.color.set(e.alert>0?'#ed8f6e':'#f1d28b');e.signal.material.opacity=e.alert>0?.85:.25+(e.suspicion||0)*.5;}
     for(const enemy of this.enemies){enemy.hitFlash=Math.max(0,(enemy.hitFlash||0)-dt);enemy.group.position.set(enemy.x,1.2+Math.sin(this.time*2+enemy.seed)*.13,enemy.z);enemy.group.visible=enemy.health>0;if(enemy.hitFlash>0||enemy.wasFlashing)for(const f of enemy.flashMaterials||[]){f.material.emissive.copy(enemy.hitFlash>0?(this.hitColor??=new THREE.Color('#a67938')):f.base);f.material.emissiveIntensity=enemy.hitFlash>0?.7:f.intensity;}enemy.wasFlashing=enemy.hitFlash>0;}
     this.weaponRoot.rotation.x=this.weaponRecoil||0;
     this.stationIcon.material.opacity = 0.4 + Math.sin(this.time * 2) * 0.14;

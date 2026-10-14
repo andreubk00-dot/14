@@ -1,5 +1,7 @@
 export const WORLD_LIMIT=64;
 export const LOCATIONS=[
+ {id:'laundry',name:'Прачечная клиники',label:'Прачечная',subtitle:'Чистое бельё · медицинские запасы',x:-58,z:35,color:'#b5c5bf',radius:5,note:'Маленький двор за клиникой. Бельё сложено отдельно от разобранной машины; пустые корзины остались у двери.'},
+ {id:'dispatch',name:'Старая диспетчерская',label:'Диспетчерская',subtitle:'Ремонтные запасы · резервное питание',x:58,z:-36,color:'#9eb9c0',radius:6,note:'Пульт смены и шкаф ремонтных запасов. Антенна ещё стоит; питание давно отключено.'},
  {id:'pumpstation',name:'Затопленная насосная',label:'Насосная',subtitle:'Фильтры · насосы · влажные залы',x:49,z:-25,color:'#94c0b9',radius:8,note:'Вода остановилась у платформы. Сменные фильтры лежат на сухих стеллажах, насосные узлы — в ремонтных запасах.'},
  {id:'garage',name:'Гараж ремонтной бригады',label:'Гараж',subtitle:'Аккумуляторы · агрегаты · инструменты',x:-15,z:-48,color:'#bba784',radius:9,note:'Смотровая площадка, стенд для двигателей и верстак. В технике ещё сохранились аккумуляторы.'},
  {id:'lane',name:'Тихий жилой переулок',label:'Переулок',subtitle:'Два дома · кладовые · сад',x:10,z:55,color:'#c4b99e',radius:11,note:'В одном доме осталась общая кухня, в другом — швейный стол. Сухие запасы берегли на верхних полках.'},
@@ -44,4 +46,12 @@ export function cycleLoot(id,base,cycle) {
 export function mapPoint(nx,nz) {
  const span=(WORLD_LIMIT+2)*2;
  return {x:nx*span-WORLD_LIMIT-2,z:nz*span-WORLD_LIMIT-2};
+}
+
+const EXPEDITION_PROFILES={clinic:['cloth','herbs'],laundry:['cloth','herbs'],tailor:['cloth','wire'],lane:['vegetables','cloth','water'],courtyard:['cloth','vegetables'],cafe:['vegetables','herbs','water'],backwater:['fish','wood'],pond:['fish','wood'],garden:['seeds','herbs'],greenhouse:['seeds','flowers'],garage:['metal','parts','wire'],depot:['metal','parts'],workshop:['parts','wire','metal'],salvage:['parts','metal','wire'],pumpstation:['cloth','wire','parts'],dispatch:['wire','parts'],market:['wood','cloth','water'],housing:['cloth','wood'],substation:['wire','parts']};
+export function expeditionLoot(node,cycle){
+ const base=node.originalLoot||{},loot=cycleLoot(node.id,base,cycle);if(!cycle||node.type!=='crate'||node.find)return loot;
+ const place=LOCATIONS.reduce((a,b)=>Math.hypot(node.x-a.x,node.z-a.z)<Math.hypot(node.x-b.x,node.z-b.z)?a:b),choices=EXPEDITION_PROFILES[place.id];
+ if(!choices)return loot;let hash=cycle;for(const char of node.id)hash=(Math.imul(hash,31)+char.charCodeAt(0))>>>0;const item=choices[hash%choices.length];loot[item]=(loot[item]||0)+1;
+ for(const id of ['battery','filterunit','pumpmodule','medicine'])if(base[id])loot[id]=base[id];return loot;
 }

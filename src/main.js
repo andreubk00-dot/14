@@ -1,5 +1,6 @@
+import {COOKING_RECIPES,atCookingStove} from './game.js';
 import {swingProfile,swingCanHit,advanceSwing} from './combat.js';
-import {DRONE_TYPES,gearProfile,droneSees,attackCharge} from './survival.js';
+import {DRONE_TYPES,gearProfile,droneSees,attackCharge,updateAwareness,reactToHit} from './survival.js';
 import {STRUCTURES,snapStructure,dismantleAllowed} from './construction.js';
 import {buildStructure,dismantleStructure} from './game.js';
 import {chooseInteraction,interactionKey} from './interactions.js';
@@ -158,7 +159,7 @@ class QuietDistrict {
     if (action === 'panel-open') { this.swing=null;this.world.clearWeaponEffect(); this.motion.reset(); this.path = []; this.target = null; this.job = null; this.keys.clear(); this.touchMovement = { x: 0, z: 0 }; this.ui.progress(null); this.cancelFishing(); return; }
     if (action === 'panel-close') { this.keys.clear(); return; }
     if (this.ui.pendingConfirm) return;
-    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders', 'helper', 'storage', 'garden','dryer','station','loadouts','architecture'].includes(action)) {
+    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders', 'helper', 'storage', 'garden','dryer','station','loadouts','architecture','cook'].includes(action)) {
       if (action === 'storage' && !this.atHome()) { this.ui.toast('Подойди к хранилищу в убежище.'); return; }
       this.cancelBuild(); this.cancelFishing();
       if (this.ui.panel === action) this.ui.close(); else this.ui.open(action);
@@ -323,7 +324,7 @@ class QuietDistrict {
     if (!recipe) return;
     if (recipe.placeable) {
       if (!this.atHome()) { this.ui.toast('Вернись домой, чтобы обустроить убежище.'); return; }
-    } else if (!this.atStation()) { this.ui.toast('Подойди к станции рецептов в убежище.'); return; }
+    } else if (!(this.atStation()||COOKING_RECIPES.includes(id)&&this.atHome()&&atCookingStove(this.state))) { this.ui.toast('Подойди к станции рецептов в убежище.'); return; }
     const result = craft(this.state, id);
     if (!result.ok) { this.ui.toast(result.reason); return; }
     if (result.placement) {
@@ -396,8 +397,9 @@ class QuietDistrict {
     if (s.grave) add('grave', s.grave.x, s.grave.z, 'Вернуть оставленный рюкзак', 'Твои ресурсы', s.grave);
     for (const p of s.placed) {
       const info = productionInfo(s, p);
+      if(p.id==='campstove')add('cook',p.x,p.z,'Кухонная печь','Готовить еду и чай',p,2.5);
       if(p.id==='dryrack')add('dryer',p.x,p.z,'Сушилка для улова',info.needsLoading?'Загрузить рыбу':info.remaining?`До готовности: ${Math.ceil(info.remaining)} сек.`:'Еда готова',p);
-      if(p.id==='gearrack')add('loadouts',p.x,p.z,'Стеллаж комплектов','Выбрать снаряжение',p);
+      if(['gearrack','toolcabinet'].includes(p.id))add('loadouts',p.x,p.z,p.id==='toolcabinet'?'Инструментальный шкаф':'Стеллаж комплектов','Выбрать снаряжение',p);
       if(p.id==='cropbed') add('garden',p.x,p.z,'Посадочная грядка',info?info.remaining?`Растёт: ${Math.ceil(info.remaining)} сек.`:'Урожай готов':'Выбрать посадки',p);
       if(['lamp','foundlamp','desklamp','homeradio','recordplayer'].includes(p.id)) add('furniture-toggle',p.x,p.z,['recordplayer','homeradio'].includes(p.id)?(p.enabled?'Выключить ':'Включить ')+(p.id==='homeradio'?'приёмник':'проигрыватель'):(p.enabled?'Погасить свет':'Включить свет'),'Обустройство убежища',p);
       if (info&&!['cropbed','dryrack'].includes(p.id)) add('production', p.x, p.z, RECIPES.find(r => r.id === p.id).name, info.waitingForRain?'Ожидает дождь':info.remaining ? `До готовности: ${Math.ceil(info.remaining)} сек.` : info.name, p);
@@ -415,6 +417,7 @@ class QuietDistrict {
     if (!target) { this.ui.toast('Подойди ближе к находке или рабочей станции.'); return; }
     this.path = []; this.target = null; this.world.destination.visible = false;
     if(target.type==='dryer'){this.ui.stationIndex=undefined;this.ui.dryerIndex=this.state.placed.indexOf(target.entity);this.ui.open('dryer');return;}
+    if(target.type==='cook'){this.ui.open('cook');return;}
     if(target.type==='loadouts'){this.ui.open('loadouts');return;}
     if(target.type==='gate') {if(!this.state.owned.includes(target.entity.tool)){this.ui.toast('Нужен '+RECIPES.find(r=>r.id===target.entity.tool).name);return;}this.job={type:'gate',gate:target.entity,elapsed:0,duration:target.entity.duration,label:target.entity.kind?'Разбираем завал…':'Открываем проход…'};return;}
     if(target.type==='note') {if(!this.state.notes.includes(target.entity.id))this.state.notes.push(target.entity.id);this.ui.noteId=target.entity.id;this.ui.open('note');this.save(false);return;}
@@ -508,7 +511,7 @@ class QuietDistrict {
     if(swing.elapsed>=swing.profile.duration)this.swing=null;
   }
   damageEnemy(target,w) {
-    const s=this.state;target.health=Math.max(0,target.health-w.damage);this.world.floatingText(`−${w.damage}`,target.x,target.z,'#edbf87');this.world.enemyImpact(target,w.id);
+    const s=this.state;reactToHit(target,s);target.health=Math.max(0,target.health-w.damage);this.world.floatingText(`−${w.damage}`,target.x,target.z,'#edbf87');this.world.enemyImpact(target,w.id);
     if(!['pistol','carbine'].includes(w.id)){
       const d=Math.hypot(target.x-s.x,target.z-s.z)||1,push=swingProfile(w.id).push,x=target.x+(target.x-s.x)/d*push,z=target.z+(target.z-s.z)/d*push;
       if(!this.world.blocked(x,z,.4)) {target.x=x;target.z=z;}target.windup=0;
@@ -522,20 +525,22 @@ class QuietDistrict {
     const visibility=gearProfile(this.state,RECIPES).visibility;
     for(const e of this.world.enemies){
       const type=DRONE_TYPES[e.kind]||DRONE_TYPES.guardian;
-      if(e.health<=0){e.windup=0;if(this.state.elapsed-e.deadAt>180){e.health=e.maxHealth;e.x=e.originX;e.z=e.originZ;e.alert=0;delete this.state.droneDeaths[e.id];}continue;}
+      if(e.health<=0){e.windup=0;if(this.state.elapsed-e.deadAt>180){e.health=e.maxHealth;e.x=e.originX;e.z=e.originZ;e.alert=0;e.suspicion=0;e.route=null;e.stagger=0;delete this.state.droneDeaths[e.id];}continue;}
       e.cooldown=Math.max(0,e.cooldown-dt);const distance=Math.hypot(e.x-this.state.x,e.z-this.state.z),leash=Math.hypot(e.x-e.originX,e.z-e.originZ);
       const sight=distance<type.vision*visibility&&this.world.canSee(e.x,e.z,this.state.x,this.state.z),seen=leash<10&&droneSees(e,this.state,sight,visibility);
-      if(seen){e.alert=3;e.lastSeen={x:this.state.x,z:this.state.z};}else e.alert=Math.max(0,(e.alert||0)-dt);
-      if(attackCharge(e,dt,distance<1.7,sight&&leash<10)){this.ui.damage();this.audio.hit();if(takeDamage(this.state,type.damage)){this.die();return;}}
+      updateAwareness(e,dt,seen,this.state,distance);
+      if(e.stagger>0){e.stagger=Math.max(0,e.stagger-dt);e.windup=0;continue;}
+      if(attackCharge(e,dt,distance<1.7,sight&&leash<10&&e.alert>0)){this.ui.damage();this.audio.hit();if(takeDamage(this.state,type.damage)){this.die();return;}}
       let target;
       if(e.alert>0&&leash<10)target=e.lastSeen;
       else {const a=e.patrolIndex*Math.PI/2;target={x:e.originX+Math.sin(a)*2.2,z:e.originZ+Math.cos(a)*2.2};if(this.world.blocked(target.x,target.z)||Math.hypot(e.x-target.x,e.z-target.z)<.35){e.patrolIndex=(e.patrolIndex+1)%4;continue;}}
       if(!target||e.windup>0)continue;
-      const dx=target.x-e.x,dz=target.z-e.z,length=Math.hypot(dx,dz);if(length<(e.alert>0?1.3:.2))continue;
+      const destination=this.world.enemyWaypoint(e,target,this.state.elapsed);if(!destination)continue;
+      const dx=destination.x-e.x,dz=destination.z-e.z,length=Math.hypot(dx,dz);if(length<(e.alert>0&&destination===target?1.3:.12))continue;
       const speed=e.alert>0?type.speed:type.patrolSpeed,nx=e.x+dx/length*speed*dt,nz=e.z+dz/length*speed*dt,oldX=e.x,oldZ=e.z;
       if(!this.world.blocked(nx,e.z,.35))e.x=nx;if(!this.world.blocked(e.x,nz,.35))e.z=nz;
       e.facing=Math.atan2(dx,dz);e.group.rotation.y=e.facing;
-      if(Math.hypot(e.x-oldX,e.z-oldZ)<.001){e.stuck=(e.stuck||0)+dt;if(e.stuck>.7){e.patrolIndex=(e.patrolIndex+1)%4;e.alert=0;e.stuck=0;}}else e.stuck=0;
+      if(Math.hypot(e.x-oldX,e.z-oldZ)<.001){e.stuck=(e.stuck||0)+dt;if(e.stuck>.7){e.route=null;e.routeAt=-Infinity;if(e.alert<=0)e.patrolIndex=(e.patrolIndex+1)%4;e.stuck=0;}}else e.stuck=0;
     }
   }
   die() {
