@@ -134,7 +134,6 @@
   .vital-detail span, .vital-detail b, .vital-detail small { font-size: 16px; }
   .vital-detail small { display: none; }
   .vital-row > svg { width: 18px; }
-  .mobile-controls { display: flex; }
   .joystick { width: 88px; height: 88px; left: 14px; bottom: 207px; }
   .mobile-actions { right: 12px; bottom: 214px; gap: 8px; }
   .mobile-actions button { width: 54px; height: 54px; font-size: 22px; }
