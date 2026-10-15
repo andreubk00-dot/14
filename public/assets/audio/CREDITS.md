@@ -27,3 +27,9 @@ Version 0.20.2 adds unchanged Kenney Impact Sounds recordings for the final harv
 - impact_mining_003.ogg: SHA-256 4237fa2cd80364ad81cd0af44f67d7497f1c5edcc7bdb02cd22be2ba4580c83d
 - impact_mining_004.ogg: SHA-256 8ca3a99d85d845751ad8ce7b40509da58263a62e48cde70e5a30b5ccef4c9a3b
 No audio files were generated or re-encoded.
+
+## Enemy warning and destruction recordings (v0.21.0)
+Downloaded unchanged from the pinned Kenney Starter Kit FPS commit 185fd2326d74a5cf858cffc616f87cf9696f9cc0, `sounds/` directory. Upstream licenses sound effects CC0 1.0; the full license is included above.
+- enemy_attack.ogg, 8989 bytes, SHA-256 fdbd0e559acd5c01122f47cac2fda1ed24460a2bc130aeec91734ab67acb0411.
+- enemy_destroy.ogg, 17737 bytes, SHA-256 3205e84c18ab40eabdb70fa8a779489b666f1e452e3815b3c2b3b71fb418d006.
+The game controls spatial volume and playback rate; files are not synthesized or transcoded.

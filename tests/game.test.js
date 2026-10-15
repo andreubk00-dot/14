@@ -854,3 +854,43 @@ test('Deposit preserves selected materials and equipment without duplicating hau
  const loaded=validateSave({...s,keepResources:['wood','wood','__proto__','fake','water']});assert.deepEqual(loaded.keepResources,['wood','water']);
  loaded.keepResources=[];assert.equal(deposit(loaded),6);assert.deepEqual(loaded.bag,{});
 });
+
+import {beginEnemyAttack,advanceEnemyAttack,segmentDistance} from '../src/enemy-combat.js';
+import {DRONE_TYPES as HOSTILES,reactToHit as interruptHostile} from '../src/survival.js';
+const hostile=(kind)=>({kind,x:0,z:0,originX:0,originZ:0,alert:3,cooldown:0,stagger:0});
+test('Heavy attacks lock a visible aim point, allow dodging and recover before the next attack',()=>{
+ const e=hostile('warden'),p={x:0,z:2};assert.equal(beginEnemyAttack(e,p,false),false);assert.equal(beginEnemyAttack(e,{x:0,z:3},true),false);
+ assert.equal(beginEnemyAttack(e,p,true),true);p.x=5;assert.equal(advanceEnemyAttack(e,.8,()=>false),null);
+ const hit=advanceEnemyAttack(e,.35,()=>false);assert.equal(hit.kind,'slam');assert.deepEqual([hit.x,hit.z],[0,2]);assert.ok(Math.hypot(p.x-hit.x,p.z-hit.z)>hit.radius);
+ assert.equal(beginEnemyAttack(e,{x:0,z:1},true),false);e.cooldown=0;assert.equal(beginEnemyAttack(e,{x:0,z:1},true),true);
+ interruptHostile(e,{x:0,z:1});assert.equal(e.attack,null);assert.equal(e.windup,0);
+});
+test('Runner telegraphs, charges at the original target, stops on obstacles and hits only once',()=>{
+ const e=hostile('runner');beginEnemyAttack(e,{x:0,z:2},true);assert.equal(advanceEnemyAttack(e,.5,()=>false),null);assert.equal(e.z,0);
+ advanceEnemyAttack(e,.15,()=>false);const first=advanceEnemyAttack(e,.1,()=>false);assert.equal(first.kind,'dash');assert.ok(first.bz>0);first.attack.hit=true;
+ const next=advanceEnemyAttack(e,.1,()=>false);assert.equal(next.damage,0);advanceEnemyAttack(e,.1,()=>true);assert.equal(e.attack,null);assert.ok(e.z<2);
+});
+test('Gunner emits a single locked shot, and swept projectile distance catches crossing hits',()=>{
+ const e=hostile('gunner');beginEnemyAttack(e,{x:6,z:0},true);assert.equal(advanceEnemyAttack(e,1,()=>false),null);
+ const shot=advanceEnemyAttack(e,.05,()=>false);assert.equal(shot.kind,'shot');assert.equal(shot.x,6);assert.equal(advanceEnemyAttack(e,.5,()=>false),null);
+ assert.equal(segmentDistance(1,0,0,0,3,0),0);assert.equal(segmentDistance(1,2,0,0,3,0),2);assert.equal(segmentDistance(4,0,0,0,3,0),1);
+ for(const kind of ['warden','runner','gunner'])assert.ok(HOSTILES[kind].health>0&&HOSTILES[kind].windup>=.6&&HOSTILES[kind].loot);
+});
+
+test('Downloaded enemy models retain their pinned CC0 source bytes and local dependencies',async()=>{
+ const {readFile}=await import('node:fs/promises'),{createHash}=await import('node:crypto'),{MODEL_FILES}=await import('../src/model-assets.js');
+ for(const [id,hash] of Object.entries({runner:'7112f6a08400914f9da546f3e6029e947cc9eab2b4a6da5eb99776111289efb1',warden:'047f5e5fb3bb6d378bd1df16ca6137f2a596c99b3a1b5690b4020c05aaf6f319'})){
+  const data=await readFile(new URL('../public/assets/models/'+MODEL_FILES[id],import.meta.url));assert.equal(createHash('sha256').update(data).digest('hex'),hash);
+  const json=JSON.parse(data.subarray(20,20+data.readUInt32LE(12)));assert.ok(json.animations.length>0);
+  for(const image of json.images||[])if(image.uri)assert.ok((await readFile(new URL('../public/assets/models/enemies/'+image.uri,import.meta.url))).length>0);
+ }
+ const license=await readFile(new URL('../public/assets/models/enemies/WARDEN-README.md',import.meta.url),'utf8');assert.match(license,/CC0 1.0/);
+});
+
+test('Animated downloaded warden fits its real height after cloning, with feet on the floor',async()=>{
+ const {readFile}=await import('node:fs/promises'),{GLTFLoader}=await import('three/addons/loaders/GLTFLoader.js'),{clone}=await import('three/addons/utils/SkeletonUtils.js'),{Box3,Vector3,AnimationMixer}=await import('three'),{fitEnemyModel}=await import('../src/enemy-models.js');
+ const data=await readFile(new URL('../public/assets/models/enemies/warden.glb',import.meta.url));const asset=await new GLTFLoader().parseAsync(data.buffer.slice(data.byteOffset,data.byteOffset+data.byteLength),'');
+ const model=clone(asset.scene),mixer=new AnimationMixer(model);mixer.clipAction(asset.animations.find(c=>c.name==='Idle')).play();mixer.update(0);fitEnemyModel(model,1.8);
+ const b=new Box3().setFromObject(model,true),size=b.getSize(new Vector3());assert.ok(Math.abs(size.y-1.8)<.001);assert.ok(Math.abs(b.min.y)<.001);assert.ok(size.x<1.5);
+ mixer.update(.5);model.updateMatrixWorld(true);const animated=new Box3().setFromObject(model,true);assert.ok(animated.min.y>-.05&&animated.max.y<2);
+});

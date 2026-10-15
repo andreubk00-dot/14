@@ -1,3 +1,4 @@
+import {beginEnemyAttack,advanceEnemyAttack,segmentDistance} from './enemy-combat.js';
 import {addMapMark} from './map-marks.js';
 import {harvestTimeline,advanceHarvest} from './harvesting.js';
 import {salvageDuration} from './salvage.js';
@@ -575,24 +576,54 @@ class QuietDistrict {
       const d=Math.hypot(target.x-s.x,target.z-s.z)||1,push=swingProfile(w.id).push,x=target.x+(target.x-s.x)/d*push,z=target.z+(target.z-s.z)/d*push;
       if(!this.world.blocked(x,z,.4)) {target.x=x;target.z=z;}target.windup=0;
     }
-    if(!target.health){target.deadAt=s.elapsed;s.droneDeaths[target.id]=s.elapsed;s.kills++;const result=collect(s,{metal:2,parts:1});this.showLoot(result.received,target.x,target.z);
-      if(result.full){const drop={id:`drop-${Date.now()}-${s.kills}`,x:target.x,z:target.z,loot:result.remaining};s.drops.push(drop);this.world.addDrop(drop);this.ui.toast('Рюкзак полон. Обломки остались на месте — вернись за ними.');}this.audio.collect();this.target=null;
+    if(!target.health){target.deadAt=s.elapsed;s.droneDeaths[target.id]=s.elapsed;s.kills++;const result=collect(s,DRONE_TYPES[target.kind].loot||{metal:2,parts:1});this.showLoot(result.received,target.x,target.z);
+      if(result.full){const drop={id:`drop-${Date.now()}-${s.kills}`,x:target.x,z:target.z,loot:result.remaining};s.drops.push(drop);this.world.addDrop(drop);this.ui.toast('Рюкзак полон. Обломки остались на месте — вернись за ними.');}this.audio.playSample('enemy_destroy',.45,1,{x:target.x,z:target.z});this.audio.collect();this.target=null;
     }
     this.ui.update();this.save(false);
   }
+  enemyDamage(amount){this.ui.damage();this.audio.hit();if(takeDamage(this.state,amount)){this.die();return true;}return false;}
+  updateEnemyBolts(dt){
+    if(!this.enemyBolts?.length)return false;
+    for(const bolt of this.enemyBolts||[]){
+      const ox=bolt.x,oz=bolt.z,step=Math.min(bolt.remaining,12*dt),x=ox+bolt.dx*step,z=oz+bolt.dz*step;bolt.remaining-=step;
+      if(!this.world.canSee(ox,oz,x,z)||this.world.blocked(x,z,.08))bolt.remaining=0;
+      else if(segmentDistance(this.state.x,this.state.z,ox,oz,x,z)<.45){bolt.remaining=0;if(this.enemyDamage(bolt.damage))return true;}
+      bolt.x=x;bolt.z=z;bolt.mesh.position.set(x,1.1,z);
+    }
+    this.enemyBolts=(this.enemyBolts||[]).filter(b=>{if(b.remaining>0)return true;this.world.scene.remove(b.mesh);return false;});return false;
+  }
   updateEnemies(dt) {
+    if(this.updateEnemyBolts(dt))return;
     const visibility=gearProfile(this.state,RECIPES).visibility;
     for(const e of this.world.enemies){
       const type=DRONE_TYPES[e.kind]||DRONE_TYPES.guardian;
-      if(e.health<=0){e.windup=0;if(this.state.elapsed-e.deadAt>180){e.health=e.maxHealth;e.x=e.originX;e.z=e.originZ;e.alert=0;e.suspicion=0;e.route=null;e.stagger=0;delete this.state.droneDeaths[e.id];}continue;}
+      if(e.health<=0){e.windup=0;e.attack=null;if(this.state.elapsed-e.deadAt>180){e.health=e.maxHealth;e.x=e.originX;e.z=e.originZ;e.alert=0;e.suspicion=0;e.route=null;e.stagger=0;e.cooldown=0;delete this.state.droneDeaths[e.id];}continue;}
       e.cooldown=Math.max(0,e.cooldown-dt);const distance=Math.hypot(e.x-this.state.x,e.z-this.state.z),leash=Math.hypot(e.x-e.originX,e.z-e.originZ);
-      if(distance>30&&e.alert<=0){e.suspicion=0;e.windup=0;continue;}
+      if(distance>30&&e.alert<=0&&!e.attack){e.suspicion=0;e.windup=0;continue;}
       const sight=distance<type.vision*visibility&&this.world.canSee(e.x,e.z,this.state.x,this.state.z),seen=leash<10&&droneSees(e,this.state,sight,visibility);
       updateAwareness(e,dt,seen,this.state,distance);
       if(e.stagger>0){e.stagger=Math.max(0,e.stagger-dt);e.windup=0;continue;}
-      if(attackCharge(e,dt,distance<1.7,sight&&leash<10&&e.alert>0)){this.ui.damage();this.audio.hit();if(takeDamage(this.state,type.damage)){this.die();return;}}
+      if(type.attack){
+        if(beginEnemyAttack(e,this.state,sight&&leash<10))this.audio.playSample('enemy_attack',.35,e.kind==='warden'?.7:1,{x:e.x,z:e.z});
+        const event=advanceEnemyAttack(e,dt,(x,z,r)=>this.world.blocked(x,z,r));
+        if(event?.kind==='slam'){
+          this.world.impact(event.x,.25,event.z,'#e8af7b',1.7);this.audio.resourceHit('quarry',event.x,event.z,true);
+          if(Math.hypot(this.state.x-event.x,this.state.z-event.z)<=event.radius&&Math.hypot(e.x-this.state.x,e.z-this.state.z)<3.5&&this.world.canSee(e.x,e.z,this.state.x,this.state.z)&&this.enemyDamage(event.damage))return;
+        }
+        if(event?.kind==='dash'&&event.damage&&segmentDistance(this.state.x,this.state.z,event.ax,event.az,event.bx,event.bz)<.8){event.attack.hit=true;if(this.enemyDamage(event.damage))return;}
+        if(event?.kind==='shot'){
+          const dx=event.x-e.x,dz=event.z-e.z,d=Math.hypot(dx,dz)||1;
+          const bolt={x:e.x,z:e.z,dx:dx/d,dz:dz/d,remaining:9,damage:event.damage};
+          if((this.enemyBolts||[]).length<12){bolt.mesh=this.world.enemyBolt(bolt);(this.enemyBolts??=[]).push(bolt);this.audio.playSample('blaster',.3,1,{x:e.x,z:e.z});}
+        }
+        if(e.attack||event)continue;
+      }else if(attackCharge(e,dt,distance<1.7,sight&&leash<10&&e.alert>0)&&this.enemyDamage(type.damage))return;
       let target;
-      if(e.alert>0&&leash<10)target=e.lastSeen;
+      if(e.alert>0&&leash<10){
+        if(e.kind==='gunner'&&sight&&distance>=3&&distance<6.5)continue;
+        target=e.kind==='gunner'&&sight&&distance<3?{x:e.x+(e.x-this.state.x)/(distance||1)*2,z:e.z+(e.z-this.state.z)/(distance||1)*2}:e.lastSeen;
+        if(Math.hypot(target.x-e.originX,target.z-e.originZ)>9.5)target={x:e.originX,z:e.originZ};
+      }
       else {const a=e.patrolIndex*Math.PI/2;target={x:e.originX+Math.sin(a)*2.2,z:e.originZ+Math.cos(a)*2.2};if(this.world.blocked(target.x,target.z)||Math.hypot(e.x-target.x,e.z-target.z)<.35){e.patrolIndex=(e.patrolIndex+1)%4;continue;}}
       if(!target||e.windup>0)continue;
       const destination=this.world.enemyWaypoint(e,target,this.state.elapsed);if(!destination)continue;
@@ -604,6 +635,8 @@ class QuietDistrict {
     }
   }
   die() {
+    for(const b of this.enemyBolts||[])this.world.scene.remove(b.mesh);this.enemyBolts=[];
+    for(const e of this.world.enemies){e.attack=null;e.windup=0;e.alert=0;e.suspicion=0;}
     this.swing=null;this.world.clearWeaponEffect();
     this.motion.reset(); this.keys.clear(); this.touchMovement = { x: 0, z: 0 };
     respawn(this.state); this.path = []; this.target = null; this.job = null; this.cancelFishing(); this.cancelBuild();

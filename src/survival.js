@@ -1,4 +1,7 @@
 export const DRONE_TYPES={
+ runner:{name:'Сборщик',vision:7,angle:Math.PI*.7,speed:2.1,patrolSpeed:1.1,windup:.65,damage:10,health:38,attack:'dash',reach:3.2,recovery:2.2,model:'runner',ground:true,loot:{metal:2,wire:1}},
+ warden:{name:'Тяжёлый смотритель',vision:6.5,angle:Math.PI*.65,speed:1.35,patrolSpeed:.7,windup:1.15,damage:19,health:78,attack:'slam',reach:2.3,radius:1.35,recovery:2.6,model:'warden',ground:true,loot:{metal:4,parts:2}},
+ gunner:{name:'Стрелок',vision:9,angle:Math.PI*.6,speed:1.65,patrolSpeed:.9,windup:1.05,damage:12,health:44,attack:'shot',reach:8,recovery:2.3,model:'enemy-flying',loot:{metal:2,wire:2}},
  guardian:{name:'Охранник',vision:6.2,angle:Math.PI*.72,speed:1.8,patrolSpeed:1,windup:.8,damage:11},
  scout:{name:'Дозорный',vision:8,angle:Math.PI*.6,speed:2.3,patrolSpeed:1.3,windup:.65,damage:8},
 };
@@ -34,6 +37,6 @@ export function updateAwareness(enemy,dt,seen,player,distance){
  return enemy.alert>0;
 }
 export function reactToHit(enemy,player){
- enemy.alert=3;enemy.suspicion=1;enemy.stagger=.18;enemy.windup=0;enemy.route=null;enemy.routeAt=-Infinity;
+ enemy.alert=3;enemy.suspicion=1;enemy.stagger=.18;enemy.windup=0;enemy.attack=null;enemy.route=null;enemy.routeAt=-Infinity;
  const dx=player.x-enemy.originX,dz=player.z-enemy.originZ,d=Math.hypot(dx,dz)||1,f=Math.min(1,8.5/d);enemy.lastSeen={x:enemy.originX+dx*f,z:enemy.originZ+dz*f};
 }

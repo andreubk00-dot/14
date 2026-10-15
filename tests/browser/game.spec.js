@@ -802,7 +802,7 @@ test('New station gear and storage rack craft through UI; timed dismantling canc
 });
 
 test('Distant patrols sleep without pathfinding and the harbor opens the existing fishing flow',async({page})=>{
- await start(page,{x:104,z:-20,owned:['rod'],settings:{sound:false,quality:'low'}});const audit=await page.evaluate(()=>{const g=window.__quietDistrict,w=g.world;g.visibilityPaused=true;const far=w.enemies.find(e=>Math.hypot(e.x-g.state.x,e.z-g.state.z)>40),before={x:far.x,z:far.z,routeAt:far.routeAt};for(let i=0;i<120;i++){g.state.elapsed+=.05;g.updateEnemies(.05);}return {slept:far.x===before.x&&far.z===before.z&&far.routeAt===before.routeAt,count:w.enemies.length};});expect(audit.slept).toBe(true);expect(audit.count).toBe(16);await page.keyboard.press('KeyE');await page.locator('[data-action="bait-menu"]').click();await expect(page.locator('#panel')).toContainText('Промышленная набережная');await page.locator('[data-action="cast-selected"]').click();expect(await page.evaluate(()=>window.__quietDistrict.fish.spot)).toBe('harbor');
+ await start(page,{x:104,z:-20,owned:['rod'],settings:{sound:false,quality:'low'}});const audit=await page.evaluate(()=>{const g=window.__quietDistrict,w=g.world;g.visibilityPaused=true;const far=w.enemies.find(e=>Math.hypot(e.x-g.state.x,e.z-g.state.z)>40),before={x:far.x,z:far.z,routeAt:far.routeAt};for(let i=0;i<120;i++){g.state.elapsed+=.05;g.updateEnemies(.05);}return {slept:far.x===before.x&&far.z===before.z&&far.routeAt===before.routeAt,count:w.enemies.length};});expect(audit.slept).toBe(true);expect(audit.count).toBe(24);await page.keyboard.press('KeyE');await page.locator('[data-action="bait-menu"]').click();await expect(page.locator('#panel')).toContainText('Промышленная набережная');await page.locator('[data-action="cast-selected"]').click();expect(await page.evaluate(()=>window.__quietDistrict.fish.spot)).toBe('harbor');
 });
 
 
@@ -869,7 +869,7 @@ test('Forest expansion connects every clearing and cabin, keeps all loot reachab
   const roadClips=OUTLAND_PATHS.filter(p=>w.buildings.some(b=>Math.abs(p.x-b.x)<(p.w+b.w)/2+.17&&Math.abs(p.z-b.z)<(p.d+b.d)/2+.17));
   const dock=Array.from({length:11},(_,i)=>!w.blocked(94+i,164)),water=w.blocked(115,164)&&w.blocked(104,168)&&w.blocked(132,160);
   return {clearings,houses,unreachable,findClips,roadClips,dock,water,nodeCount:w.nodes.length,resources:OUTLAND_RESOURCE_SITES.length,old:w.nodes[209].id,patrols:w.enemies.length,grass:w.scene.children.filter(m=>m.userData.groundCover).reduce((n,m)=>n+m.count,0)};
- });expect(audit.clearings.every(l=>l.route)).toBe(true);expect(audit.houses.every(b=>b.reachable&&b.faded&&b.restored)).toBe(true);expect(audit.unreachable).toEqual([]);expect(audit.findClips).toEqual([]);expect(audit.roadClips).toEqual([]);expect(audit.dock.every(Boolean)&&audit.water).toBe(true);expect(audit.nodeCount).toBe(370);expect(audit.resources).toBe(121);expect(audit.old).toBe('node-209');expect(audit.patrols).toBe(16);expect(audit.grass).toBe(2300);
+ });expect(audit.clearings.every(l=>l.route)).toBe(true);expect(audit.houses.every(b=>b.reachable&&b.faded&&b.restored)).toBe(true);expect(audit.unreachable).toEqual([]);expect(audit.findClips).toEqual([]);expect(audit.roadClips).toEqual([]);expect(audit.dock.every(Boolean)&&audit.water).toBe(true);expect(audit.nodeCount).toBe(370);expect(audit.resources).toBe(121);expect(audit.old).toBe('node-209');expect(audit.patrols).toBe(24);expect(audit.grass).toBe(2300);
  await jump(page,104,164);await page.keyboard.press('KeyE');await page.locator('[data-action="bait-menu"]').click();await expect(page.locator('#panel')).toContainText('Лесное озеро');await page.keyboard.press('Escape');await jump(page,-24,118.7);await page.keyboard.press('KeyE');expect(await page.evaluate(()=>window.__quietDistrict.job.type)).toBe('gate');const opening=await page.evaluate(()=>{const g=window.__quietDistrict,w=g.world,before=w.blocked(-24,120);g.finishJob();return {before,after:w.blocked(-24,120),wing:w.blocked(-29,120),saved:JSON.parse(localStorage.getItem('quiet-district-save-v1')).openedGates.includes('forest-cut')};});expect(opening).toEqual({before:true,after:false,wing:true,saved:true});
 });
 
@@ -981,4 +981,65 @@ test('Manual map notes and retained resources work through UI, save and distant 
  await restored.setViewportSize({width:390,height:844});await expect(restored.locator('[data-action="map-remove"]')).toBeVisible();
  expect(await restored.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await restored.close();
+});
+
+test('Ready robot enemies telegraph distinct attacks, respect cover, sleep at distance and retain death records',async({page})=>{
+ test.setTimeout(240000);await start(page,{owned:['axe','pick'],elapsed:20});
+ const audit=await page.evaluate(async()=>{
+  const g=window.__quietDistrict,w=g.world;g.visibilityPaused=true;
+  const roles=['runner','warden','gunner'].map(kind=>({kind,count:w.enemies.filter(e=>e.kind===kind).length}));
+  const models=Object.keys(w.assets),far=w.enemies.filter(e=>['runner','warden','gunner'].includes(e.kind));let animations=0,pathCalls=0;
+  const oldWaypoint=w.enemyWaypoint;w.enemyWaypoint=function(...args){pathCalls++;return oldWaypoint.apply(this,args);};
+  const oldMixers=far.filter(e=>e.mixer).map(e=>[e.mixer,e.mixer.update]);for(const [m,update] of oldMixers)m.update=function(...args){animations++;return update.apply(this,args);};
+  for(let i=0;i<10;i++)g.updateEnemies(1/60);w.update(.016,false,true);
+  for(const [m,update] of oldMixers)m.update=update;w.enemyWaypoint=oldWaypoint;
+  const slept=far.every(e=>e.x===e.originX&&e.z===e.originZ)&&animations===0;
+  const inside=w.enemies.find(e=>e.kind==='warden');g.state.x=-170;g.state.z=8;Object.assign(inside,{x:-170,z:8,windup:.4,attack:{x:-170,z:8,kind:'slam',phase:'windup'}});w.update(.016,false,true);const warningAboveFloor=inside.warning.visible&&inside.warning.position.y>.19;inside.attack=null;inside.windup=0;
+  for(const e of w.enemies){e.health=0;e.deadAt=g.state.elapsed;}
+  const reset=(kind,z)=>{for(const b of g.enemyBolts||[])w.scene.remove(b.mesh);g.enemyBolts=[];for(const e of w.enemies)e.health=0;
+   const e=w.enemies.find(e=>e.kind===kind);Object.assign(e,{x:0,z:0,originX:0,originZ:0,health:e.maxHealth,facing:0,alert:3,suspicion:1,cooldown:0,windup:0,attack:null,stagger:0,lastSeen:{x:0,z},route:null,routeAt:-Infinity,courseAt:undefined});
+   g.state.x=0;g.state.z=z;g.state.health=100;g.state.stamina=100;g.keys.clear();g.motion.reset();g.path=[];return e;};
+  const steps=(n,move=false)=>{for(let i=0;i<n;i++){g.state.elapsed+=1/60;if(move)g.movement(1/60);g.updateEnemies(1/60);}};
+  let e=reset('warden',2);steps(20);const aim={x:e.attack.x,z:e.attack.z};g.keys.add('KeyD');steps(60,true);g.keys.clear();const slamDodge=g.state.health===100&&Math.hypot(g.state.x-aim.x,g.state.z-aim.z)>1.35;
+  e=reset('warden',2);steps(75);const slamHit=g.state.health===81;
+  e=reset('warden',2);steps(20);g.damageEnemy(e,{id:'pipe',damage:13});const interrupt=e.attack===null&&e.windup===0;
+  e=reset('runner',2.4);steps(80);const dashHit=g.state.health===90;
+  e=reset('runner',2.4);steps(20);const wall=w.collider(0,1.1,3,.2);steps(65);const dashWall=g.state.health===100&&e.z<.8;wall.disabled=true;
+  e=reset('gunner',6);steps(65);const fired=g.enemyBolts.length===1;g.keys.add('KeyD');steps(58,true);g.keys.clear();const shotDodge=g.state.health===100;
+  e=reset('gunner',6);steps(65);steps(35);const shotHit=g.state.health===88;
+  e=reset('gunner',6);steps(30);const cover=w.collider(0,3,3,.2);steps(80);const shotWall=g.state.health===100;cover.disabled=true;
+  e=reset('warden',2);g.state.bag={wood:26};g.damageEnemy(e,{id:'pistol',damage:1000});const dead=e.id;
+  g.save();return {roles,models,slept,animations,warningAboveFloor,slamDodge,slamHit,interrupt,dashHit,dashWall,fired,shotDodge,shotHit,shotWall,dead,drop:g.state.drops.at(-1),death:g.state.droneDeaths[dead],time:g.state.elapsed};
+ });
+ console.log('New enemy audit',JSON.stringify(audit));expect(audit.roles).toEqual([{kind:'runner',count:3},{kind:'warden',count:2},{kind:'gunner',count:3}]);expect(audit.models).toEqual(expect.arrayContaining(['runner','warden']));
+ for(const id of ['slept','warningAboveFloor','slamDodge','slamHit','interrupt','dashHit','dashWall','fired','shotDodge','shotHit','shotWall'])expect(audit[id],id).toBe(true);
+ expect(audit.drop.loot).toEqual({metal:4,parts:2});expect(audit.death).toBe(audit.time);
+ const context=page.context();await page.close();const restored=await context.newPage();restored.on('pageerror',e=>page.__errors.push(e.message));await restored.goto('/');
+ await expect(restored.locator('[data-action="start"]')).toBeEnabled({timeout:60000});await restored.locator('[data-action="start"]').click();
+ expect(await restored.evaluate(id=>window.__quietDistrict.world.enemies.find(e=>e.id===id).health,audit.dead)).toBe(0);
+ expect(await restored.evaluate(()=>window.__quietDistrict.state.drops.at(-1).loot)).toEqual({metal:4,parts:2});await restored.close();
+});
+
+test('Developed forestry, quarry and dacha bypasses support a full expedition and useful home upgrades',async({page})=>{
+ test.setTimeout(240000);await start(page,{owned:['axe','pick'],stash:{metal:2,cloth:4},placed:[{id:'dryrack',x:-17,z:23,harvested:0}]});
+ const audit=await page.evaluate(async()=>{
+  const g=window.__quietDistrict,w=g.world;g.visibilityPaused=true;const legs=[],collected=[];let steps=0,minHealth=100;
+  const walk=(x,z)=>{g.navigate(x,z,false);if(!g.path.length&&Math.hypot(g.state.x-x,g.state.z-z)>1)throw Error('No path');let n=0;
+   while(g.path.length&&n<20000){g.state.elapsed+=1/60;g.movement(1/60);g.updateEnemies(1/60);minHealth=Math.min(minHealth,g.state.health);n++;}
+   if(g.path.length||Math.hypot(g.state.x-x,g.state.z-z)>1)throw Error('Expedition stopped '+JSON.stringify({x:g.state.x,z:g.state.z,to:{x,z}}));
+   legs.push({x,z,steps:n});steps+=n;g.motion.reset();};
+  const visit=(points)=>points.forEach(([x,z])=>walk(x,z));
+  const take=(name)=>{const node=w.nodes.find(n=>n.name===name);if(!node)throw Error(name);
+   let stand;for(let a=0;a<Math.PI*2;a+=Math.PI/6){const x=node.x+Math.sin(a)*1.3,z=node.z+Math.cos(a)*1.3;if(!w.blocked(x,z)&&w.canSee(x,z,node.x,node.z,node.collider,true)){stand={x,z};break;}}
+   if(!stand)throw Error('No approach');walk(stand.x,stand.z);g.beginNode(node);if(!g.job)throw Error('Cannot gather '+name);
+   for(let i=0;i<Math.ceil(g.job.duration*60);i++){g.state.elapsed+=1/60;g.updateEnemies(1/60);}g.finishJob();collected.push(node.name);
+  };
+  visit([[-155,6],[-155,-4],[-184,-4],[-184,40]]);take('дровяной сарай · кладовая');
+  visit([[-184,52],[-155,104],[-184,104],[-184,126],[-174,126]]);take('ремонт инструмента · аккумулятор и ремонтные детали');
+  visit([[-184,126],[-184,156],[-148,156],[-78,138],[-78,156],[-62,160]]);take('дом с синими рамами · кладовая');
+  visit([[-78,166],[-78,194],[-35,194],[-35,185]]);take('дачная кухня · кладовая');
+  const loot={...g.state.bag};visit([[-35,194],[-78,194],[-78,138],[-21,23],[-19.5,14]]);g.action('deposit',{});g.make('bag');
+  const {upgradeStation}=await import('/src/game.js');walk(-17,21.7);const upgrade=upgradeStation(g.state,g.state.placed[0]);g.save();
+  const {capacity}=await import('/src/game.js');return {steps,seconds:g.state.elapsed,minHealth,dead:!!g.state.grave,legs:legs.length,collected,loot,bag:g.state.equipment.bag,capacity:capacity(g.state),upgrade:upgrade.ok,dryer:g.state.placed[0].upgrade};
+ });console.log('Three region expedition',JSON.stringify(audit));expect(audit.dead).toBe(false);expect(audit.minHealth).toBeGreaterThan(0);expect(audit.collected).toHaveLength(4);expect(audit.bag).toBe('bag');expect(audit.capacity).toBe(40);expect(audit.upgrade).toBe(true);expect(audit.dryer).toBe(1);expect(audit.loot.battery).toBe(1);expect(audit.loot.cloth).toBe(8);
 });

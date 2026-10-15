@@ -47,6 +47,10 @@ export const OUTLAND_WAYMARKS=[
 ];
 const path=(x,z,w,d)=>({x,z,w,d,garden:true});
 export const OUTLAND_PATHS=[
+ // Outer footpaths offer a longer approach around the guarded working yards.
+ path(-184,24,3,56),path(-169,-4,30,3),path(-155,6,3,20),path(-169,52,30,3),
+ path(-184,129,3,54),path(-169,104,30,3),path(-166,156,36,3),path(-148,153.5,3,5),
+ path(-78,166,3,56),path(-63,138,30,3),path(-63,194,30,3),
  path(-137.5,16,65,3),path(-155,75,3,118),path(-164,44,18,2.4),path(-165,128,20,3),
  path(-89.5,132,131,3),path(-24,120,3,36),path(-45,138,45,3),path(-48,166,3,56),path(-48,165,56,3),path(-48,194,56,3),
  path(34,132,116,3),path(45,144,3,24),path(35,153,20,2.4),path(92,145,3,26),path(89,157,6,2.4),path(94,164,4,2.6),
@@ -64,12 +68,16 @@ const loot={cabin:[{cloth:4,wood:3},{water:3,herbs:2}],workshop:[{metal:4,parts:
 // Keep the two established slots per building so old node IDs and claims survive.
 function supplies(b){
  const items=loot[b.role].map(stock=>({...stock}));
+ if(b.id==='woodshed')return [{wood:8,cloth:2},{wood:5,wire:2}];
+ if(b.id==='bluecottage')items[0]={cloth:6,wood:2};
+ if(b.id==='sharedkitchen')items[0]={vegetables:5,herbs:3};
+ if(b.id==='quarryshop')items[1]={metal:5,wire:3,wood:3};
  if(b.id==='quarryshop')items[0]={metal:4,parts:2,battery:1};
  if(b.id==='eastshop')items[0]={metal:4,parts:2,pumpmodule:1};
  if(b.id==='nursery')return [{seeds:4,flowers:2},{filterunit:2,water:2}];
  return items;
 }
-const supplyNames={quarryshop:['аккумулятор и ремонтные детали','дерево и провод'],eastshop:['запасной насос и детали','дерево и провод'],nursery:['семена цветов','фильтры поливной системы']};
+const supplyNames={quarryshop:['аккумулятор и ремонтные детали','металл, дерево и провод'],eastshop:['запасной насос и детали','дерево и провод'],nursery:['семена цветов','фильтры поливной системы']};
 export const OUTLAND_SUPPLIES=OUTLAND_BUILDINGS.flatMap(b=>supplies(b).map((items,i)=>[
  'crate',`${b.sign.toLocaleLowerCase('ru')} · ${supplyNames[b.id]?.[i]||(i?'сухой запас':'кладовая')}`,
  b.x+(i?1:-1)*b.w/4,b.z,items,null,null,null,
@@ -209,6 +217,8 @@ export const OUTLAND_FINDS=[
  ['find','Инструментальный шкаф смотрителя',-176,121.5,{},null,'toolcabinet'],
 ];
 export const OUTLAND_MEMORIES=[
+ {id:'quarry-shift',name:'Лист сменного журнала',x:-171.3,z:118.1,y:.975,text:'«Смотритель снова принял людей за посторонних. Перед ударом долго поднимает руку — успеваем отойти. На западной тропе его не встречали. Аккумулятор и запас металла оставляем в ремонтной». На полях нарисована сушилка с маленьким вентилятором.'},
+ {id:'dacha-table',name:'Записка на общей кухне',x:-30.3,z:177.1,y:.975,text:'«Овощи сложили на кухне, ткань — в доме с синими рамами. Из неё получится хороший походный рюкзак. По центральной улице летает вооружённый дрон; за западными огородами тише». Рядом стоят две чашки и высохший букет.'},
  {id:'forest-ranger',name:'Журнал лесничего',x:-165.3,z:4.1,y:.975,text:'«Дрова оставили в сарае, камень берут у старого разреза. Аккумулятор оставили в ремонтном сарае у разреза, запасной насос — в восточной мастерской. На дачах ещё есть печи и целая мебель». Последние страницы пахнут дымом.'},
  {id:'forest-lake',name:'Записка у рыбацких снастей',x:88.7,z:149.1,y:.975,text:'«На траву берёт окунь. Вечером у настила выходит форель. Печь исправна — оставляю тому, кто будет жить здесь после нас». Под запиской лежит высохший лист.'},
  {id:'forest-north',name:'Пластинка без конверта',x:-41.3,z:-160.9,y:.975,text:'На обороте обложки: «Поставь тихо, чтобы было слышно дождь. Домой доберёмся по северной тропе». Игла ещё стоит у начала дорожки.'},
@@ -218,7 +228,13 @@ export function forestTrees(){
  for(let gx=-198;gx<=198;gx+=9)for(let gz=-198;gz<=198;gz+=9){const x=gx+(rand()-.5)*5,z=gz+(rand()-.5)*5,priority=rand();if(outlandReserved(x,z,2)||OUTLAND_RESOURCE_SITES.some(p=>Math.hypot(p.x-x,p.z-z)<3))continue;trees.push({x,z,scale:.85+rand()*.55,priority});}
  return trees.sort((a,b)=>a.priority-b.priority).slice(0,1100);
 }
-export const OUTLAND_PATROLS=[{x:-155,z:124},{x:167,z:-130}];
+// Existing entries stay first: death records retain their stable drone IDs.
+export const OUTLAND_PATROLS=[{x:-155,z:124},{x:167,z:-130},
+ {x:-155,z:32,kind:'runner'},{x:-160,z:48,kind:'gunner'},{x:-162,z:26,kind:'warden'},
+ {x:-162,z:120,kind:'warden'},{x:-151,z:117,kind:'gunner'},{x:-157,z:143,kind:'runner'},
+ {x:-48,z:177,kind:'runner'},{x:-26,z:165,kind:'gunner'},
+];
+const OUTLAND_DETAIL_ZONES=[{x:-177,z:25,w:9,d:11},{x:-177,z:113,w:10,d:18},{x:-176,z:137,w:9,d:6},{x:-70,z:147.5,w:7,d:6},{x:-72,z:173,w:3,d:3},{x:-72,z:184,w:4,d:4}];
 export function buildOutlandScenery(w){
  const outline=new THREE.Shape();outline.moveTo(-11,-4);for(const [x,z]of [[-8,-10],[1,-12],[10,-7],[12,3],[6,11],[-5,10],[-12,4]])outline.lineTo(x,z);outline.closePath();const clearing=w.cylinder(-160,.005,120,1,.02,'#717a6d',w.scene,8);clearing.geometry.dispose();clearing.geometry=new THREE.ShapeGeometry(outline);clearing.rotation.x=-Math.PI/2;clearing.castShadow=false;
  for(const b of OUTLAND_BUILDINGS){
@@ -241,9 +257,31 @@ export function buildOutlandScenery(w){
    for(const x of [right-.3,right+.3])w.cylinder(x,1.15,back,.12,.35,'#a0906b',w.scene,8);
    for(const x of [left-.3,left+.3])w.box(x,.58,back,.35,.35,.4,'#c7bd91');
   }
+  if(b.id==='ranger'){
+   const map=w.box(b.x,1.7,b.z-b.d/2+.16,2.5,1.1,.08,'#b9b28d');w.cutawayDetail(map,room);
+   for(const dx of [-.7,0,.7])w.cutawayDetail(w.box(b.x+dx,1.7,b.z-b.d/2+.21,.045,.8,.025,'#6b8067'),room);
+  }
+  if(b.id==='quarryshop')for(const dx of [-.45,0,.45])w.box(right+dx,1.03,back,.25,.18,.3,'#8e9a91');
+  if(b.id==='sharedkitchen')for(const dx of [-.3,.3])w.cylinder(right+dx,1.04,back,.09,.18,'#d4c5a1',w.scene,8);
   w.mergeBuildingDetails(room,start);
   if(['cabin','ranger','fish'].includes(b.role))w.canopy(b.x,b.z+b.d/2+.65,b.w*.65,1.6,2.6,'#7e8068');
  }
+ // Forestry: a timber drying rack and stacked cut logs beside the outer trail.
+ for(const x of [-179,-175]){w.box(x,1.2,27,.16,2.4,.16,'#736d54');w.collider(x,27,.2,.2);}
+ w.box(-177,2.4,27,4.5,.16,.6,'#736d54');
+ for(const x of [-178.5,-177.5,-176.5,-175.5]){w.box(x,.8,27,.22,1.6,.3,'#a49572');w.collider(x,27,.25,.35);}
+ for(const z of [22,23])for(const x of [-180.5,-179.9,-179.3]){const log=w.cylinder(x,.3,z,.28,3,'#958566',w.scene,7);log.rotation.x=Math.PI/2;}w.collider(-179.9,22.5,1.8,4);
+ // Quarry: open loading gantry, short conveyor and a spoil bank outside the road.
+ for(const x of [-180,-174]){w.box(x,2,108,.25,4,.25,'#6d7a72');w.collider(x,108,.3,.3);}w.box(-177,4,108,6.5,.3,.35,'#6d7a72');
+ w.box(-177,3.15,108,.06,1.6,.06,'#434e48');w.box(-177,2.3,108,.7,.18,.7,'#747b68');
+ w.box(-179,.7,116,1.7,.25,5,'#667269');w.collider(-179,116,1.7,5);for(const z of [114,116,118])w.box(-179,.86,z,1.65,.1,.12,'#9b997d');
+ for(const [x,z,size]of [[-176,136,1.4],[-179,138,1],[-174,138,1.1]]){const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(size,0),new THREE.MeshStandardMaterial({color:'#7c8272',roughness:.95}));rock.position.set(x,size*.4,z);rock.scale.set(1,.65,.85);rock.castShadow=true;rock.receiveShadow=true;w.scene.add(rock);w.collider(x,z,size*1.8,size*1.5);}
+ // Dachas: a grape pergola, a communal water barrel and an abandoned garden crate.
+ for(const x of [-72,-68])for(const z of [146,149]){w.box(x,1.3,z,.13,2.6,.13,'#857c60');w.collider(x,z,.15,.15);}
+ for(const z of [146,147,148,149])w.box(-70,2.6,z,4.2,.1,.1,'#857c60');
+ for(const x of [-71.8,-70.5,-69.2])w.bush(x,147.5,.4).position.y=2.6;
+ w.cylinder(-72,.6,173,.55,1.2,'#657e76',w.scene,12);w.collider(-72,173,1.1,1.1);
+ w.box(-72,.35,184,1.4,.6,1.8,'#8d8061');w.collider(-72,184,1.4,1.8);
  // Garden beds and washing line make the dacha street readable without quest markers.
  for(const [x,z]of [[-60,170],[-65,167],[-35,166]]){w.box(x,.2,z,2,.3,1,'#7e8068');w.collider(x,z,2,1);for(const dx of [-.6,0,.6])w.bush(x+dx,z,.3).position.y=.45;}
  for(const x of [-70,-65]){w.box(x,1.2,187,.1,2.4,.1,'#7e8068');w.collider(x,187,.1,.1);}w.box(-67.5,2.2,187,5,.025,.025,'#c7bd91');for(const x of [-69,-67])w.box(x,1.8,187,.7,.8,.025,'#c6c5ad');
@@ -266,5 +304,5 @@ export function buildOutlandScenery(w){
    const back=w.label(reverse,sign.x,y,sign.z-.065,3,'#e4d4ac','#526258');back.rotation.y=Math.PI;
   });
  }
- for(const p of forestTrees())if(!OUTLAND_WAYMARKS.some(s=>Math.hypot(s.x-p.x,s.z-p.z)<4)&&!w.blocked(p.x,p.z,1.2)&&!w.onRoad(p.x,p.z,2))w.tree(p.x,p.z,p.scale);
+ for(const p of forestTrees())if(!OUTLAND_WAYMARKS.some(s=>Math.hypot(s.x-p.x,s.z-p.z)<4)&&!OUTLAND_DETAIL_ZONES.some(r=>inside(p,r,2))&&!w.blocked(p.x,p.z,1.2)&&!w.onRoad(p.x,p.z,2))w.tree(p.x,p.z,p.scale);
 }

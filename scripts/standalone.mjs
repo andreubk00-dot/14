@@ -1,3 +1,4 @@
+import {MODEL_FILES} from '../src/model-assets.js';
 import {AUDIO_FILES} from '../src/audio-assets.js';
 import { readFile, writeFile, readdir, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -31,20 +32,19 @@ async function embedModel(path) {
 }
 
 const assets = {};
-for (const name of ['character', 'grass', 'grass-small', 'blaster', 'blaster-repeater', 'enemy-flying']) {
-  const folder = name === 'character' ? 'characters/' : ['grass', 'grass-small'].includes(name) ? 'nature/' : '';
-  assets[name] = await embedModel(resolve(root, `public/assets/models/${folder}${name}.glb`));
-}
+for (const [name,path] of Object.entries(MODEL_FILES)) assets[name]=await embedModel(resolve(root,`public/assets/models/${path}`));
+
 const audio={};for(const id of AUDIO_FILES)audio[id]=`data:audio/ogg;base64,${(await readFile(resolve(root,`public/assets/audio/${id}.ogg`))).toString('base64')}`;
 const audioCredits=await readFile(resolve(root,'public/assets/audio/CREDITS.md'),'utf8');
 const audioLicense=await readFile(resolve(root,'public/assets/audio/CC0-LICENSE.txt'),'utf8');
 const script = (await readFile(resolve(root, 'dist/assets', jsFiles[0]), 'utf8')).replace(/<\/script/gi, '<\\/script');
 const css = (await Promise.all(cssFiles.map(name => readFile(resolve(root, 'dist/assets', name), 'utf8')))).join('\n');
 const favicon = await readFile(resolve(root, 'public/favicon.svg'), 'utf8');
+const enemyLicense=await readFile(resolve(root,'public/assets/ENEMIES-CC0-LICENSE.txt'),'utf8');
 const credits = await readFile(resolve(root, 'public/assets/CREDITS.md'), 'utf8');
 const license = await readFile(resolve(root, 'public/assets/KENNEY-MIT-LICENSE.txt'), 'utf8');
 const kaykitLicense = await readFile(resolve(root, 'public/assets/KAYKIT-LICENSE.txt'), 'utf8');
-const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><meta name="theme-color" content="#101b1b"><title>Тихий район</title><link rel="icon" href="data:image/svg+xml;base64,${Buffer.from(favicon).toString('base64')}"><style>${css}</style></head><body><div id="app"></div><script>globalThis.__quietAssets=${JSON.stringify(assets)};globalThis.__quietAudio=${JSON.stringify(audio)};</script><script type="module">${script}</script><!--\n${credits}\n${audioCredits}\n${audioLicense}\n${license}\n${kaykitLicense}\n--></body></html>`;
+const html = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"><meta name="theme-color" content="#101b1b"><title>Тихий район</title><link rel="icon" href="data:image/svg+xml;base64,${Buffer.from(favicon).toString('base64')}"><style>${css}</style></head><body><div id="app"></div><script>globalThis.__quietAssets=${JSON.stringify(assets)};globalThis.__quietAudio=${JSON.stringify(audio)};</script><script type="module">${script}</script><!--\n${credits}\n${enemyLicense}\n${audioCredits}\n${audioLicense}\n${license}\n${kaykitLicense}\n--></body></html>`;
 await mkdir(resolve(root, 'releases'), { recursive: true });
 await writeFile(resolve(root, 'releases/quiet-district.html'), html);
 const version = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8')).version;

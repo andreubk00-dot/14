@@ -1,3 +1,5 @@
+import {fitEnemyModel} from './enemy-models.js';
+import {MODEL_FILES} from './model-assets.js';
 import {staticShadowBatches} from './shadow-batches.js';
 import {OUTLAND_SUPPLIES,OUTLAND_RESOURCES,OUTLAND_FINDS,OUTLAND_PATROLS,inForestWater,buildOutlandScenery} from './outlands.js';
 import {ORCHARD_FINDS,ORCHARD_PATROL,furnishOrchard,buildOrchardGarden} from './orchard.js';
@@ -1000,8 +1002,9 @@ export class World {
       const core = this.box(0, 0, 0, 0.65, 0.35, 0.65, '#646f67', group);
       this.box(0, 0, 0.34, 0.35, 0.07, 0.05, '#e39b6b', group, new THREE.MeshStandardMaterial({ color: '#e39b6b', emissive: '#db7847', emissiveIntensity: 2 }));
       const deadAt = this.state.droneDeaths[`drone-${i}`] ?? -1;
-      const kind=[0,5,7].includes(i)?'scout':'guardian';
-      const enemy = {kind,facing:0,alert:0,windup:0,patrolIndex:0, id: `drone-${i}`, x, z, originX: x, originZ: z, health: deadAt >= 0 && this.state.elapsed - deadAt < 180 ? 0 : 52, maxHealth: 52, group, core, cooldown: 0, deadAt, seed: rng() * 10 };
+      const kind=i>=16?OUTLAND_PATROLS[i-14].kind:([0,5,7].includes(i)?'scout':'guardian');
+      const health=DRONE_TYPES[kind].health||52;
+      const enemy = {kind,facing:0,alert:0,windup:0,patrolIndex:0, id: `drone-${i}`, x, z, originX: x, originZ: z, health: deadAt >= 0 && this.state.elapsed - deadAt < 180 ? 0 : health, maxHealth: health, group, core, cooldown: 0, deadAt, seed: rng() * 10 };
       group.traverse(mesh => { mesh.userData.enemy = enemy; if (mesh.isMesh) this.pickables.push(mesh); }); const type=DRONE_TYPES[kind],vertices=[0,0,0];for(let a=-type.angle/2;a<=type.angle/2+.001;a+=type.angle/24)vertices.push(Math.sin(a)*type.vision,0,Math.cos(a)*type.vision);
       const geo=new THREE.BufferGeometry(),indices=[];geo.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));for(let j=1;j<vertices.length/3-1;j++)indices.push(0,j+1,j);geo.setIndex(indices);geo.computeVertexNormals();
       enemy.cone=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:kind==='scout'?'#9ab6ac':'#c6a875',transparent:true,opacity:.06,depthWrite:false,side:THREE.DoubleSide}));enemy.cone.position.set(x,.058,z);this.scene.add(enemy.cone);
@@ -1045,11 +1048,10 @@ export class World {
   }
   async loadAssets(onProgress) {
     const loader = new GLTFLoader(); this.assets = {};
-    const names = ['character', 'grass', 'grass-small', 'blaster', 'blaster-repeater', 'enemy-flying'];
+    const names = Object.keys(MODEL_FILES);
     let completed = 0;
     await Promise.all(names.map(async name => {
-      const folder = name === 'character' ? 'characters/' : ['grass', 'grass-small'].includes(name) ? 'nature/' : '';
-      const source = globalThis.__quietAssets?.[name] || `/assets/models/${folder}${name}.glb`;
+      const source = globalThis.__quietAssets?.[name] || `/assets/models/${MODEL_FILES[name]}`;
       const asset = await loader.loadAsync(source);
       this.assets[name] = asset; onProgress?.(++completed / names.length);
     }));
@@ -1089,8 +1091,15 @@ export class World {
     if (hand) { hand.add(this.weaponRoot); this.weaponRoot.position.set(0, 0, 0); }
     for (const enemy of this.enemies) {
       enemy.group.children.slice().forEach(child => { if (child.isMesh) { const index = this.pickables.indexOf(child); if (index >= 0) this.pickables.splice(index, 1); } enemy.group.remove(child); });
-      const model = this.assets['enemy-flying'].scene.clone();
-      const b = new THREE.Box3().setFromObject(model), s = b.getSize(new THREE.Vector3()); model.scale.setScalar(1.2 / Math.max(s.x, s.y, s.z));
+      const type=DRONE_TYPES[enemy.kind],asset=this.assets[type.model||'enemy-flying'],model=cloneSkeleton(asset.scene);
+      if(type.ground&&asset.animations.length){
+        enemy.mixer=new THREE.AnimationMixer(model);enemy.actions=Object.fromEntries(asset.animations.filter(c=>['idle','walk','walking','running','punch'].includes(c.name.toLowerCase())).map(c=>[c.name.toLowerCase(),enemy.mixer.clipAction(c)]));
+        enemy.animation=enemy.actions.idle;enemy.animation?.play();enemy.mixer.update(0);
+      }
+      if(type.ground)fitEnemyModel(model,enemy.kind==='warden'?1.8:1.15);
+      else {model.updateMatrixWorld(true);const s=new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3());model.scale.setScalar(1.2/Math.max(s.x,s.y,s.z));}
+      enemy.model=model;
+      if(enemy.kind==='gunner'){const gun=this.assets.blaster.scene.clone();gun.scale.setScalar(.65);gun.position.set(.45,-.06,.3);enemy.group.add(gun);gun.traverse(m=>{if(m.isMesh){m.castShadow=true;m.userData.enemy=enemy;this.pickables.push(m);}});}
       enemy.group.add(model); model.traverse(mesh => { if (mesh.isMesh) { mesh.castShadow = true; mesh.userData.enemy = enemy; this.pickables.push(mesh); } });
     }
     // Use downloaded vegetation meshes as instanced ground cover.
@@ -1489,6 +1498,10 @@ export class World {
     sprite.position.set(x, y, z); sprite.scale.setScalar(scale); this.scene.add(sprite);
     this.effects ||= []; this.effects.push({ mesh: sprite, life: 0.3, max: 0.3 });
   }
+  enemyBolt(bolt){
+    this.boltGeometry??=new THREE.SphereGeometry(.11,6,4);this.boltMaterial??=new THREE.MeshBasicMaterial({color:'#ffc287'});
+    const mesh=new THREE.Mesh(this.boltGeometry,this.boltMaterial);mesh.position.set(bolt.x,1.1,bolt.z);this.scene.add(mesh);return mesh;
+  }
   shot(x, z, tx, tz) {
     const points = [new THREE.Vector3(x, 1.15, z), new THREE.Vector3(tx, 1.1, tz)];
     const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: '#ffe0a1', transparent: true, opacity: 1 }));
@@ -1532,8 +1545,15 @@ export class World {
     const pos = this.motes.geometry.attributes.position;
     for (let i = 0; i < pos.count; i++) { pos.setX(i, this.moteOrigins[i * 3] + Math.sin(this.time * 0.16 + this.motePhases[i]) * 0.6); pos.setY(i, this.moteOrigins[i * 3 + 1] + Math.sin(this.time * 0.25 + this.motePhases[i]) * 0.4); }
     pos.needsUpdate = true;
-    for(const e of this.enemies){const near=Math.hypot(e.x-this.state.x,e.z-this.state.z)<13&&e.health>0;e.cone.visible=near;e.cone.position.set(e.x,.058,e.z);e.cone.rotation.y=e.facing;e.cone.material.opacity=e.alert>0?.1:.04;e.warning.visible=near&&e.windup>0;e.warning.position.set(e.x,.065,e.z);e.warning.scale.setScalar(1+(e.windup||0));e.signal.visible=near&&((e.suspicion||0)>.05||e.alert>0);e.signal.position.set(e.x,2.05,e.z);e.signal.material.color.set(e.alert>0?'#ed8f6e':'#f1d28b');e.signal.material.opacity=e.alert>0?.85:.25+(e.suspicion||0)*.5;}
-    for(const enemy of this.enemies){enemy.hitFlash=Math.max(0,(enemy.hitFlash||0)-dt);enemy.group.position.set(enemy.x,1.2+Math.sin(this.time*2+enemy.seed)*.13,enemy.z);enemy.group.visible=enemy.health>0;if(enemy.hitFlash>0||enemy.wasFlashing)for(const f of enemy.flashMaterials||[]){f.material.emissive.copy(enemy.hitFlash>0?(this.hitColor??=new THREE.Color('#a67938')):f.base);f.material.emissiveIntensity=enemy.hitFlash>0?.7:f.intensity;}enemy.wasFlashing=enemy.hitFlash>0;}
+    for(const e of this.enemies){const near=Math.hypot(e.x-this.state.x,e.z-this.state.z)<13&&e.health>0;e.cone.visible=near;e.cone.position.set(e.x,.058,e.z);e.cone.rotation.y=e.facing;e.cone.material.opacity=e.alert>0?.1:.04;e.warning.visible=near&&e.windup>0;if(e.warning.visible){const x=e.attack?.x??e.x,z=e.attack?.z??e.z;e.warning.position.set(x,this.furnitureElevation(x,z)+.04,z);e.warning.scale.setScalar(e.attack?(DRONE_TYPES[e.kind].radius||.75)/.74:1+(e.windup||0));}e.signal.visible=near&&((e.suspicion||0)>.05||e.alert>0);e.signal.position.set(e.x,2.05,e.z);e.signal.material.color.set(e.alert>0?'#ed8f6e':'#f1d28b');e.signal.material.opacity=e.alert>0?.85:.25+(e.suspicion||0)*.5;}
+    for(const enemy of this.enemies){enemy.hitFlash=Math.max(0,(enemy.hitFlash||0)-dt);const type=DRONE_TYPES[enemy.kind];enemy.group.position.set(enemy.x,type.ground?.18:1.2+Math.sin(this.time*2+enemy.seed)*.13,enemy.z);
+      if(enemy.mixer&&enemy.health>0&&Math.hypot(enemy.x-this.state.x,enemy.z-this.state.z)<28){
+       const moving=Math.hypot(enemy.x-(enemy.visualX??enemy.x),enemy.z-(enemy.visualZ??enemy.z))>.002;
+       const name=enemy.attack?.phase==='windup'&&enemy.kind==='warden'?'punch':enemy.attack?.phase==='dash'?'running':moving?'walking':'idle';
+       const action=enemy.actions[name]||enemy.actions[name==='walking'?'walk':'idle'];
+       if(action&&action!==enemy.animation){enemy.animation?.fadeOut(.12);action.reset();if(name==='punch'){action.setLoop(THREE.LoopOnce,1);action.clampWhenFinished=true;action.timeScale=action.getClip().duration/type.windup;}action.fadeIn(.12).play();enemy.animation=action;}
+       enemy.mixer.update(dt);
+      }enemy.group.rotation.y=enemy.facing;enemy.visualX=enemy.x;enemy.visualZ=enemy.z;enemy.group.visible=enemy.health>0;if(enemy.hitFlash>0||enemy.wasFlashing)for(const f of enemy.flashMaterials||[]){f.material.emissive.copy(enemy.hitFlash>0?(this.hitColor??=new THREE.Color('#a67938')):f.base);f.material.emissiveIntensity=enemy.hitFlash>0?.7:f.intensity;}enemy.wasFlashing=enemy.hitFlash>0;}
     this.weaponRoot.rotation.x=this.weaponRecoil||0;
     this.stationIcon.material.opacity = 0.4 + Math.sin(this.time * 2) * 0.14;
     for (const { item, group } of this.placedGroups) if (['garden', 'seedbed'].includes(item.id)) {

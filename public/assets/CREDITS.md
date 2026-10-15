@@ -25,3 +25,19 @@ All assets are bundled locally; the game does not fetch third-party assets at ru
 - License: CC0 1.0 Universal, full notice in KAYKIT-LICENSE.txt.
 - Changes: unused animation clips and binary data pruned; geometry, skeleton and embedded texture preserved. Ten clips retained for gameplay.
 - This model replaces the original Kenney robot. Kenney assets still provide vegetation, drones and blasters.
+
+## Quaternius / Tomás Laulhé — RobotExpressive (heavy warden)
+- Creator: https://quaternius.com/ ; credit names as supplied in upstream README: Tomás Laulhé and Don McCurdy (conversion and morph targets).
+- Source: https://github.com/mrdoob/three.js/tree/9b4a2ac29c63ccb43fd51c5661f2f873ac2c39b8/examples/models/gltf/RobotExpressive
+- Three.js tag r186, commit 9b4a2ac29c63ccb43fd51c5661f2f873ac2c39b8.
+- File: models/enemies/warden.glb, downloaded unchanged (463988 bytes).
+- SHA-256: 047f5e5fb3bb6d378bd1df16ca6137f2a596c99b3a1b5690b4020c05aaf6f319.
+- Upstream explicitly states CC0 1.0 in models/enemies/WARDEN-README.md. Full CC0 legal text retained in ENEMIES-CC0-LICENSE.txt and embedded in the standalone HTML.
+- The game selects the ready Idle, Walking and Punch animations; the source model is unchanged. Runtime scaling places the feet on the ground.
+
+## Kenney — ready runner robot
+- Source: https://github.com/KenneyNL/Starter-Kit-3D-Platformer/tree/3fa8a04b1c01ab23db43123d4ce814a34c3fc7f0/models
+- Files: models/enemies/runner.glb and enemies/Textures/colormap.png, downloaded unchanged from the pinned source.
+- Model SHA-256: 7112f6a08400914f9da546f3e6029e947cc9eab2b4a6da5eb99776111289efb1.
+- CC0 1.0, as explicitly stated by the upstream README. Commercial use permitted. Runtime selects the provided idle/walk animations.
+- Gunner drones reuse the ready Kenney enemy-flying and blaster models from the FPS kit credited above; no generated character geometry is used for the new enemies.
