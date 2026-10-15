@@ -1,3 +1,4 @@
+import {AUDIO_FILES} from '../../src/audio-assets.js';
 import { test, expect } from '@playwright/test';
 
 test.beforeEach(async ({ page }) => {
@@ -24,7 +25,7 @@ test('Yard UI joins sections, leaves a real gate opening, rejects closing on pla
 
 test('Ready audio decodes, music uses one loop, volume saves and mute prevents new voices',async({page})=>{
  test.setTimeout(180000);await start(page,{x:-16,z:21.8,settings:{sound:true,quality:'low'},placed:[{id:'recordplayer',x:-16,z:23,rotation:0,harvested:0,enabled:true}]});
- const audio=await page.evaluate(async()=>{const g=window.__quietDistrict;await g.audio.loading;g.visibilityPaused=true;const source=g.audio.musicSource;g.audio.setListener(10,10);const started=g.audio.playSample('impact_metal_medium_000',.35,1,{x:14,z:10});for(let i=0;i<40;i++)g.audio.step('wood');return {buffers:g.audio.buffers.size,failed:g.audio.failed||[],loop:source.loop,voices:g.audio.voices.size,started,wood:g.world.surfaceAt(-18,15),concrete:g.world.surfaceAt(0,0),grass:g.world.surfaceAt(-24,23)};});expect(audio).toMatchObject({buffers:27,failed:[],loop:true,started:true,wood:'wood',concrete:'concrete',grass:'grass'});expect(audio.voices).toBeLessThanOrEqual(16);
+ const audio=await page.evaluate(async()=>{const g=window.__quietDistrict;await g.audio.loading;g.visibilityPaused=true;const source=g.audio.musicSource;g.audio.setListener(10,10);const started=g.audio.playSample('impact_metal_medium_000',.35,1,{x:14,z:10});for(let i=0;i<40;i++)g.audio.step('wood');return {buffers:g.audio.buffers.size,failed:g.audio.failed||[],loop:source.loop,voices:g.audio.voices.size,started,wood:g.world.surfaceAt(-18,15),concrete:g.world.surfaceAt(0,0),grass:g.world.surfaceAt(-24,23)};});expect(audio).toMatchObject({buffers:AUDIO_FILES.length,failed:[],loop:true,started:true,wood:'wood',concrete:'concrete',grass:'grass'});expect(audio.voices).toBeLessThanOrEqual(16);
  await page.locator('[data-action="settings"]').first().click();await expect(page.locator('#panel')).toContainText('HorrorPen');await page.locator('[data-action="music"]').click();expect(await page.evaluate(()=>window.__quietDistrict.audio.musicTarget)).toBe(0);await page.locator('#music-volume').fill('0.8');expect(await page.evaluate(()=>window.__quietDistrict.state.settings.musicVolume)).toBe(.8);await page.locator('[data-action="music"]').click();expect(await page.evaluate(()=>window.__quietDistrict.audio.musicTarget)).toBeGreaterThan(0);await page.locator('#panel [data-action="sound"]').click();expect(await page.evaluate(()=>window.__quietDistrict.audio.playSample('chop'))).toBe(false);
  expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('quiet-district-save-v1')).settings.musicVolume)).toBe(.8);await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
@@ -82,10 +83,10 @@ test('Actual station UI crafts equipment, restores power and advances story', as
   expect(await page.evaluate(() => window.__quietDistrict.state.owned.includes('axe'))).toBe(true);
   await page.locator('[data-category="weapons"]').click();
   await page.locator('[data-action="make"][data-id="pistol"]').click();
-  expect(await page.evaluate(() => window.__quietDistrict.state.equipment.weapon)).toBe('pistol');
+  expect(await page.evaluate(() => window.__quietDistrict.state.equipment.weapon)).toBe('pistol');await expect(page.locator('#equipped-ammo')).toHaveText('6');
   await page.locator('[data-category="supplies"]').click();
   await page.locator('[data-action="make"][data-id="ammo"]').click();
-  expect(await page.evaluate(() => window.__quietDistrict.state.ammo)).toBe(12);
+  expect(await page.evaluate(() => window.__quietDistrict.state.ammo)).toBe(18);
   await page.locator('[data-category="shelter"]').click();
   await page.locator('[data-action="make"][data-id="generator"]').click();
   expect(await page.evaluate(()=>window.__quietDistrict.state.owned.includes('generator'))).toBe(true);
@@ -295,7 +296,7 @@ test('Hotbar uses keyboard supplies, equips weapons and persists inventory assig
   expect(await page.evaluate(() => window.__quietDistrict.state.medkits)).toBe(1);
   await expect(page.locator('.hotbar-slot[data-index="3"] .hotbar-count')).toHaveText('1');
   await page.keyboard.press('Digit1');
-  expect(await page.evaluate(() => window.__quietDistrict.state.equipment.weapon)).toBe('pistol');
+  expect(await page.evaluate(() => window.__quietDistrict.state.equipment.weapon)).toBe('pistol');await expect(page.locator('#equipped-ammo')).toHaveText('6');
   await page.keyboard.press('Digit6');
   expect(await page.evaluate(() => window.__quietDistrict.world.playerLight.intensity)).toBe(0);
   await page.keyboard.press('Digit6');
@@ -1042,4 +1043,48 @@ test('Developed forestry, quarry and dacha bypasses support a full expedition an
   const {upgradeStation}=await import('/src/game.js');walk(-17,21.7);const upgrade=upgradeStation(g.state,g.state.placed[0]);g.save();
   const {capacity}=await import('/src/game.js');return {steps,seconds:g.state.elapsed,minHealth,dead:!!g.state.grave,legs:legs.length,collected,loot,bag:g.state.equipment.bag,capacity:capacity(g.state),upgrade:upgrade.ok,dryer:g.state.placed[0].upgrade};
  });console.log('Three region expedition',JSON.stringify(audit));expect(audit.dead).toBe(false);expect(audit.minHealth).toBeGreaterThan(0);expect(audit.collected).toHaveLength(4);expect(audit.bag).toBe('bag');expect(audit.capacity).toBe(40);expect(audit.upgrade).toBe(true);expect(audit.dryer).toBe(1);expect(audit.loot.battery).toBe(1);expect(audit.loot.cloth).toBe(8);
+});
+
+test('Melee contact can be intercepted, hits once, and gives a temporary body reaction',async({page})=>{
+ await start(page,{x:8,z:-3});
+ const result=await page.evaluate(()=>{
+  const g=window.__quietDistrict,w=g.world;g.visibilityPaused=true;
+  for(const e of w.enemies)e.health=0;
+  const [original,other]=w.enemies;Object.assign(original,{x:8,z:-5,health:100});
+  g.attack(original);Object.assign(other,{x:8.1,z:-4,health:100});g.updateSwing(.21);
+  const intercepted=original.health===100&&other.health===87;
+  other.facing=Math.PI/2;w.facing=0;w.update(.04,false,true);const lean=w.cameraCenter.clone().set(0,1,0).applyQuaternion(other.group.quaternion),length=Math.hypot(lean.x,lean.z);const aligned=(lean.x*Math.sin(other.hitBearing)+lean.z*Math.cos(other.hitBearing))/length>.999;const facing=Math.cos(w.playerVisual.rotation.y-Math.PI)>.999;const reacted=Math.abs(other.group.rotation.x)+Math.abs(other.group.rotation.z)>.01;
+  g.updateSwing(1);const once=other.health===87;w.update(.3,false,true);
+  const settled=Math.abs(other.group.rotation.x)+Math.abs(other.group.rotation.z)<1e-8;
+  original.health=0;other.health=0;g.attackCooldown=0;w.facing=Math.PI;g.attack();
+  Object.assign(other,{x:8,z:-4,health:100});g.updateSwing(.21);const entered=other.health===87;
+  return {intercepted,reacted,once,settled,entered,facing,aligned};
+ });expect(result).toEqual({intercepted:true,reacted:true,once:true,settled:true,entered:true,facing:true,aligned:true});
+});
+
+test('Reflection scissors preserve every final pixel and never clip the main image',async({page})=>{
+ test.setTimeout(180000);await page.setViewportSize({width:960,height:600});await start(page,{x:0,z:17,elapsed:210});
+ const results=await page.evaluate(()=>{
+  const g=window.__quietDistrict,w=g.world;g.visibilityPaused=true;w.freezeBuildCamera=true;w.setQuality('high');
+  const gl=w.renderer.getContext(),target=w.mirrors.capture.getRenderTarget(),set=target.scissor.set,results=[];
+  for(const [x,z,zoom]of [[0,17,28],[104,164,28],[-80,-72,28],[0,17,52]]){
+   g.state.x=x;g.state.z=z;w.cameraCenter.set(x,0,z);w.viewSize=zoom;w.resize();
+   const render=full=>{target.scissor.set=full?function(){return set.call(this,0,0,target.width,target.height);}:set;w.mirrors.last=-Infinity;w.update(0,false,true);const pixels=new Uint8Array(960*600*4);gl.readPixels(0,0,960,600,gl.RGBA,gl.UNSIGNED_BYTE,pixels);return pixels;};
+   render(true);const a=render(true);render(false);const b=render(false);let changed=0;for(let i=0;i<a.length;i++)if(a[i]!==b[i])changed++;
+   results.push({changed,area:target.scissor.z*target.scissor.w/(512*512),mainScissor:gl.isEnabled(gl.SCISSOR_TEST),shadow:w.sun.shadow.mapSize.x,reflection:target.width});
+  }
+  target.scissor.set=set;return results;
+ });for(const r of results){expect(r.changed).toBe(0);expect(r.mainScissor).toBe(false);expect(r.shadow).toBe(2048);expect(r.reflection).toBe(512);}expect(results[0].area).toBeLessThan(.9);
+});
+
+test('Rain shelter cache preserves drop positions and refreshes after movement or a new roof index',async({page})=>{
+ await start(page,{elapsed:210});const result=await page.evaluate(()=>{
+  const g=window.__quietDistrict,w=g.world;g.visibilityPaused=true;const shelter=w.sheltered;let calls=0;w.sheltered=function(...args){calls++;return shelter.apply(this,args);};
+  const update=()=>w.updateRain(0,{rain:1});w.rainShelterX=NaN;update();const first=calls;const positions=Array.from(w.rain.geometry.attributes.position.array);update();const stationary=calls===first;const same=positions.every((n,i)=>n===w.rain.geometry.attributes.position.array[i]);
+  g.state.x+=.25;update();const moved=calls===first*2;const index=w.rainShelterMask.findIndex(n=>!n),[dx,dz]=w.rainSeeds[index];
+  const replacement=new w.shelterIndex.constructor();for(const rect of new Set([...w.shelterIndex.cells.values()].flat()))replacement.add(rect,.25);replacement.add({x:g.state.x+dx,z:g.state.z+dz,w:2,d:2});w.shelterIndex=replacement;update();const rebuilt=calls===first*3;
+  const p=w.rain.geometry.attributes.position,hidden=p.getX(index*2)===p.getX(index*2+1)&&p.getY(index*2)===p.getY(index*2+1)&&p.getZ(index*2)===p.getZ(index*2+1);
+  const cached=Array.from(p.array);w.rainShelterX=NaN;update();const equivalent=cached.every((n,i)=>n===p.array[i]);w.sheltered=shelter;
+  return {first,stationary,same,moved,rebuilt,hidden,equivalent};
+ });expect(result).toEqual({first:240,stationary:true,same:true,moved:true,rebuilt:true,hidden:true,equivalent:true});
 });

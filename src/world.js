@@ -586,11 +586,18 @@ export class World {
     if(strength<=.01){this.rain.visible=false;this.rainRipples.visible=false;return;}
     this.rain.visible=strength>.01;this.rain.material.opacity=strength*.25;
     const p=this.rain.geometry.attributes.position;
-    for(let i=0;i<this.rainSeeds.length;i++){const [dx,dz,phase]=this.rainSeeds[i],x=this.state.x+dx,z=this.state.z+dz,y=((phase-this.time*8)%10+10)%10;const inside=this.sheltered(x,z);p.setXYZ(i*2,x,y,z);p.setXYZ(i*2+1,x+.08,inside?y:y+.55,z+.04);if(inside)p.setXYZ(i*2+1,x,y,z);}
+    this.rainShelterMask??=new Uint8Array(this.rainSeeds.length);
+    const refresh=this.rainShelterX!==this.state.x||this.rainShelterZ!==this.state.z||this.rainShelterIndex!==this.shelterIndex||this.rainShelterBuildings!==this.buildings.length||this.rainShelterCanopies!==this.canopies.length;
+    for(let i=0;i<this.rainSeeds.length;i++){
+      const [dx,dz,phase]=this.rainSeeds[i],x=this.state.x+dx,z=this.state.z+dz,y=((phase-this.time*8)%10+10)%10;
+      if(refresh)this.rainShelterMask[i]=this.sheltered(x,z)?1:0;
+      const inside=this.rainShelterMask[i];p.setXYZ(i*2,x,y,z);p.setXYZ(i*2+1,inside?x:x+.08,inside?y:y+.55,inside?z:z+.04);
+    }
+    this.rainShelterX=this.state.x;this.rainShelterZ=this.state.z;this.rainShelterIndex=this.shelterIndex;this.rainShelterBuildings=this.buildings.length;this.rainShelterCanopies=this.canopies.length;
     p.needsUpdate=true;this.rainRipples.visible=strength>.01;this.rainRipples.material.opacity=strength*.3;
-    const matrix=new THREE.Matrix4(),q=new THREE.Quaternion(),v=new THREE.Vector3();
-    for(let i=0;i<20;i++){const back=i>=10,t=(this.time*.6+i*.117)%1,angle=i*2.4,x=(back?30:23)+Math.sin(angle)*(back?5:6),z=(back?59:-24)+Math.cos(angle)*(back?2.3:4.5);matrix.compose(v.set(x,.065,z),q,new THREE.Vector3(1+t*4,1,1+t*4));this.rainRipples.setMatrixAt(i,matrix);}this.rainRipples.instanceMatrix.needsUpdate=true;
-    for(const material of this.wetMaterials||[])material.roughness=material.userData.dryRoughness-strength*.24;
+    this.rippleTransform??={matrix:new THREE.Matrix4(),q:new THREE.Quaternion(),position:new THREE.Vector3(),scale:new THREE.Vector3()};
+    const {matrix,q,position,scale}=this.rippleTransform;
+    for(let i=0;i<20;i++){const back=i>=10,t=(this.time*.6+i*.117)%1,angle=i*2.4,x=(back?30:23)+Math.sin(angle)*(back?5:6),z=(back?59:-24)+Math.cos(angle)*(back?2.3:4.5);matrix.compose(position.set(x,.065,z),q,scale.set(1+t*4,1,1+t*4));this.rainRipples.setMatrixAt(i,matrix);}this.rainRipples.instanceMatrix.needsUpdate=true;
   }
   partition(building,x,z,w,d,h=2.8) {
     const mesh=this.wall(x,z,w,d,h,'#999780');this.cutawayDetail(mesh,building);return mesh;
@@ -998,7 +1005,7 @@ export class World {
         const free=[];for(let dx=-3;dx<=3;dx+=.5)for(let dz=-3;dz<=3;dz+=.5)if(!this.blocked(x+dx,z+dz,.35))free.push({x:x+dx,z:z+dz,d:dx*dx+dz*dz});free.sort((a,b)=>a.d-b.d);
         if(!free.length)throw Error(`Нет свободного места для патруля ${i}`);({x,z}=free[0]);
       }
-      const group = new THREE.Group(); group.position.set(x, 1, z); this.scene.add(group);
+      const group = new THREE.Group(); group.rotation.order='YXZ';group.position.set(x, 1, z); this.scene.add(group);
       const core = this.box(0, 0, 0, 0.65, 0.35, 0.65, '#646f67', group);
       this.box(0, 0, 0.34, 0.35, 0.07, 0.05, '#e39b6b', group, new THREE.MeshStandardMaterial({ color: '#e39b6b', emissive: '#db7847', emissiveIntensity: 2 }));
       const deadAt = this.state.droneDeaths[`drone-${i}`] ?? -1;
@@ -1458,7 +1465,7 @@ export class World {
   clearWeaponEffect() {this.weaponVisual=null;if(this.swingTrail)this.swingTrail.visible=false;if(this.thrustTrail)this.thrustTrail.visible=false;if(this.muzzleFlash)this.muzzleFlash.visible=false;this.weaponRecoil=0;}
   weaponMiss() {if(this.weaponVisual)this.weaponVisual.miss=true;}
   enemyImpact(enemy,id) {
-    this.emitFragments(enemy.x,1.15,enemy.z,'#edc782',id==='unarmed'?3:8);enemy.hitFlash=.16;
+    this.emitFragments(enemy.x,1.15,enemy.z,'#edc782',id==='unarmed'?3:8);enemy.hitFlash=.16;enemy.hitBearing=Math.atan2(enemy.x-this.state.x,enemy.z-this.state.z);
     if(!enemy.flashMaterials){enemy.flashMaterials=[];enemy.group.traverse(m=>{if(m.isMesh&&m.material.emissive){m.material=m.material.clone();enemy.flashMaterials.push({material:m.material,base:m.material.emissive.clone(),intensity:m.material.emissiveIntensity});}});}
   }
   resourceStrike(node) {
@@ -1486,9 +1493,9 @@ export class World {
     // Compact indexes after expired particles are removed, without allocating meshes.
     for(let i=0;i<particles.length;i++){const p=particles[i];this.debrisPosition.set(p.x,p.y,p.z);this.debrisScale.setScalar(Math.min(1,p.life/.15));this.debrisMatrix.compose(this.debrisPosition,this.debrisQuaternion,this.debrisScale);this.debris.setMatrixAt(i,this.debrisMatrix);this.debris.setColorAt(i,p.color);}
     this.debris.count=particles.length;this.debris.visible=particles.length>0;if(particles.length){this.debris.instanceMatrix.needsUpdate=true;this.debris.instanceColor.needsUpdate=true;}
-    const effect=this.weaponVisual;if(!effect)return;effect.time+=dt;const ranged=['pistol','carbine'].includes(effect.id),duration=ranged?.16:.52;
+    const effect=this.weaponVisual;if(!effect)return;effect.time+=dt;const ranged=['pistol','carbine'].includes(effect.id),duration=ranged?(effect.id==='carbine'?.2:.16):.52;
     const facing=effect.facing,x=this.state.x,z=this.state.z,dx=Math.sin(facing),dz=Math.cos(facing);
-    if(ranged){this.muzzleFlash.position.set(x+dx*.7,1.15,z+dz*.7);this.muzzleFlash.visible=effect.time<.08;this.muzzleFlash.material.opacity=Math.max(0,1-effect.time/.08);this.weaponRecoil=Math.sin(Math.min(1,effect.time/.16)*Math.PI)*-.18;}
+    if(ranged){this.muzzleFlash.position.set(x+dx*.7,1.15,z+dz*.7);this.muzzleFlash.visible=effect.time<.08;this.muzzleFlash.material.opacity=Math.max(0,1-effect.time/.08);this.weaponRecoil=Math.sin(Math.min(1,effect.time/duration)*Math.PI)*(effect.id==='carbine'?-.27:-.18);}
     else{const stab=effect.id==='spear',mesh=stab?this.thrustTrail:this.swingTrail;mesh.visible=effect.time>.08&&effect.time<.34;mesh.position.set(x+(stab?dx*1.2:0),1,z+(stab?dz*1.2:0));mesh.rotation.y=facing;mesh.scale.set(stab?1:1.6,1,stab?1.5:1.6);mesh.material.opacity=Math.max(0,Math.sin((effect.time-.08)/.26*Math.PI))*.24;}
     if(effect.time>=duration)this.clearWeaponEffect();
   }
@@ -1530,8 +1537,9 @@ export class World {
       if (this.oneShot) this.oneShot.action.setEffectiveWeight(moving ? 0.5 : 1);
     }
     for (const mixer of this.mixers) mixer.update(dt);
-    if (Number.isFinite(this.facing)) {
-      const delta = Math.atan2(Math.sin(this.facing - this.playerVisual.rotation.y), Math.cos(this.facing - this.playerVisual.rotation.y));
+    const visualFacing=this.weaponVisual?.facing??this.facing;
+    if (Number.isFinite(visualFacing)) {
+      const delta = Math.atan2(Math.sin(visualFacing - this.playerVisual.rotation.y), Math.cos(visualFacing - this.playerVisual.rotation.y));
       this.playerVisual.rotation.y += delta * (1 - Math.exp(-dt * 18));
     }
     if (!this.walkAction && this.character) this.character.position.y = moving ? Math.sin(this.time * 12) * 0.07 : Math.sin(this.time * 2) * 0.015;
@@ -1553,7 +1561,8 @@ export class World {
        const action=enemy.actions[name]||enemy.actions[name==='walking'?'walk':'idle'];
        if(action&&action!==enemy.animation){enemy.animation?.fadeOut(.12);action.reset();if(name==='punch'){action.setLoop(THREE.LoopOnce,1);action.clampWhenFinished=true;action.timeScale=action.getClip().duration/type.windup;}action.fadeIn(.12).play();enemy.animation=action;}
        enemy.mixer.update(dt);
-      }enemy.group.rotation.y=enemy.facing;enemy.visualX=enemy.x;enemy.visualZ=enemy.z;enemy.group.visible=enemy.health>0;if(enemy.hitFlash>0||enemy.wasFlashing)for(const f of enemy.flashMaterials||[]){f.material.emissive.copy(enemy.hitFlash>0?(this.hitColor??=new THREE.Color('#a67938')):f.base);f.material.emissiveIntensity=enemy.hitFlash>0?.7:f.intensity;}enemy.wasFlashing=enemy.hitFlash>0;}
+      }const flinch=Math.sin(enemy.hitFlash/.16*Math.PI)*(enemy.kind==='warden'?.055:.12),bearing=(enemy.hitBearing||0)-enemy.facing;
+      enemy.group.rotation.x=Math.cos(bearing)*flinch;enemy.group.rotation.z=-Math.sin(bearing)*flinch;enemy.group.rotation.y=enemy.facing;enemy.visualX=enemy.x;enemy.visualZ=enemy.z;enemy.group.visible=enemy.health>0;if(enemy.hitFlash>0||enemy.wasFlashing)for(const f of enemy.flashMaterials||[]){f.material.emissive.copy(enemy.hitFlash>0?(this.hitColor??=new THREE.Color('#a67938')):f.base);f.material.emissiveIntensity=enemy.hitFlash>0?.7:f.intensity;}enemy.wasFlashing=enemy.hitFlash>0;}
     this.weaponRoot.rotation.x=this.weaponRecoil||0;
     this.stationIcon.material.opacity = 0.4 + Math.sin(this.time * 2) * 0.14;
     for (const { item, group } of this.placedGroups) if (['garden', 'seedbed'].includes(item.id)) {

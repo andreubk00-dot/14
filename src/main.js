@@ -5,7 +5,7 @@ import {salvageDuration} from './salvage.js';
 import {toggleYardGate} from './game.js';
 import {salvageStatus,takeSalvage,processSalvage,recoverCargo} from './game.js';
 import {COOKING_RECIPES,atCookingStove} from './game.js';
-import {swingProfile,swingCanHit,advanceSwing} from './combat.js';
+import {swingProfile,selectMeleeTarget,advanceSwing} from './combat.js';
 import {DRONE_TYPES,gearProfile,droneSees,attackCharge,updateAwareness,reactToHit} from './survival.js';
 import {STRUCTURES,snapStructure,dismantleAllowed} from './construction.js';
 import {buildStructure,dismantleStructure} from './game.js';
@@ -558,14 +558,14 @@ class QuietDistrict {
     const facing=target?Math.atan2(target.x-s.x,target.z-s.z):(this.world.facing||0);
     this.attackCooldown=w.cooldown;this.world.facing=facing;this.world.playerVisual.rotation.y=facing;
     if(ranged){s.ammo--;this.world.shot(s.x,s.z,target.x,target.z);this.world.weaponEffect(w.id,facing);this.audio.shoot(w.id);this.damageEnemy(target,w);}
-    else{this.swing={elapsed:0,resolved:false,weapon:{...w},profile:swingProfile(w.id),facing,target};this.world.weaponEffect(w.id,facing);this.audio.swing(w.id);}
+    else{this.swing={elapsed:0,resolved:false,weapon:{...w},profile:swingProfile(w.id),facing};this.world.weaponEffect(w.id,facing);this.audio.swing(w.id);}
     this.world.playCharacterAction(ranged?'1h_ranged_shoot':w.id==='spear'?'1h_melee_attack_stab':'1h_melee_attack_chop');
   }
   updateSwing(dt) {
     const swing=this.swing;if(!swing)return;
     if(advanceSwing(swing,dt)){
-      const e=swing.target;
-      if(swingCanHit(swing,this.state,e,e&&this.world.canSee(this.state.x,this.state.z,e.x,e.z))){this.damageEnemy(e,swing.weapon);this.audio.weaponHit(swing.weapon.id,e.x,e.z);}
+      const e=selectMeleeTarget(swing,this.state,this.world.enemies,e=>this.world.canSee(this.state.x,this.state.z,e.x,e.z));
+      if(e){this.damageEnemy(e,swing.weapon);this.audio.weaponHit(swing.weapon.id,e.x,e.z);}
       else this.world.weaponMiss();
     }
     if(swing.elapsed>=swing.profile.duration)this.swing=null;

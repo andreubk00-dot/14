@@ -546,7 +546,7 @@ test('An unfinished extension keeps a closed neighbouring room roof and leaves o
  s.placed[0].z=20.5;s.construction.pop();assert.equal(buildAllowed(s,{id:'door',x:-18,z:21.5,axis:'x'}).ok,false);
 });
 
-import {swingProfile,swingCanHit,advanceSwing} from '../src/combat.js';
+import {swingProfile,swingCanHit,selectMeleeTarget,advanceSwing} from '../src/combat.js';
 import {replacementPlan} from '../src/construction.js';
 test('Replacing a wall pays only the delta and refunds unused materials atomically',()=>{
  const s=annexState();buildStructure(s,{id:'floor',x:-18,z:20.5});buildStructure(s,{id:'wall',x:-19,z:20.5,axis:'z'});
@@ -893,4 +893,39 @@ test('Animated downloaded warden fits its real height after cloning, with feet o
  const model=clone(asset.scene),mixer=new AnimationMixer(model);mixer.clipAction(asset.animations.find(c=>c.name==='Idle')).play();mixer.update(0);fitEnemyModel(model,1.8);
  const b=new Box3().setFromObject(model,true),size=b.getSize(new Vector3());assert.ok(Math.abs(size.y-1.8)<.001);assert.ok(Math.abs(b.min.y)<.001);assert.ok(size.x<1.5);
  mixer.update(.5);model.updateMatrixWorld(true);const animated=new Box3().setFromObject(model,true);assert.ok(animated.min.y>-.05&&animated.max.y<2);
+});
+
+
+test('A committed swing hits the nearest visible actor entering its arc, never a crowd or a covered actor',()=>{
+ const player={x:0,z:0},swing={weapon:{range:2.8},profile:swingProfile('pipe'),facing:0};
+ const original={x:0,z:2.5,health:50},interceptor={x:.2,z:1.5,health:38},behind={x:0,z:-1,health:50},dead={x:0,z:.5,health:0};
+ assert.equal(selectMeleeTarget(swing,player,[original,interceptor,behind,dead],()=>true),interceptor);
+ assert.equal(selectMeleeTarget(swing,player,[original,interceptor],e=>e!==interceptor),original);
+ assert.equal(selectMeleeTarget(swing,player,[original,interceptor],()=>false),null);
+ assert.equal(selectMeleeTarget(swing,player,[behind,dead],()=>true),null);
+ interceptor.z=4;assert.equal(selectMeleeTarget(swing,player,[original,interceptor],()=>true),original);
+});
+test('New firearms include their stated charges exactly once and failed crafts or save loads never refill them',()=>{
+ const s=freshState();assert.equal(craft(s,'pistol').ok,false);assert.equal(s.ammo,0);
+ s.stash={metal:100,parts:100,wire:100,pearl:2};s.ammo=3;
+ assert.equal(craft(s,'pistol').ok,true);assert.equal(s.ammo,9);
+ const spent=structuredClone(s.stash);assert.equal(craft(s,'pistol').ok,false);assert.equal(s.ammo,9);assert.deepEqual(s.stash,spent);
+ assert.equal(craft(s,'carbine').ok,false);assert.equal(s.ammo,9);
+ s.owned.push('generator');assert.equal(craft(s,'carbine').ok,true);assert.equal(s.ammo,21);
+ s.ammo=0;assert.equal(validateSave(JSON.parse(JSON.stringify(s))).ammo,0);
+ assert.equal(craft(s,'ammo').ok,true);assert.equal(s.ammo,12);
+});
+
+
+import {reflectionScissor} from '../src/reflections.js';
+test('Reflection cropping contains every visible water vertex, ignores hidden water and skips empty views',()=>{
+ const camera=new THREE.OrthographicCamera(-10,10,10,-10,.1,50);camera.position.set(0,10,0);camera.up.set(0,0,-1);camera.lookAt(0,0,0);camera.updateMatrixWorld(true);
+ const mesh=new THREE.Mesh(new THREE.CircleGeometry(1,48));mesh.rotation.x=-Math.PI/2;mesh.scale.set(2,1,1);mesh.updateMatrixWorld(true);
+ const target={width:512,height:512,scissor:new THREE.Vector4()},point=new THREE.Vector3();
+ assert.equal(reflectionScissor([mesh],camera,target),true);assert.ok(target.scissor.z*target.scissor.w<512*512/4);
+ const pos=mesh.geometry.attributes.position;
+ for(let i=0;i<pos.count;i++){point.fromBufferAttribute(pos,i).applyMatrix4(mesh.matrixWorld).project(camera);const x=(point.x+1)*256,y=(point.y+1)*256;assert.ok(x>=target.scissor.x&&x<=target.scissor.x+target.scissor.z&&y>=target.scissor.y&&y<=target.scissor.y+target.scissor.w);}
+ mesh.visible=false;assert.equal(reflectionScissor([mesh],camera,target),false);
+ mesh.visible=true;mesh.position.x=30;mesh.updateMatrixWorld(true);assert.equal(reflectionScissor([mesh],camera,target),false);
+ mesh.geometry.dispose();mesh.material.dispose();
 });

@@ -207,3 +207,6 @@
 .food-summary { display:flex; align-items:center; gap:12px; padding:12px; background:#b4c88710; border:1px solid #b4c88730; border-radius:8px; font-size:16px; }
 .food-summary svg { flex-shrink:0; }
 .food-replacement { color:#e3cf9c; }
+
+.hotbar-item-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#equipped-ammo { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; font-size: 16px; color: #e5d3a4; }
