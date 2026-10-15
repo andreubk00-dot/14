@@ -1,3 +1,4 @@
+import {SUPPLY_FIELDS,FOOD_EFFECTS,activeFood} from './food.js';
 import {CARGO_WEIGHT,cleanCargo,cargoLoot,cargoStorageCapacity} from './salvage.js';
 import {STRUCTURES,dismantleAllowed,cleanConstruction,replacementPlan} from './construction.js';
 import {STATION_UPGRADES,collectorCapacity,dryingBatch} from './upgrades.js';
@@ -40,12 +41,12 @@ export const RECIPES = [
  {id:'gearrack',name:'Стеллаж комплектов',category:'shelter',desc:'Сохрани два комплекта экипировки и быстро меняй их дома.',cost:{wood:8,metal:3},placeable:true},
  {id:'dressing',name:'Аптечка из медицинских запасов',category:'supplies',desc:'Аптечка из уцелевших материалов клиники. Восстанавливает 45 здоровья; использование Q.',cost:{medicine:1,cloth:1},repeatable:true},
  {id:'lure',name:'Многоразовая блесна',category:'tools',desc:'Привлекает форель. Выбирается у воды; не расходуется.',cost:{metal:3,wire:2,pearl:1},requires:'rod',slot:'tool'},
- {id:'fishmeal',name:'Рыба, запечённая с овощами',category:'supplies',desc:'Две порции походной еды из улова и урожая.',cost:{fish:2,vegetables:2,wood:1},repeatable:true},
+ {id:'fishmeal',name:'Рыба, запечённая с овощами',category:'supplies',desc:'Выход: 2 порции. Каждая: +30 здоровья, полная выносливость. На 8 минут: бег расходует на 30% меньше выносливости. Заменяет эффект другого блюда.',cost:{fish:2,vegetables:2,wood:1},repeatable:true},
  {id:'fishtrophy',name:'Панно «Лунная форель»',category:'shelter',desc:'Память о редком улове. Крепится на стену после первой пойманной форели.',cost:{wood:4,fish:3,pearl:1},placeable:true},
   ...Object.entries(FINDS).map(([id,f])=>({id,name:f.name,category:'shelter',desc:f.desc|| (id==='wallclock'?'Крепятся на стену внутри убежища.':id==='recordplayer'?'Уцелевшая пластинка. Включается рядом с проигрывателем.':id==='foundlamp'?'Работает от уцелевшего аккумулятора. Свет можно включать и выключать.':'Удобное кресло. Найденную вещь можно поставить дома.'),cost:{},placeable:true,foundOnly:true})),
   {id:'wrench',name:'Набор ключей',category:'tools',desc:'Ускоряет разбор двигателей и бытовой техники вдвое.',cost:{metal:5,parts:2},slot:'tool'},
   {id:'cropbed',name:'Посадочная грядка',category:'shelter',desc:'Травы, овощи или цветы. После ручного сбора нужна новая посадка.',cost:{wood:6,metal:2},placeable:true},
-  {id:'stew',name:'Овощной паёк',category:'supplies',desc:'Готовит порцию походной еды: 30 здоровья и всю выносливость.',cost:{vegetables:2,water:1,herbs:1},repeatable:true},
+  {id:'stew',name:'Овощной паёк',category:'supplies',desc:'1 порция. +30 здоровья, полная выносливость. На 8 минут: восстановление выносливости вне бега на 40% быстрее. Заменяет эффект другого блюда.',cost:{vegetables:2,water:1,herbs:1},repeatable:true},
   {id:'bouquet',name:'Букет в деревянной вазе',category:'shelter',desc:'Свежие цветы из своего огорода. Можно поставить дома.',cost:{flowers:3,wood:1},placeable:true},
   {id:'tooling',name:'Точная оснастка',category:'shelter',desc:'Переработчик даёт 3 детали и 1 провод вместо 2 деталей. Установлена на верстаке.',cost:{metal:14,parts:6,wood:8},requires:'generator',fixed:true},
   {id:'receiver',name:'Складской приёмник',category:'shelter',desc:'При ручном сборе продукция отправляется прямо на склад, оставляя рюкзак свободным.',cost:{wood:12,metal:8,wire:4,parts:3},requires:'generator',fixed:true},
@@ -106,7 +107,7 @@ export function freshState() {
     version: 1, x: HOME.x + 1, z: HOME.z + 2, health: 100, stamina: 100,
     stash: { wood: 3, metal: 2, cloth: 2 }, bag: {}, owned: [],
     equipment: { weapon: 'pipe', armor: null, bag: null, boots: null },
-    ammo: 0, medkits: 1, meals: 0, teas: 0, placed: [], depleted: {}, nodeLoot: {}, droneDeaths: {}, drops: [], contracts: {}, completedOrders: 0, waterCollected: -120,
+    ammo: 0, medkits: 1, meals: 0, teas: 0, fishmeals:0, stews:0, foodEffect:null, cultivars:['herbs'], placed: [], depleted: {}, nodeLoot: {}, droneDeaths: {}, drops: [], contracts: {}, completedOrders: 0, waterCollected: -120,
     elapsed: 0, fishCollection: [], kills: 0, trips: 0, gathered: 0,
     hotbar: ['pipe', 'axe', 'rod', 'medkit', 'meal', 'tea'], hotbarSelected: 0, lanternOn: true,
     helper: { assignment: 'garden', cycles: 0 }, recovered: false, grave: null, settings: { sound: true, music:true, musicVolume:.5, quality: 'high', questExpanded: false, minimapExpanded: false },
@@ -145,9 +146,14 @@ export function validateSave(input) {
   for (const key of ['health', 'stamina']) {
     if (Number.isFinite(input[key])) state[key] = Math.max(key === 'health' ? 1 : 0, Math.min(100, input[key]));
   }
-  for (const key of ['elapsed', 'ammo', 'medkits', 'meals', 'teas', 'kills', 'trips', 'gathered', 'completedOrders']) {
+  for (const key of ['elapsed', 'ammo', 'medkits', 'meals', 'teas', 'fishmeals', 'stews', 'kills', 'trips', 'gathered', 'completedOrders']) {
     if (Number.isFinite(input[key])) state[key] = Math.max(0, Math.min(input[key], 100000000));
   }
+  const effect=input.foodEffect;
+  if(effect&&Object.hasOwn(FOOD_EFFECTS,effect.id)&&Number.isFinite(effect.until)&&effect.until>state.elapsed)state.foodEffect={id:effect.id,until:Math.min(effect.until,state.elapsed+FOOD_EFFECTS[effect.id].duration)};
+  // Existing saves keep access to crops they could already grow. New stories discover varieties.
+  state.cultivars=Array.isArray(input.cultivars)?[...new Set(['herbs',...input.cultivars.filter(id=>Object.hasOwn(CROPS,id))])]:Object.keys(CROPS);
+  for(const item of [...(Array.isArray(input.placed)?input.placed:[]),...(Array.isArray(input.packedFurniture)?input.packedFurniture:[])])if(item&&Object.hasOwn(CROPS,item.crop)&&!state.cultivars.includes(item.crop))state.cultivars.push(item.crop);
   for (const contract of CONTRACTS) if (Number.isFinite(input.contracts?.[contract.id])) state.contracts[contract.id] = Math.max(0, Math.min(state.elapsed, input.contracts[contract.id]));
   if (Number.isFinite(input.waterCollected)) state.waterCollected = Math.max(-120, Math.min(state.elapsed, input.waterCollected));
   const ids = new Set(RECIPES.map(r => r.id));
@@ -191,7 +197,7 @@ export function validateSave(input) {
   }
   if (['garden', 'seedbed', 'purifier', 'recycler', 'rest'].includes(input.helper?.assignment)) state.helper.assignment = input.helper.assignment;
   if (Number.isFinite(input.helper?.cycles)) state.helper.cycles = Math.floor(Math.max(0, Math.min(100000000, input.helper.cycles)));
-  const hotbarIds = new Set(['pipe', ...RECIPES.filter(r => r.slot === 'weapon' || r.slot === 'tool' || ['medkit', 'meal', 'tea'].includes(r.id)).map(r => r.id)]);
+  const hotbarIds = new Set(['pipe', ...RECIPES.filter(r => r.slot === 'weapon' || r.slot === 'tool' || Object.hasOwn(SUPPLY_FIELDS,r.id)).map(r => r.id)]);
   if (Array.isArray(input.hotbar)) state.hotbar = Array.from({ length: 6 }, (_, i) => hotbarIds.has(input.hotbar[i]) ? input.hotbar[i] : null);
   if (Number.isInteger(input.hotbarSelected)) state.hotbarSelected = Math.max(-1, Math.min(5, input.hotbarSelected));
   state.visited=[...new Set(['home',...(Array.isArray(input.visited)?input.visited:[]).filter(id=>LOCATIONS.some(l=>l.id===id))])];
@@ -246,9 +252,10 @@ export function craft(state, id) {
   if (recipe.repeatable) {
     if (id === 'ammo') state.ammo += 12;
     if (id === 'medkit'||id==='dressing') state.medkits++;
-    if (id === 'meal'||id==='stew') state.meals++;
+    if (id === 'meal') state.meals++;
+    if(id==='stew')state.stews++;
     if (id === 'tea') state.teas++;
-    if(id==='fishmeal')state.meals+=2;
+    if(id==='fishmeal')state.fishmeals+=2;
   } else {
     state.owned.push(id);
     if (Object.hasOwn(state.equipment, recipe.slot)) state.equipment[recipe.slot] = id;
@@ -299,9 +306,15 @@ export function respawn(state) {
   if(previous) for(const [id,n] of Object.entries(previous.finds||{})) state.grave.finds[id]=(state.grave.finds[id]||0)+n;
   if (previous) for (const [id, n] of Object.entries(previous.loot)) state.grave.loot[id] = (state.grave.loot[id] || 0) + n;
   state.bag = {};state.finds={};state.cargo=[]; state.x = HOME.x; state.z = HOME.z + 3;
-  state.health = 65; state.stamina = 100;
+  state.health = 65; state.stamina = 100;state.foodEffect=null;
 }
 export function useSupply(state, id) {
+  if(Object.hasOwn(FOOD_EFFECTS,id)){
+    const field=SUPPLY_FIELDS[id];
+    if(!(state[field]>0)||activeFood(state)?.id===id&&state.health>=100&&state.stamina>=100)return false;
+    state[field]--;state.health=Math.min(100,state.health+30);state.stamina=100;
+    state.foodEffect={id,until:state.elapsed+FOOD_EFFECTS[id].duration};return true;
+  }
   if (id === 'medkit' && state.medkits > 0 && state.health < 100) { state.medkits--; state.health = Math.min(100, state.health + 45); return true; }
   if (id === 'meal' && state.meals > 0 && (state.health < 100 || state.stamina < 100)) { state.meals--; state.health = Math.min(100, state.health + 30); state.stamina = 100; return true; }
   if (id === 'tea' && state.teas > 0 && (state.health < 100 || state.stamina < 100)) { state.teas--; state.health = Math.min(100, state.health + 15); state.stamina = Math.min(100, state.stamina + 50); return true; }
@@ -409,6 +422,7 @@ export function takeStoredFind(state,id,count=1) {
 export function plantCrop(state,item,id) {
  const crop=CROPS[id];if(item?.id!=='cropbed'||!crop||!state.placed.includes(item)) return {ok:false,reason:'Грядка не найдена'};
  if(item.crop) return {ok:false,reason:'Сначала собери урожай'};
+ if(!state.cultivars.includes(id))return {ok:false,reason:crop.discovery};
  if(!spend(state,crop.cost)) return {ok:false,reason:'Не хватает семян или воды'};
  item.crop=id;item.plantedAt=state.elapsed;delete item.rainGrowth;return {ok:true};
 }

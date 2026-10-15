@@ -1,3 +1,4 @@
+import {SUPPLY_FIELDS} from './food.js';
 import {CARGO_NAME,CARGO_WEIGHT} from './salvage.js';
 import { RESOURCES, RECIPES, DEFAULT_WEAPON, capacity, bagWeight } from './game.js';
 export const EQUIPMENT_SLOTS = { weapon: 'Оружие', armor: 'Броня', bag: 'Рюкзак', boots: 'Ботинки' };
@@ -6,7 +7,7 @@ export function inventoryItems(state, storage=false) {
   const finds=Object.entries(storage?state.storedFinds:state.finds).filter(([,n])=>n>0).map(([id,count])=>({...RECIPES.find(r=>r.id===id),count,kind:'find'}));
   const cargo=(storage?state.storedCargo:state.cargo).map((c,i)=>({id:`cargo-${i}`,art:`cargo-${c.machine}`,name:CARGO_NAME[c.machine],count:1,kind:'cargo',cargoIndex:i,desc:`Вес: ${CARGO_WEIGHT[c.machine]}. Разбор на станции даёт дополнительные детали и провод; продукция поступит на склад.`}));
   if (storage) return [...resources,...finds,...cargo];
-  const supplies = [['medkit','medkits'],['meal','meals'],['tea','teas'],['ammo','ammo']].filter(([,field])=>state[field]>0).map(([id,field])=>({...RECIPES.find(r=>r.id===id), count:state[field], kind:'supply'}));
+  const supplies = [...Object.entries(SUPPLY_FIELDS),['ammo','ammo']].filter(([,field])=>state[field]>0).map(([id,field])=>({...RECIPES.find(r=>r.id===id), count:state[field], kind:'supply'}));
   const equipped = Object.values(state.equipment);
   const gear = [{...DEFAULT_WEAPON, slot:'weapon', desc:'Надёжная стальная труба для ближнего боя.'}, ...RECIPES.filter(r=>r.slot && state.owned.includes(r.id))].filter(r=>!equipped.includes(r.id)).map(r=>({...r,count:1,kind:'gear'}));
   return [...resources,...finds,...cargo, ...supplies, ...gear];

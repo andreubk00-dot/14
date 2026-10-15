@@ -384,7 +384,7 @@ test('Clock anchors attach to actual interior wall faces, preserve orientation a
  assert.equal(placementAllowed({id:'wallclock',...west,rotation:0},[],[]),false);
 });
 test('Planting and harvest are atomic, require replanting and preserve growth over saving',()=>{
- const s=freshState();s.stash={seeds:4,water:2};s.elapsed=100;const bed={id:'cropbed',x:-17,z:23,rotation:0,harvested:0,crop:null,plantedAt:null};s.placed=[bed];
+ const s=freshState();s.cultivars=Object.keys(CROPS);s.stash={seeds:4,water:2};s.elapsed=100;const bed={id:'cropbed',x:-17,z:23,rotation:0,harvested:0,crop:null,plantedAt:null};s.placed=[bed];
  assert.equal(plantCrop(s,bed,'vegetables').ok,true);assert.equal(s.stash.seeds,2);assert.equal(s.stash.water,1);
  const before=structuredClone(s);assert.equal(plantCrop(s,bed,'flowers').ok,false);assert.deepEqual(s,before);
  s.elapsed=190;assert.equal(cropInfo(s,bed).progress,.5);const saved=validateSave(s);assert.equal(cropInfo(saved,saved.placed[0]).progress,.5);
@@ -640,3 +640,57 @@ test('New streets do not intersect any new foundation or exterior wall',()=>{for
 test('Regenerated frontier supplies stay tied to room contents instead of adding medicine to libraries',()=>{const b=FRONTIER_BUILDINGS.find(b=>b.style==='school'&&b.index===1),n=FRONTIER_NODES.find(n=>n[2]===b.x-b.w/4);for(let cycle=1;cycle<8;cycle++){const loot=expeditionLoot({id:'node-115',type:n[0],x:n[2],z:n[3],originalLoot:n[4],regionProfile:n[8]},cycle);assert.ok(Object.keys(loot).every(id=>Object.hasOwn(n[4],id)));}});
 
 test('Large cargo warehouses stop at the save limit and overflow remains carried',()=>{const s=freshState(),c={machine:'motor',node:'node-125',loot:{metal:3}};s.placed=Array.from({length:20},()=>({id:'cargorack'}));assert.equal(cargoStorageCapacity(s),200);s.storedCargo=Array.from({length:199},()=>structuredClone(c));s.cargo=[structuredClone(c),structuredClone(c)];deposit(s);assert.equal(s.storedCargo.length,200);assert.equal(s.cargo.length,1);assert.equal(validateSave(JSON.parse(JSON.stringify(s))).storedCargo.length,200);});
+
+import {activeFood,FOOD_EFFECTS} from '../src/food.js';
+import {discoverCultivar} from '../src/homelife.js';
+test('Harvest returns exactly the next planting seeds and remains atomic when only vegetables fit',()=>{
+ const s=freshState();s.cultivars.push('vegetables');s.stash={seeds:2,water:2};const bed={id:'cropbed',x:-17,z:23,crop:null};s.placed=[bed];
+ assert.equal(plantCrop(s,bed,'vegetables').ok,true);s.elapsed=181;s.bag={wood:24};const before=structuredClone(s);
+ assert.equal(harvestProduction(s,bed).ok,false);assert.deepEqual(s,before);
+ s.bag={};assert.equal(harvestProduction(s,bed).ok,true);assert.deepEqual(s.bag,{vegetables:4,seeds:2});assert.equal(harvestProduction(s,bed).ok,false);
+ assert.equal(plantCrop(s,bed,'vegetables').ok,true);assert.equal(s.bag.seeds,0);
+});
+test('Seed discoveries need an actual seed pickup and cannot be duplicated or gained from ordinary trees',()=>{
+ const s=freshState(),bed={id:'cropbed',x:-17,z:23,crop:null};s.placed=[bed];s.stash={seeds:10,water:10};
+ assert.equal(plantCrop(s,bed,'vegetables').ok,false);assert.equal(discoverCultivar(s,{seedCrop:'vegetables'},{}),null);
+ assert.equal(discoverCultivar(s,{machine:'standingtree'},{seeds:1}),null);
+ assert.equal(discoverCultivar(s,{seedCrop:'vegetables'},{seeds:1}).name,CROPS.vegetables.name);
+ assert.equal(discoverCultivar(s,{seedCrop:'vegetables'},{seeds:1}),null);assert.equal(plantCrop(s,bed,'vegetables').ok,true);
+ assert.deepEqual(validateSave(s).cultivars,['herbs','vegetables']);
+});
+test('Legacy crop access and ordinary food survive migration while new stories discover varieties',()=>{
+ const legacy=freshState();delete legacy.cultivars;legacy.meals=7;assert.deepEqual(validateSave(legacy).cultivars,Object.keys(CROPS));assert.equal(validateSave(legacy).meals,7);
+ assert.deepEqual(validateSave(freshState()).cultivars,['herbs']);
+ const planted=freshState();planted.placed=[{id:'cropbed',x:-17,z:23,crop:'flowers',plantedAt:0}];assert.ok(validateSave(planted).cultivars.includes('flowers'));
+});
+test('Cooking produces distinct portable dishes that inventory and hotbar can use',()=>{
+ const s=freshState();s.stash={fish:2,vegetables:4,wood:1,water:1,herbs:1};assert.equal(craft(s,'fishmeal').ok,true);assert.equal(craft(s,'stew').ok,true);
+ assert.equal(s.meals,0);assert.equal(s.fishmeals,2);assert.equal(s.stews,1);
+ assert.equal(inventoryItems(s).find(i=>i.id==='fishmeal').count,2);assert.equal(hotbarItem(s,'stew').available,true);
+ assert.equal(assignHotbar(s,4,'fishmeal'),true);assert.equal(validateSave(s).hotbar[4],'fishmeal');
+});
+test('One preparation effect replaces another, works at full health and does not waste identical food',()=>{
+ const s=freshState();s.fishmeals=2;s.stews=1;s.meals=1;s.teas=1;
+ assert.equal(useSupply(s,'fishmeal'),true);assert.equal(s.fishmeals,1);const until=s.foodEffect.until;
+ s.elapsed=10;assert.equal(useSupply(s,'fishmeal'),false);assert.equal(s.foodEffect.until,until);assert.equal(s.fishmeals,1);
+ assert.equal(useSupply(s,'stew'),true);assert.equal(activeFood(s).id,'stew');assert.equal(activeFood(s).sprintCost,1);
+ s.health=50;assert.equal(useSupply(s,'meal'),true);assert.equal(activeFood(s).id,'stew');assert.equal(useSupply(s,'tea'),true);assert.equal(activeFood(s).id,'stew');
+ respawn(s);assert.equal(activeFood(s),null);
+});
+test('Food timing expires in game time, reload preserves remaining time and corrupt effects are bounded',()=>{
+ const s=freshState();s.elapsed=100;s.fishmeals=1;useSupply(s,'fishmeal');s.elapsed=200;const saved=validateSave(JSON.parse(JSON.stringify(s)));
+ assert.equal(activeFood(saved).remaining,380);saved.elapsed=580;assert.equal(activeFood(saved),null);
+ for(const effect of [{id:'toString',until:1000},{id:'stew',until:NaN},{id:'stew',until:100}])assert.equal(validateSave({...s,foodEffect:effect}).foodEffect,null);
+ assert.equal(activeFood(validateSave({...s,foodEffect:{id:'stew',until:1e20}})).remaining,480);
+ assert.doesNotThrow(()=>validateSave({...s,placed:{},packedFurniture:7,cultivars:['toString','flowers','flowers']}));
+});
+test('Prepared meals change actual stamina drain and recovery without changing movement distance',()=>{
+ const normal=new Locomotion(),fed=new Locomotion();const a=normal.update(1,1,0,100,true),b=fed.update(1,1,0,100,true,false,FOOD_EFFECTS.fishmeal);
+ assert.equal(a.stamina,84);assert.equal(b.stamina,88.8);assert.equal(a.x,b.x);
+ const rest=new Locomotion().update(1,0,0,40,false,false,FOOD_EFFECTS.stew);assert.equal(rest.stamina,58.2);
+ const expired=freshState();expired.foodEffect={id:'fishmeal',until:0};assert.equal(new Locomotion().update(1,1,0,100,true,false,activeFood(expired)).stamina,84);
+});
+test('Orchard seed discoveries belong to stocked agricultural rooms',()=>{
+ const discoveries=FRONTIER_NODES.filter(n=>n[9]);assert.equal(discoveries.length,4);assert.ok(discoveries.some(n=>n[9]==='flowers'));
+ for(const n of discoveries){assert.ok(n[4].seeds>0);assert.ok(n[2]<-60&&n[3]<-50);}
+});

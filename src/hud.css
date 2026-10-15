@@ -197,3 +197,10 @@
 .fish-ui .secondary kbd{color:#e8d5a3;background:#283e34;border:1px solid #c5b78166;border-radius:4px;padding:2px 6px;font-size:14px}
 
 #music-volume{min-height:44px;max-width:50%;accent-color:#dec28e}
+
+/* Preparation fits in the existing stamina row, with no additional HUD panel. */
+.food-status { border:0; background:transparent; padding:0; color:#e3cf9c; display:grid; justify-items:center; flex-shrink:0; cursor:pointer; }
+.food-status small { font-size:12px; line-height:1; font-variant-numeric:tabular-nums; }
+.food-summary { display:flex; align-items:center; gap:12px; padding:12px; background:#b4c88710; border:1px solid #b4c88730; border-radius:8px; font-size:16px; }
+.food-summary svg { flex-shrink:0; }
+.food-replacement { color:#e3cf9c; }

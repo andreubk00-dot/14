@@ -11,9 +11,9 @@ export const FINDS={
  recordplayer:{name:'Старый проигрыватель',weight:4},
 };
 export const CROPS={
- herbs:{name:'Душистые травы',interval:120,cost:{seeds:1},loot:{herbs:4},color:'#95b26e'},
- vegetables:{name:'Корнеплоды',interval:180,cost:{seeds:2,water:1},loot:{vegetables:4},color:'#dd9e65'},
- flowers:{name:'Полевые цветы',interval:150,cost:{seeds:1,water:1},loot:{flowers:4},color:'#d69eb6'},
+ herbs:{name:'Душистые травы',interval:120,cost:{seeds:1},loot:{herbs:4,seeds:1},color:'#95b26e'},
+ vegetables:{name:'Корнеплоды',interval:180,cost:{seeds:2,water:1},loot:{vegetables:4,seeds:2},discovery:'Семена корнеплодов встречаются в огородах и садах',color:'#dd9e65'},
+ flowers:{name:'Полевые цветы',interval:150,cost:{seeds:1,water:1},loot:{flowers:4,seeds:1},discovery:'Семена цветов встречаются в оранжереях',color:'#d69eb6'},
 };
 export const RESOURCE_SITES=[['tree',-29,14],['tree',-32,19],['tree',-35,13],['tree',-29,26],['tree',-7,30],['tree',7,29],['stone',-31,9],['stone',-30,28.5],['stone',-8,33],['stone',6,27]];
 export const SCENES=[{x:-58,z:35,w:7,d:10},{x:58,z:-36,w:8,d:10},{x:-56,z:40,w:4,d:4},...RESOURCE_SITES.map(([,x,z])=>({x,z,w:4,d:4})),{x:-17,z:-11,w:22,d:3},{x:9,z:36,w:6,d:6},{x:-29,z:33,w:8,d:7},{x:54,z:21,w:7,d:6}];
@@ -50,4 +50,10 @@ export function cropInfo(state,item) {
  const age=Math.max(0,state.elapsed-item.plantedAt+(item.rainGrowth||0));
  const {cost:plantingCost,...data}=crop;
  return {...data,plantingCost,interval,remaining:Math.max(0,interval-age),progress:Math.min(1,age/interval),name:`Собрать: ${crop.name.toLowerCase()}`};
+}
+
+// Discover only after seeds actually enter the bag; a full bag cannot unlock a variety.
+export function discoverCultivar(state,node,received) {
+ const id=node.seedCrop;if(!(received.seeds>0)||!Object.hasOwn(CROPS,id)||state.cultivars.includes(id))return null;
+ state.cultivars.push(id);return CROPS[id];
 }

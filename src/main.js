@@ -20,6 +20,8 @@ import './hud.css';
 import './inventory.css';
 import { equipItem, unequipItem, withdrawResource } from './inventory.js';
 import { fishingFrameDelta } from './fishing.js';
+import {SUPPLY_FIELDS,activeFood} from './food.js';
+import {discoverCultivar} from './homelife.js';
 import { hotbarItem, assignHotbar } from './hotbar.js';
 import { Locomotion } from './movement.js';
 import { World, LOCATIONS } from './world.js';
@@ -259,9 +261,9 @@ class QuietDistrict {
       const n = deposit(this.state); this.ui.toast(n ? `На склад отправлено: ${n} материалов и находок` : 'Рюкзак уже пуст.', n ? 'success' : 'info');
       if (n) this.world.syncNodes();this.audio.collect(); this.changed(); return;
     }
-    if (['use-medkit', 'use-meal', 'use-tea'].includes(action)) {
+    if (action.startsWith('use-')&&Object.hasOwn(SUPPLY_FIELDS,action.slice(4))) {
       const ok = useSupply(this.state, action.replace('use-', ''));
-      this.ui.toast(ok ? 'Теперь гораздо лучше.' : 'Сейчас нечего использовать или восстановление не требуется.', ok ? 'success' : 'info');
+      this.ui.toast(ok ? (activeFood(this.state)&&['fishmeal','stew'].includes(action.slice(4))?`${activeFood(this.state).name} · 8 минут.`:'Теперь гораздо лучше.') : 'Сейчас нечего использовать или восстановление не требуется.', ok ? 'success' : 'info');
       if (ok) { this.audio.collect(); this.world.playCharacterAction('use_item'); } this.changed(); return;
     }
     if (action === 'sound') { this.state.settings.sound = !this.state.settings.sound; this.audio.toggle(this.state.settings.sound); this.changed(); return; }
@@ -496,6 +498,7 @@ class QuietDistrict {
     if(node.find) {const result=claimFind(this.state,node);if(!result.ok) this.ui.toast(result.reason);else {node.group.visible=false;node.marker.visible=false;if(node.collider)node.collider.disabled=true;this.world.floatingText(`+1 ${FINDS[node.find].name}`,node.x,node.z,'#e6cc98',[node.find]);this.audio.collect();}this.changed();return;}
     const wasBroken=this.state.brokenNodes.includes(node.id);const result=collect(this.state,node.loot);if(['standingtree','quarry'].includes(node.machine)&&Object.keys(result.received).length&&!this.state.brokenNodes.includes(node.id))this.state.brokenNodes.push(node.id);
     if(['appliance','motor'].includes(node.machine)&&Object.keys(result.received).length&&Object.keys(result.remaining).length&&!this.state.strippedNodes.includes(node.id))this.state.strippedNodes.push(node.id);
+    const cultivar=discoverCultivar(this.state,node,result.received);if(cultivar)this.ui.toast(`Новая посадка: ${cultivar.name}. Семена теперь можно высаживать дома.`,'success');
     this.showLoot(result.received, node.x, node.z);
     node.loot = result.remaining;
     this.state.nodeLoot ||= {};
@@ -639,7 +642,7 @@ class QuietDistrict {
     if (!manual && distance > 0) { dx /= distance; dz /= distance; }
     if (distance > 0.08 && this.job) { this.job = null; this.ui.progress(null); }
     const result = this.motion.update(dt, dx, dz, this.state.stamina,
-      this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'), this.state.equipment.boots === 'boots');
+      this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'), this.state.equipment.boots === 'boots',activeFood(this.state));
     const profile=gearProfile(this.state,RECIPES);result.x*=profile.speed*(this.swing?.resolved===false?.75:1);result.z*=profile.speed*(this.swing?.resolved===false?.75:1);
     this.state.stamina = result.stamina; this.world.running = result.running;
     if (!manual && this.path.length && Math.hypot(result.x, result.z) > distance) {

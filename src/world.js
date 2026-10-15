@@ -864,8 +864,8 @@ export class World {
       ['electronics', 'Щит у водонапорной башни', 27, -33, { wire: 4, parts: 3 }],
       ['crate', 'Запасы насосной станции', 35, -29, { metal: 6, parts: 4 }, 'cutter'],
       ['herbs', 'Травы у башни', 34, -24, { herbs: 4 }],
-      ['crate', 'Семена в герметичном ящике', -36, -5, { seeds: 3, cloth: 2 }, 'cutter'],
-      ['herbs', 'Уцелевшие посадки', -32, -5, { seeds: 2, herbs: 4 }],
+      ['crate', 'Семена в герметичном ящике', -36, -5, { seeds: 3, cloth: 2 }, 'cutter',null,null,null,'vegetables'],
+      ['herbs', 'Уцелевшие посадки', -32, -5, { seeds: 2, herbs: 4 },null,null,null,null,'vegetables'],
       ['electronics', 'Система полива сада', -30, -9, { parts: 3, wire: 3 }],
       ['wood', 'Доски старой теплицы', -38, -2, { wood: 7 }],
       ['crate', 'Уцелевшие продукты магазина', 14, 4, { vegetables:3,herbs: 2, water: 2 }],
@@ -878,9 +878,9 @@ export class World {
       ['electronics','Сервисный щит',55,9,{wire:5,parts:3}],
       ['crate','Запертый инструментальный ящик',53,13,{parts:6,metal:5,wire:3},'cutter'],
       ['wood','Доски у мастерской',46,22,{wood:7}],
-      ['herbs','Уцелевшие посадки оранжереи',-42,-43,{herbs:6,seeds:2}],
-      ['crate','Закрытый семенной фонд',-44,-46.3,{seeds:6,cloth:2},'cutter'],
-      ['crate','Ящик садовника',-40,-41.5,{water:3,seeds:2,wood:3}],
+      ['herbs','Уцелевшие посадки оранжереи',-42,-43,{herbs:6,seeds:2},null,null,null,null,'flowers'],
+      ['crate','Закрытый семенной фонд',-44,-46.3,{seeds:6,cloth:2},'cutter',null,null,null,'flowers'],
+      ['crate','Ящик садовника',-40,-41.5,{water:3,seeds:2,wood:3},null,null,null,null,'vegetables'],
       ['find','Светильник из клиники',-46,33,{},null,'foundlamp'],
       ['find','Оставленное кресло',-29,35,{},null,'armchair'],
       ['find','Часы у остановки',10,35.7,{},null,'wallclock'],
@@ -888,7 +888,7 @@ export class World {
       ['scrap','Стиральная машина',14,18,{metal:5,wire:2},null,null,'appliance'],
       ['scrap','Снятый двигатель',52,20,{metal:6,parts:3},null,null,'motor'],
       ['cloth','Бельё во дворе',-46,49,{cloth:5}],
-      ['herbs','Уцелевший огород',-36,53.5,{vegetables:4,seeds:2}],
+      ['herbs','Уцелевший огород',-36,53.5,{vegetables:4,seeds:2},null,null,null,null,'vegetables'],
       ['crate','Запасы кладовой',-44,55,{cloth:5,wood:4,vegetables:2}],
       ['crate','Шкаф с инструментами',-41,53,{parts:3,metal:3}],
       ['scrap','Двигатель со склада',48,-52,{metal:6,parts:4},null,null,'motor'],
@@ -932,14 +932,14 @@ export class World {
       ['crate','Сухая корзина под навесом',-56,40,{cloth:3,herbs:2,medicine:1}],
       ['crate','Обрезки за рабочим столом',26.5,4,{cloth:4,wire:1}],
       ['crate','Сухой ящик рыбацкого дома',24,51.5,{fish:2,wood:2}],
-      ['crate','Пакеты с семенами цветов',-40,-45.7,{seeds:3,flowers:1,cloth:1}],
+      ['crate','Пакеты с семенами цветов',-40,-45.7,{seeds:3,flowers:1,cloth:1},null,null,null,null,'flowers'],
       ['crate','Запас перевязочной прачечной',-58.9,33.1,{cloth:4,medicine:2}],
       ['crate','Ящик под служебным навесом',56.8,-31.5,{parts:3,wire:2}],
       ['crate','Сухие травы кухонной кладовой',31,36.8,{herbs:4,seeds:2,cloth:1}],
       ['crate','Запас ремонтной смены',54,9.5,{parts:3,metal:2}],
       ...FRONTIER_NODES,...FRONTIER_RESOURCES,
     ];
-    definitions.forEach(([type, name, x, z, loot, requires, find, machine,regionProfile], i) => {
+    definitions.forEach(([type, name, x, z, loot, requires, find, machine,regionProfile,seedCrop], i) => {
       const group = new THREE.Group(); group.position.set(x,this.furnitureElevation(x,z),z); this.scene.add(group);
       const kind=machineKind({type,name,machine});
       if(kind==='standingtree'||kind==='quarry'){this.makeResourceNode(group,kind);}
@@ -962,7 +962,7 @@ export class World {
         for (let j = 0; j < 4; j++) this.box((rng() - 0.5) * 0.7, 0.2 + j * 0.12, (rng() - 0.5) * 0.6, 0.6 + rng() * 0.3, 0.25, 0.5, j % 2 ? '#7f897a' : '#626f67', group).rotation.y = rng() * 3;
       }
       const marker = this.marker(x, 1.5, z, type === 'herbs' ? '#a9c181' : '#e7c993');
-      const node = { id: `node-${i}`, type, name, x, z, loot: { ...(this.state.nodeLoot[`node-${i}`] || expeditionLoot({id:`node-${i}`,type,x,z,originalLoot:loot,regionProfile},this.state.depleted[`node-${i}`]===undefined?0:Math.floor(this.state.elapsed/(type==='herbs'?120:240)))) }, originalLoot: { ...loot },regionProfile, requires, find, accessGate:gateForPoint(x,z), machine:kind, group, marker, respawnTime: type === 'herbs' ? 120 : 240 };
+      const node = { id: `node-${i}`, type, name, x, z, loot: { ...(this.state.nodeLoot[`node-${i}`] || expeditionLoot({id:`node-${i}`,type,x,z,originalLoot:loot,regionProfile},this.state.depleted[`node-${i}`]===undefined?0:Math.floor(this.state.elapsed/(type==='herbs'?120:240)))) }, originalLoot: { ...loot },regionProfile,seedCrop, requires, find, accessGate:gateForPoint(x,z), machine:kind, group, marker, respawnTime: type === 'herbs' ? 120 : 240 };
       if(kind||find||type==='crate') {const f=find?footprint({id:find,x:0,z:0}):null;const size=kind==='standingtree'?[.6,.6]:kind==='quarry'?[2.1,1.6]:find?(['wallclock','wallshelf'].includes(find)?[1.05,1.13]:[f.w*.6,f.d*.6]):type==='crate'?[1.05,1.13]:kind==='motor'?[1.35,.95]:kind==='appliance'?[1,.8]:kind==='radio'?[.9,.4]:[.9,.6];node.collider=this.collider(x,z,...size);}
       group.traverse(mesh => { mesh.userData.node = node; if (mesh.isMesh) this.pickables.push(mesh); });
       const fieldLights=[];group.traverse(o=>{if(o.isPointLight)fieldLights.push(o);});for(const light of fieldLights)this.pinLight(light,group);

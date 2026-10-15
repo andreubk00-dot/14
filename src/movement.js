@@ -2,7 +2,7 @@
 export class Locomotion {
   constructor() { this.reset(); }
   reset() { this.x = 0; this.z = 0; this.exhausted ??= false; this.running = false; }
-  update(dt, dx, dz, stamina, sprint, boots = false) {
+  update(dt, dx, dz, stamina, sprint, boots = false, food = null) {
     const length = Math.hypot(dx, dz), intensity = Math.min(1, length);
     if (stamina <= 1) this.exhausted = true;
     if (stamina >= 22) this.exhausted = false;
@@ -14,6 +14,6 @@ export class Locomotion {
     this.x += (targetX - this.x) * response; this.z += (targetZ - this.z) * response;
     if (Math.hypot(this.x, this.z) < 0.015) this.x = this.z = 0;
     return { x: this.x * dt, z: this.z * dt, running: this.running,
-      stamina: Math.min(100, Math.max(0, stamina + dt * (this.running ? -16 : length > 0.08 ? 8 : 13))) };
+      stamina: Math.min(100, Math.max(0, stamina + dt * (this.running ? -16*(food?.sprintCost??1) : (length > 0.08 ? 8 : 13)*(food?.recovery??1)))) };
   }
 }

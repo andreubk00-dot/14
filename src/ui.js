@@ -1,3 +1,4 @@
+import {SUPPLY_FIELDS,FOOD_EFFECTS,activeFood,foodTime} from './food.js';
 import {cargoStorageCapacity,salvageDuration} from './salvage.js';
 import {CARGO_WEIGHT,CARGO_NAME,cargoLoot} from './salvage.js';
 import {salvageStatus} from './game.js';
@@ -102,8 +103,9 @@ export class UI {
   }
   update() {
     const state=this.state;
+    const food=activeFood(state);
     const bag = bagWeight(state), cap = capacity(state);
-    this.setHTML('vitals', `<div class="vital-row ${state.health < 30 ? 'critical' : ''}">${icon('heart', 17)}<div class="vital-detail"><div><span>Здоровье</span><b>${Math.ceil(state.health)}<small>/100</small></b></div><div class="meter health"><i style="width:${state.health}%"></i></div></div></div><div class="vital-row">${icon('bolt', 17)}<div class="vital-detail"><div><span>Выносливость</span><b>${Math.ceil(state.stamina)}<small>/100</small></b></div><div class="meter stamina"><i style="width:${state.stamina}%"></i></div></div></div>`);
+    this.setHTML('vitals', `<div class="vital-row ${state.health < 30 ? 'critical' : ''}">${icon('heart', 17)}<div class="vital-detail"><div><span>Здоровье</span><b>${Math.ceil(state.health)}<small>/100</small></b></div><div class="meter health"><i style="width:${state.health}%"></i></div></div></div><div class="vital-row">${food?`<button class="food-status" data-action="inventory" title="${food.name}: ${food.desc}. Осталось ${foodTime(food.remaining)}" aria-label="${food.name}: ${food.desc}. Осталось ${foodTime(food.remaining)}">${recipeIcon(food.id,22)}<small>${foodTime(food.remaining)}</small></button>`:icon('bolt', 17)}<div class="vital-detail"><div><span>Выносливость</span><b>${Math.ceil(state.stamina)}<small>/100</small></b></div><div class="meter stamina"><i style="width:${state.stamina}%"></i></div></div></div>`);
     const minimap = document.querySelector('.minimap'); minimap.classList.toggle('collapsed', !state.settings.minimapExpanded);
     minimap.querySelector('[data-action="toggle-minimap"]').setAttribute('aria-expanded', String(!!state.settings.minimapExpanded));
     document.getElementById('toolbar-bag-count').textContent = `${Number(bag.toFixed(1))}/${cap}`;
@@ -125,7 +127,7 @@ export class UI {
   }
   hotbarEditor() {
     const state = this.state, index = this.hotbarEditSlot;
-    const choices = HOTBAR_ITEMS.filter(item => item.id === 'pipe' || state.owned.includes(item.id) || ['medkit', 'meal', 'tea'].includes(item.id));
+    const choices = HOTBAR_ITEMS.filter(item => item.id === 'pipe' || state.owned.includes(item.id) || Object.hasOwn(SUPPLY_FIELDS,item.id)&&(!Object.hasOwn(FOOD_EFFECTS,item.id)||state[SUPPLY_FIELDS[item.id]]>0||state.hotbar.includes(item.id)));
     return `<p class="panel-note">Выбери ячейку, затем предмет. Цифры 1–6 и нажатия работают во время игры. Инструменты из набора также применяются автоматически.</p><div class="hotbar-edit-slots">${state.hotbar.map((id, slot) => `<button data-action="hotbar-edit-slot" data-index="${slot}" class="${slot === index ? 'active' : ''}" aria-label="Настроить ячейку ${slot + 1}" aria-pressed="${slot === index}"><b>${slot + 1}</b>${id ? recipeIcon(id, 30) : icon('add', 30)}</button>`).join('')}</div><div class="section-title"><h3>Предмет для ячейки ${index + 1}</h3></div><div class="hotbar-choices">${choices.map(item => {
       const info = hotbarItem(state, item.id);
       return `<button data-action="hotbar-assign" data-index="${index}" data-id="${item.id}" class="${state.hotbar[index] === item.id ? 'selected' : ''}">${recipeIcon(item.id, 32)}<span>${item.name}${info.supply ? `<small>В запасе: ${info.count}</small>` : ''}</span>${state.hotbar[index] === item.id ? icon('check', 20) : ''}</button>`;
@@ -204,6 +206,7 @@ export class UI {
       const nearHome = state.x >= -27 && state.x <= -6 && state.z >= 5 && state.z <= 27;
       const nearStation=isCooking?nearHome&&atCookingStove(state):Math.hypot(state.x+21,state.z-13)<4.5;
       body += `<div class="station-status ${isBuild ? nearHome ? 'online' : '' : nearStation ? 'online' : ''}"><i></i>${isBuild ? nearHome ? 'Ты дома · можно строить' : 'Для строительства вернись в убежище' : nearStation ? isCooking?'Печь рядом · можно готовить':'Станция рядом · готова к работе' : isCooking?'Подойди к установленной кухонной печи':'Изготовление доступно рядом со станцией'}</div>`;
+      if(isCooking)body+=this.foodSummary();
       if (!isCooking&&!(isBuild ? nearHome : nearStation)) body += `<button class="station-route secondary full-width" data-action="${isBuild ? 'home' : 'station-route'}">${icon('pin', 17)} ${isBuild ? 'Проложить путь домой' : 'Проложить путь к станции'} ${icon('arrow', 15)}</button>`;
       if(this.panel==='craft'&&(state.cargo.length||state.storedCargo.length))body+='<button class="primary full-width" data-action="salvage-workbench">Разобрать привезённую технику</button>';
       if(isBuild)body+=`<nav class="category-tabs"><button data-action="build-category" data-view="home" class="${this.buildView!=='yard'?'active':''}">Обстановка</button><button data-action="build-category" data-view="yard" class="${this.buildView==='yard'?'active':''}">Двор</button></nav>`;
@@ -281,9 +284,13 @@ export class UI {
     }
     if (this.panel === 'settings') document.getElementById('import-save').addEventListener('change', event => this.actions('import-save', { file: event.target.files[0] }));
   }
+  foodSummary() {
+    const food=activeFood(this.state);
+    return food?`<p class="food-summary">${recipeIcon(food.id,30)}<span><strong>${food.name} · ${foodTime(food.remaining)}</strong><br>${food.desc}. Другое блюдо заменит эффект.</span></p>`:'';
+  }
   inventoryWindow() {
     const state=this.state, items=inventoryItems(state), home=state.x>=-27&&state.x<=-6&&state.z>=5&&state.z<=27;
-    return `<div class="inventory-layout"><section class="equipment-column"><h3>Экипировка</h3><div class="equipment-grid">${Object.entries(EQUIPMENT_SLOTS).map(([slot,label])=>{
+    return `${this.foodSummary()}<div class="inventory-layout"><section class="equipment-column"><h3>Экипировка</h3><div class="equipment-grid">${Object.entries(EQUIPMENT_SLOTS).map(([slot,label])=>{
       const id=state.equipment[slot], name=id==='pipe'?'Стальная труба':RECIPES.find(r=>r.id===id)?.name;
       return `<button class="equipment-slot ${id?'filled':''} ${id&&this.selectedItem===id?'selected':''}" data-action="${id?'select-item':'inventory-tab'}" ${id?`data-id="${id}"`:'data-view="bag"'} aria-label="${label}: ${name||'не надето'}"><span>${label}</span>${id?recipeIcon(id,60):icon(({weapon:'sword',armor:'shield',bag:'bag',boots:'boots'})[slot],32)}<small>${name||'Свободно'}</small></button>`;
     }).join('')}</div><div class="equipment-summary"><span>${icon('sword',20)} ${weapon(state).damage} урона</span><span>${icon('shield',20)} ${Math.round((RECIPES.find(r=>r.id===state.equipment.armor)?.defense||0)*100)}% защиты</span><span>${icon('boots',20)} Скорость ${Math.round(gearProfile(state,RECIPES).speed*(state.equipment.boots==='boots'?1.18:1)*100)}%</span></div></section><section class="pack-column"><div class="inventory-weight"><h3>Рюкзак</h3><span>${Number(bagWeight(state).toFixed(2))} / ${capacity(state)}</span></div>${this.itemGrid(items,'inventory-grid')}${home?'<button class="secondary storage-link" data-action="storage">Открыть склад убежища →</button>':''}</section></div>${this.itemDetails(false)}`;
@@ -306,8 +313,8 @@ export class UI {
     else if(item.kind==='find') actions=`<button class="primary" data-action="make" data-id="${item.id}">Поставить дома</button>`;
     else if(equipped) actions=`<button class="secondary" data-action="unequip" data-slot="${equipped[0]}">Снять</button>`;
     else if(item.kind==='gear'&&item.slot!=='tool') actions=`<button class="primary" data-action="equip" data-id="${item.id}">Надеть</button>`;
-    else if(['medkit','meal','tea'].includes(item.id)) actions=`<button class="primary" data-action="use-${item.id}">Использовать</button>`;
-    return `<section class="item-details"><div class="item-portrait">${recipeIcon(item.art||item.id,72)}</div><div><h3>${item.name}</h3><p>${item.desc||'Материал для создания и развития убежища.'}</p>${item.kind==='find'?`<small>Вес: ${FINDS[item.id].weight} · находка для дома</small>`:item.id==='pipe'?'<small>13 урона · 2.4 м</small>':''}<div class="item-actions">${actions}</div></div></section>`;
+    else if(Object.hasOwn(SUPPLY_FIELDS,item.id)) actions=`<button class="primary" data-action="use-${item.id}" ${activeFood(state)?.id===item.id&&state.health>=100&&state.stamina>=100?'disabled':''}>${item.id==='tea'?'Выпить':item.id==='medkit'?'Применить':'Съесть'}</button>`;
+    return `<section class="item-details"><div class="item-portrait">${recipeIcon(item.art||item.id,72)}</div><div><h3>${item.name}</h3><p>${item.desc||'Материал для создания и развития убежища.'}</p>${Object.hasOwn(FOOD_EFFECTS,item.id)&&activeFood(state)?`<p class="food-replacement">${activeFood(state).id===item.id?'Этот эффект уже действует.':'Заменит: '+activeFood(state).name+'.'}</p>`:''}${item.kind==='find'?`<small>Вес: ${FINDS[item.id].weight} · находка для дома</small>`:item.id==='pipe'?'<small>13 урона · 2.4 м</small>':''}<div class="item-actions">${actions}</div></div></section>`;
   }
   stationWindow(){
     const s=this.state,item=s.placed[this.stationIndex??this.dryerIndex],spec=STATION_UPGRADES[item?.id];if(!spec)return '<p>Станция не найдена.</p>';
@@ -323,8 +330,8 @@ export class UI {
   gardenWindow() {
     const state=this.state,item=state.placed[this.gardenIndex],info=item?cropInfo(state,item):null;
     if(!item||item.id!=='cropbed') return '<p>Грядка не найдена.</p>';
-    if(info) return `<div class="crop-status">${resourceIcon(item.crop,64)}<h3>${CROPS[item.crop].name}</h3><p>${info.remaining?`До урожая: ${Math.ceil(info.remaining)} сек.`:'Урожай готов к сбору'}${weatherAt(state.elapsed).rain>.2&&item.z>19.5?' · дождь поливает грядку':''}</p><div class="meter health"><i style="width:${info.progress*100}%"></i></div><button class="primary full-width" data-action="harvest-bed" data-index="${this.gardenIndex}" ${info.remaining?'disabled':''}>Собрать урожай</button></div>`;
-    return `<div class="recipe-list">${Object.entries(CROPS).map(([id,crop])=>`<article class="recipe-card"><div class="recipe-top"><span class="recipe-icon">${resourceIcon(id,48)}</span><div><h3>${crop.name}</h3><p>${crop.interval} сек. · урожай ${Object.values(crop.loot)[0]} шт.</p></div></div><div class="costs">${costHTML(state,crop.cost)}</div><button class="craft-button" data-action="plant-crop" data-id="${id}" data-index="${this.gardenIndex}" ${Object.entries(crop.cost).some(([r,n])=>total(state,r)<n)?'disabled':''}>Посадить</button></article>`).join('')}</div>`;
+    if(info) return `<div class="crop-status">${resourceIcon(item.crop,64)}<h3>${CROPS[item.crop].name}</h3><p>${info.remaining?`До урожая: ${Math.ceil(info.remaining)} сек.`:'Урожай готов к сбору'} · семена после сбора: ${CROPS[item.crop].loot.seeds}${weatherAt(state.elapsed).rain>.2&&item.z>19.5?' · дождь поливает грядку':''}</p><div class="meter health"><i style="width:${info.progress*100}%"></i></div><button class="primary full-width" data-action="harvest-bed" data-index="${this.gardenIndex}" ${info.remaining?'disabled':''}>Собрать урожай</button></div>`;
+    return `<p class="panel-note">Урожай возвращает семена для следующей посадки. Новые культуры открываются при находке семян.</p><div class="recipe-list">${Object.entries(CROPS).map(([id,crop])=>`<article class="recipe-card"><div class="recipe-top"><span class="recipe-icon">${resourceIcon(id,48)}</span><div><h3>${crop.name}</h3><p>${crop.interval} сек. · урожай: ${Object.values(crop.loot)[0]} шт. · семена: ${crop.loot.seeds}${state.cultivars.includes(id)?'':`<br>${crop.discovery}.`}</p></div></div><div class="costs">${costHTML(state,crop.cost)}</div><button class="craft-button" data-action="plant-crop" data-id="${id}" data-index="${this.gardenIndex}" ${!state.cultivars.includes(id)||Object.entries(crop.cost).some(([r,n])=>total(state,r)<n)?'disabled':''}>${state.cultivars.includes(id)?'Посадить':'Найти семена'}</button></article>`).join('')}</div>`;
   }
   haulSummary() {
     const haul=Object.entries(this.state.lastHaul),finds=Object.entries(this.state.lastFindHaul);if(!haul.length&&!finds.length) return '';
