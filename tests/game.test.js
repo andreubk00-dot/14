@@ -833,3 +833,24 @@ test('Static shadow batches keep every solid triangle and leave moving or cutawa
 test('Existing quarter-metre furniture coordinates survive saving without being snapped to the new preview grid',()=>{
  const s=freshState();s.placed=[{id:'bed',x:-18,z:23.25,rotation:0,harvested:0}];assert.equal(validateSave(JSON.parse(JSON.stringify(s))).placed[0].z,23.25);
 });
+
+test('Manual map notes survive old saves, reject corrupt coordinates and cap imported notes', async () => {
+ const {cleanMapMarks,addMapMark,MAX_MAP_MARKS}=await import('../src/map-marks.js');
+ const s=freshState();assert.equal(addMapMark(s,167,70,'  Запас дерева  '),true);
+ assert.equal(addMapMark(s,Infinity,70,'wrong'),false);assert.equal(addMapMark(s,209,0,'wrong'),false);
+ assert.deepEqual(validateSave(s).mapMarks,[{id:1,x:167,z:70,label:'Запас дерева'}]);
+ assert.deepEqual(cleanMapMarks([null,{id:1,x:0,z:0,label:'\u0000  '},{id:1,x:10,z:0},{id:2,x:'10',z:0}]),[{id:1,x:0,z:0,label:'Метка'}]);
+ for(let i=1;i<MAX_MAP_MARKS;i++)assert.equal(addMapMark(s,i,0,'x'.repeat(60)),true);
+ assert.equal(addMapMark(s,0,0,'overflow'),false);assert.equal(s.mapMarks[1].label.length,32);
+ assert.equal(cleanMapMarks([...s.mapMarks,{id:99,x:0,z:0}]).length,MAX_MAP_MARKS);
+ delete s.mapMarks;delete s.keepResources;assert.deepEqual(validateSave(s).mapMarks,[]);assert.deepEqual(validateSave(s).keepResources,[]);
+});
+
+test('Deposit preserves selected materials and equipment without duplicating haul or trips', () => {
+ const s=freshState();s.bag={wood:4,metal:5,water:2};s.keepResources=['wood','water'];s.medkits=3;s.meals=2;s.ammo=12;
+ const gear=structuredClone(s.equipment);assert.equal(deposit(s),5);
+ assert.deepEqual(s.bag,{wood:4,water:2});assert.deepEqual(s.lastHaul,{metal:5});assert.equal(s.stash.metal,7);
+ assert.equal(deposit(s),0);assert.equal(s.trips,1);assert.equal(s.medkits,3);assert.equal(s.meals,2);assert.equal(s.ammo,12);assert.deepEqual(s.equipment,gear);
+ const loaded=validateSave({...s,keepResources:['wood','wood','__proto__','fake','water']});assert.deepEqual(loaded.keepResources,['wood','water']);
+ loaded.keepResources=[];assert.equal(deposit(loaded),6);assert.deepEqual(loaded.bag,{});
+});

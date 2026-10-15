@@ -1,3 +1,4 @@
+import {addMapMark} from './map-marks.js';
 import {harvestTimeline,advanceHarvest} from './harvesting.js';
 import {salvageDuration} from './salvage.js';
 import {toggleYardGate} from './game.js';
@@ -259,7 +260,7 @@ class QuietDistrict {
     }
     if (action === 'deposit') {
       if (!this.atHome()) { this.ui.toast('Добычу можно сложить только в убежище.'); return; }
-      const n = deposit(this.state); this.ui.toast(n ? `На склад отправлено: ${n} материалов и находок` : 'Рюкзак уже пуст.', n ? 'success' : 'info');
+      const n = deposit(this.state); this.ui.toast(n ? `На склад отправлено: ${n} материалов и находок` : (bagWeight(this.state)>0?'В рюкзаке остались выбранные материалы или техника, для которой нет места на складе.':'Рюкзак уже пуст.'), n ? 'success' : 'info');
       if (n) this.world.syncNodes();this.audio.collect(); this.changed(); return;
     }
     if (action.startsWith('use-')&&Object.hasOwn(SUPPLY_FIELDS,action.slice(4))) {
@@ -300,6 +301,25 @@ class QuietDistrict {
       let destination = target.id === 'depot' ? { x: -17, z: -20 } : target.id === 'market' ? { x: 13, z: 5 } : target.id === 'pond' ? { x: 19, z: -17 } : target.id === 'tower' ? { x: 30, z: -31 } : target.id === 'garden' ? { x: -34, z: -5 } : target.id==='home'?HOME:{x:target.x,z:target.z};
       const gate=this.world.gates.find(g=>g.id===gateForPoint(target.x,target.z)&&!this.state.openedGates.includes(g.id));if(gate)destination={x:gate.x,z:gate.z+1.2};
       this.ui.close(); this.target = null; this.navigate(destination.x, destination.z); return;
+    }
+    if (action === 'keep-resource') {
+      if (!Object.hasOwn(RESOURCES,data.id)) return;
+      const list=this.state.keepResources, index=list.indexOf(data.id);
+      if(index<0) list.push(data.id); else list.splice(index,1);
+      this.changed(); return;
+    }
+    if (action === 'map-add') {
+      const ok=addMapMark(this.state,Number(data.x),Number(data.z),data.label);
+      if(ok) this.ui.mapMarking=false;
+      else this.ui.toast(this.state.mapMarks.length>=16?'На карте уже 16 отметок. Удали ненужную.':'Поставь отметку внутри района.');
+      this.changed(); return;
+    }
+    if (action === 'map-remove') {
+      this.state.mapMarks=this.state.mapMarks.filter(m=>m.id!==Number(data.id)); this.changed(); return;
+    }
+    if (action === 'map-go') {
+      const mark=this.state.mapMarks.find(m=>m.id===Number(data.id));
+      if(mark) {this.ui.close();this.target=null;this.navigate(mark.x,mark.z);} return;
     }
     if (action === 'map-point') { this.ui.close(); this.target = null; this.navigate(Number(data.x), Number(data.z)); return; }
     if (action === 'interact') { this.interact(); return; }
@@ -643,7 +663,7 @@ class QuietDistrict {
     const manual = Math.hypot(dx, dz) > 0.08;
     if (manual) { this.path = []; this.target = null; this.world.destination.visible = false; }
     else {
-      while (this.path.length && Math.hypot(this.path[0].x - this.state.x, this.path[0].z - this.state.z) < 0.18) this.path.shift();
+      while (this.path.length && Math.hypot(this.path[0].x - this.state.x, this.path[0].z - this.state.z) < 0.025) this.path.shift();
       if (this.path.length) { dx = this.path[0].x - this.state.x; dz = this.path[0].z - this.state.z; }
       else this.world.destination.visible = false;
     }
@@ -654,8 +674,10 @@ class QuietDistrict {
       this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'), this.state.equipment.boots === 'boots',activeFood(this.state));
     const profile=gearProfile(this.state,RECIPES);result.x*=profile.speed*(this.swing?.resolved===false?.75:1);result.z*=profile.speed*(this.swing?.resolved===false?.75:1);
     this.state.stamina = result.stamina; this.world.running = result.running;
-    if (!manual && this.path.length && Math.hypot(result.x, result.z) > distance) {
-      const ratio = distance / Math.hypot(result.x, result.z); result.x *= ratio; result.z *= ratio;
+    // Follow the checked segment precisely; velocity easing must not cut a corner into a wall.
+    if (!manual && this.path.length) {
+      const travel=Math.min(distance,Math.hypot(result.x,result.z));
+      result.x=dx*travel;result.z=dz*travel;
     }
     const oldX = this.state.x, oldZ = this.state.z;
     this.world.move(oldX + result.x, oldZ + result.z);

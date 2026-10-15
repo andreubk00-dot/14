@@ -246,3 +246,14 @@
   .quick-actions { bottom: 222px; }
   .quest-card p { font-size: 11px; }
 }
+
+.map-mark-button { margin: 0 0 12px; }
+.map-mark-editor { display: grid; gap: 8px; font-size: 16px; margin-bottom: 12px; }
+.map-mark-editor input { width: 100%; box-sizing: border-box; font: inherit; padding: 12px; color: #f2e4c8; background: #1d302b; border: 1px solid #65796c; border-radius: 8px; }
+.map-mark-editor span { color: #b6c4b4; }
+.map-marks { display: grid; gap: 8px; margin-bottom: 16px; }
+.map-marks > div { display: flex; background: #ffffff08; border: 1px solid #ffffff15; border-radius: 10px; }
+.map-marks button { display: flex; align-items: center; gap: 10px; padding: 12px; color: #f0bd77; min-width: 44px; min-height: 44px; }
+.map-marks button:first-child { flex: 1; min-width: 0; text-align: left; }
+.map-marks button span { flex: 1; overflow-wrap: anywhere; }
+.kept-resource { position: absolute; left: 4px; top: 4px; color: #f0bd77; background: #20342f; border-radius: 4px; padding: 2px; }

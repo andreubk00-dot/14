@@ -1,3 +1,4 @@
+import {cleanMapMarks} from './map-marks.js';
 import {SUPPLY_FIELDS,FOOD_EFFECTS,activeFood} from './food.js';
 import {CARGO_WEIGHT,cleanCargo,cargoLoot,cargoStorageCapacity} from './salvage.js';
 import {STRUCTURES,dismantleAllowed,cleanConstruction,replacementPlan} from './construction.js';
@@ -103,7 +104,7 @@ export const FISH = [
 export const HOME = { x: -16, z: 16 };
 export function freshState() {
   return {
-    cargo:[],storedCargo:[],strippedNodes:[],construction:[],brokenNodes:[],loadouts:[null,null],openedGates:[],packedFurniture:[],fishingBait:'none',visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
+    mapMarks:[],keepResources:[],cargo:[],storedCargo:[],strippedNodes:[],construction:[],brokenNodes:[],loadouts:[null,null],openedGates:[],packedFurniture:[],fishingBait:'none',visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
     version: 1, x: HOME.x + 1, z: HOME.z + 2, health: 100, stamina: 100,
     stash: { wood: 3, metal: 2, cloth: 2 }, bag: {}, owned: [],
     equipment: { weapon: 'pipe', armor: null, bag: null, boots: null },
@@ -128,6 +129,8 @@ function cleanFurniture(p,elapsed) {
 export function validateSave(input) {
   if (!input || input.version !== 1) return null;
   const state = freshState();
+  state.mapMarks=cleanMapMarks(input.mapMarks);
+  state.keepResources=[...new Set((Array.isArray(input.keepResources)?input.keepResources:[]).filter(id=>Object.hasOwn(RESOURCES,id)))];
   state.cargo=cleanCargo(input.cargo,RESOURCES);state.storedCargo=cleanCargo(input.storedCargo,RESOURCES);state.strippedNodes=[...new Set((Array.isArray(input.strippedNodes)?input.strippedNodes:Object.keys(input.nodeLoot||{})).filter(id=>/^node-\d{1,3}$/.test(id)))];
   state.construction=cleanConstruction(input.construction);state.brokenNodes=[...new Set((Array.isArray(input.brokenNodes)?input.brokenNodes:[]).filter(id=>typeof id==='string'&&/^node-\d{1,3}$/.test(id)))].slice(0,500);
   state.openedGates=[...new Set((Array.isArray(input.openedGates)?input.openedGates:[]).filter(id=>GATES.some(g=>g.id===id)))];
@@ -288,9 +291,9 @@ export function deposit(state) {
   let amount = 0;
   const movedCargo=state.cargo.splice(0,Math.max(0,cargoStorageCapacity(state)-state.storedCargo.length));amount+=movedCargo.length;state.storedCargo.push(...movedCargo);
   const findHaul=Object.fromEntries(Object.entries(state.finds).filter(([,n])=>n>0));for(const [id,n] of Object.entries(state.finds)) {state.storedFinds[id]=(state.storedFinds[id]||0)+n;amount+=n;}state.finds={};
-  const haul=Object.fromEntries(Object.entries(state.bag).filter(([,n])=>n>0));
-  for (const [id, n] of Object.entries(state.bag)) { state.stash[id] = (state.stash[id] || 0) + n; amount += n; }
-  state.bag = {};
+  const haul=Object.fromEntries(Object.entries(state.bag).filter(([id,n])=>n>0&&!state.keepResources?.includes(id)));
+  for (const [id, n] of Object.entries(haul)) { state.stash[id] = (state.stash[id] || 0) + n; amount += n; delete state.bag[id]; }
+  state.bag=Object.fromEntries(Object.entries(state.bag).filter(([,n])=>n>0));
   if (amount) {state.trips++;state.lastHaul=haul;state.lastFindHaul=findHaul;}
   return amount;
 }

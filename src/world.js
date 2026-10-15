@@ -1201,7 +1201,12 @@ export class World {
       }
       if (!best) return []; gx = best.x; gz = best.z;
     }
-    return gridPath({x:sx,z:sz},{x:gx,z:gz},(x,z)=>this.blocked(x,z),(WORLD_LIMIT*2+3)**2,(ax,az,bx,bz)=>[...this.collisionIndex.query(Math.min(ax,bx)-.3,Math.min(az,bz)-.3,Math.max(ax,bx)+.3,Math.max(az,bz)+.3)].some(r=>r.construction&&!r.disabled&&segmentHitsRect(ax,az,bx,bz,{...r,w:r.w+.6,d:r.d+.6})));
+    const furniture=this.state.placed.flatMap(p=>furnitureColliders(p));
+    const edgeBlocked=(ax,az,bx,bz)=>{
+      const obstacles=[...this.collisionIndex.query(Math.min(ax,bx)-.3,Math.min(az,bz)-.3,Math.max(ax,bx)+.3,Math.max(az,bz)+.3),...furniture];
+      return obstacles.some(r=>!r.disabled&&segmentHitsRect(ax,az,bx,bz,{...r,w:r.w+.6,d:r.d+.6}));
+    };
+    return gridPath({x:sx,z:sz},{x:gx,z:gz},(x,z)=>this.blocked(x,z),(WORLD_LIMIT*2+3)**2,edgeBlocked);
   }
   enemyWaypoint(enemy,target,time){
     const clear=(ax,az,bx,bz)=>![...this.collisionIndex.query(Math.min(ax,bx)-.5,Math.min(az,bz)-.5,Math.max(ax,bx)+.5,Math.max(az,bz)+.5)].some(r=>!r.disabled&&segmentHitsRect(ax,az,bx,bz,{...r,w:r.w+.7,d:r.d+.7}))&&!this.state.placed.some(p=>furnitureColliders(p).some(r=>segmentHitsRect(ax,az,bx,bz,{...r,w:r.w+.7,d:r.d+.7})));

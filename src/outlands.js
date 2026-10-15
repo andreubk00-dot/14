@@ -37,6 +37,14 @@ export const OUTLAND_BUILDINGS=[
  ['camp','woodcamp',35,145,8,7,3.2,'БЫТОВКА БРИГАДЫ','kitchen'],
  ['pinehouse','pinewood',174,-137,7,7,3.4,'СТОРОЖКА В БОРУ','ranger'],
 ].map(([id,place,x,z,w,d,h,sign,role],i)=>({id,place,x,z,w,d,h,sign,role,shade:['#7b8e85','#968970','#8f9a7a','#859997'][i%4],roofStyle:i%3===0?'hip':'gable',pitch:role==='workshop'?.12:.34}));
+// Signs stand off the junction, with no lamps or per-frame updates.
+export const OUTLAND_WAYMARKS=[
+ {x:-150,z:21,lines:['← ЛЕСНИЧЕСТВО','↓ КАМЕННЫЙ РАЗРЕЗ','РАЙОН →']},
+ {x:-19,z:137,lines:['↓ ДАЧИ','ЛЕСНОЕ ОЗЕРО →','↑ РАЙОН']},
+ {x:-19,z:-128,lines:['← ПИТОМНИК','↑ СТОРОЖКИ','↓ РАЙОН']},
+ {x:162,z:-57,lines:['↑ СУХОЙ БОР','← РАЙОН','↓ ПРОСЕКА']},
+ {x:162,z:137,lines:['← ЛЕСНОЕ ОЗЕРО','↑ ПРОСЕКА','ДАЛЬНИЙ БЕРЕГ ↓']},
+];
 const path=(x,z,w,d)=>({x,z,w,d,garden:true});
 export const OUTLAND_PATHS=[
  path(-137.5,16,65,3),path(-155,75,3,118),path(-164,44,18,2.4),path(-165,128,20,3),
@@ -248,5 +256,15 @@ export function buildOutlandScenery(w){
  for(const [x,z]of [[-164,21],[-55,163],[87,157],[167,-125]])w.mirrors.surface(x,z,1.6,.65);
  // Shore vegetation uses static batches; it adds no distant animation work.
  for(let i=0;i<32;i++){const a=i*Math.PI*2/32,x=l.x+Math.cos(a)*(l.rx+1),z=l.z+Math.sin(a)*(l.rz+1);if(Math.abs(z-d.z)<3&&x<108||w.blocked(x,z,.2)||w.onRoad(x,z,.6))continue;for(let j=0;j<3;j++){const xx=x+(j-1)*.22,h=.75+(i%4)*.12;w.box(xx,h/2,z,.035,h,.035,'#829771');w.cylinder(xx,h,z,.05,.2,'#a5966c',w.scene,5);}}
- for(const p of forestTrees())if(!w.blocked(p.x,p.z,1.2)&&!w.onRoad(p.x,p.z,2))w.tree(p.x,p.z,p.scale);
+ for(const sign of OUTLAND_WAYMARKS){
+  w.box(sign.x,1.5,sign.z,.1,3,.1,'#756f55');w.collider(sign.x,sign.z,3.6,.2);
+  sign.lines.forEach((text,i)=>{
+   const y=2.6-i*.85;
+   w.box(sign.x,y,sign.z,3.6,.78,.12,'#526258');
+   w.label(text,sign.x,y,sign.z+.065,3,'#e4d4ac','#526258');
+   const reverse=text.replace(/[←→]/g,a=>a==='←'?'→':'←');
+   const back=w.label(reverse,sign.x,y,sign.z-.065,3,'#e4d4ac','#526258');back.rotation.y=Math.PI;
+  });
+ }
+ for(const p of forestTrees())if(!OUTLAND_WAYMARKS.some(s=>Math.hypot(s.x-p.x,s.z-p.z)<4)&&!w.blocked(p.x,p.z,1.2)&&!w.onRoad(p.x,p.z,2))w.tree(p.x,p.z,p.scale);
 }

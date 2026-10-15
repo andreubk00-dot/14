@@ -65,6 +65,7 @@ export class UI {
       else if(action==='build-category'){this.buildView=button.dataset.view;this.renderPanel(true);}
       else if (action === 'category') { this.category = button.dataset.category; this.renderPanel(true); }
       else if (action === 'select-item') { this.selectedItem = button.dataset.id; this.renderPanel(); }
+      else if(action==='map-mark-mode'){this.mapMarking=!this.mapMarking;this.renderPanel();}
       else if(action==='map-zoom'){this.mapZoom=button.dataset.delta==='reset'?1:Math.max(1,Math.min(4,(this.mapZoom||1)+Number(button.dataset.delta)));this.renderMap(document.getElementById('large-map'),true);}
       else if (action === 'inventory-tab') { this.inventoryView = button.dataset.view; this.selectedItem=null; this.renderPanel(true); }
       else if (action === 'available-filter') { this.onlyAvailable = !this.onlyAvailable; this.renderPanel(true); }
@@ -159,7 +160,7 @@ export class UI {
   }
   open(panel, category) {
     this.returnFocus = document.activeElement;
-    if (this.panel !== panel) { this.search = ''; this.onlyAvailable = false; }
+    if (this.panel !== panel) { this.search = ''; this.onlyAvailable = false; this.mapMarking=false; }
     if(this.panel!==panel) this.selectedItem=null;
     this.panel = panel;
     if (category) this.category = category;
@@ -170,7 +171,7 @@ export class UI {
     document.querySelector('#panel [data-action="close"]')?.focus();
   }
   close() {
-    this.panel = null; document.getElementById('panel-backdrop').hidden = true; document.getElementById('panel').hidden = true;
+    this.panel = null; this.mapMarking=false; document.getElementById('panel-backdrop').hidden = true; document.getElementById('panel').hidden = true;
     this.actions('panel-close');
     if (this.returnFocus?.isConnected) this.returnFocus.focus({ preventScroll: true });
   }
@@ -259,7 +260,7 @@ export class UI {
         return `<article class="recipe-card order-card"><div class="recipe-top"><span class="recipe-icon">${resourceIcon(Object.keys(order.cost)[0], 27)}</span><div><h3>${order.title}</h3><p>${order.desc}</p></div></div><div class="order-costs"><small>Передать</small><div class="costs">${costHTML(state, order.cost)}</div></div><div class="order-rewards"><small>Получить на склад</small><div>${rewardHTML(order.reward)}</div></div><div class="order-footer"><span>${status.ok ? `${icon('check', 14)} Материалы собраны` : `${icon(status.remaining ? 'clock' : 'info', 14)} ${status.reason}`}</span><button class="craft-button" data-action="deliver-order" data-id="${order.id}" ${!status.ok || !home ? 'disabled' : ''}>Передать</button></div></article>`;
       }).join('')}</div><p class="panel-note">Заказы повторяются. Время ожидания идёт во время вылазок.</p>`;
     }
-    if (this.panel === 'map') body = `<div class="storage-actions"><button class="secondary" data-action="map-zoom" data-delta=".5" aria-label="Приблизить карту">＋</button><button class="secondary" data-action="map-zoom" data-delta="-.5" aria-label="Отдалить карту">−</button><button class="secondary" data-action="map-zoom" data-delta="reset">Весь район</button></div><canvas id="large-map" width="560" height="420" aria-label="Карта района"></canvas><p class="panel-note">На карте остаются места, где ты побывал. Светлые точки — замеченные запасы, серые — разобранные.</p><div class="location-list">${LOCATIONS.filter(l=>state.visited.includes(l.id)).map(l => `<button data-action="travel" data-id="${l.id}"><span style="color:${l.color}">${icon('pin', 22)}</span><div><strong>${l.name}</strong><small>${l.subtitle}</small></div>${icon('arrow', 15)}</button>`).join('')}</div>${state.grave ? '<p class="map-warning">✕ На карте отмечен оставленный рюкзак. Его можно вернуть.</p>' : ''}`;
+    if (this.panel === 'map') body = `<div class="storage-actions"><button class="secondary" data-action="map-zoom" data-delta=".5" aria-label="Приблизить карту">＋</button><button class="secondary" data-action="map-zoom" data-delta="-.5" aria-label="Отдалить карту">−</button><button class="secondary" data-action="map-zoom" data-delta="reset">Весь район</button></div><button class="secondary map-mark-button" data-action="map-mark-mode" aria-pressed="${!!this.mapMarking}">${icon('pin',20)} ${this.mapMarking?'Отменить отметку':'Добавить отметку'}</button>${this.mapMarking?'<label class="map-mark-editor">Название отметки<input id="map-mark-label" maxlength="32" placeholder="Например: запас дерева" autocomplete="off"><span>Нажми нужное место на карте.</span></label>':''}<canvas id="large-map" width="560" height="420" aria-label="Карта района"></canvas><p class="panel-note">На карте остаются места, где ты побывал. Светлые точки — замеченные запасы, серые — разобранные.</p><p class="panel-note">${this.mapMarking?'Сейчас нажатие ставит отметку.':'Нажми на карту, чтобы идти в выбранное место.'} Отметки сохраняются; удалить можно крестиком.</p><div class="map-marks">${state.mapMarks.map(m=>`<div><button data-action="map-go" data-id="${m.id}">${icon('pin',20)}<span>${escape(m.label)}</span>${icon('arrow',16)}</button><button data-action="map-remove" data-id="${m.id}" aria-label="Удалить отметку: ${escape(m.label)}">${icon('close',18)}</button></div>`).join('')}</div><div class="location-list">${LOCATIONS.filter(l=>state.visited.includes(l.id)).map(l => `<button data-action="travel" data-id="${l.id}"><span style="color:${l.color}">${icon('pin', 22)}</span><div><strong>${l.name}</strong><small>${l.subtitle}</small></div>${icon('arrow', 15)}</button>`).join('')}</div>${state.grave ? '<p class="map-warning">✕ На карте отмечен оставленный рюкзак. Его можно вернуть.</p>' : ''}`;
     if (this.panel === 'journal') {
       body = `<div class="journal-note"><span class="note-date">ПЕРВАЯ ЗАПИСЬ</span><p>«В мастерской пахнет мокрым деревом. Печь ещё работает. Если починить генератор, здесь можно остаться. Пока это просто комната. Но уже моя».</p></div><div class="story-steps">${[
         ['generator', 'Верни свет домой', 'Старый генератор ждёт проводов и деталей. После ремонта оживёт мастерская.'],
@@ -280,7 +281,8 @@ export class UI {
       canvas.addEventListener('click', event => {
         const rect = canvas.getBoundingClientRect();
         const nx=(event.clientX-rect.left)/rect.width,nz=(event.clientY-rect.top)/rect.height,zoom=this.mapZoom||1,span=(WORLD_LIMIT+2)*2/zoom;const x=(zoom>1?this.state.x:0)+(nx-.5)*span,z=(zoom>1?this.state.z:0)+(nz-.5)*span;
-        this.actions('map-point', { x, z });
+        if(this.mapMarking) this.actions('map-add',{x,z,label:document.getElementById('map-mark-label')?.value});
+        else this.actions('map-point', { x, z });
       });
     }
     if (this.panel === 'settings') document.getElementById('import-save').addEventListener('change', event => this.actions('import-save', { file: event.target.files[0] }));
@@ -300,7 +302,7 @@ export class UI {
     const cells=Math.max(24,Math.ceil(items.length/6)*6);
     return `<div id="${id}" class="item-grid" role="group" aria-label="${id==='storage-grid'?'Ячейки склада':'Ячейки рюкзака'}">${Array.from({length:cells},(_,i)=>{
       const item=items[i];
-      return item?`<button class="item-cell ${this.selectedItem===item.id?'selected':''}" data-action="select-item" data-id="${item.id}" aria-label="${item.name}, ${item.count}" aria-pressed="${this.selectedItem===item.id}" title="${item.name}">${recipeIcon(item.art||item.id,58)}<b>${item.count}</b></button>`:'<div class="item-cell empty" aria-hidden="true"></div>';
+      return item?`<button class="item-cell ${this.selectedItem===item.id?'selected':''}" data-action="select-item" data-id="${item.id}" aria-label="${item.name}, ${item.count}" aria-pressed="${this.selectedItem===item.id}" title="${item.name}">${recipeIcon(item.art||item.id,58)}<b>${item.count}</b>${id==='inventory-grid'&&this.state.keepResources.includes(item.id)?`<span class="kept-resource" title="Оставлять при сдаче добычи">${icon('pin',16)}</span>`:''}</button>`:'<div class="item-cell empty" aria-hidden="true"></div>';
     }).join('')}</div>`;
   }
   itemDetails(storage) {
@@ -311,6 +313,7 @@ export class UI {
     if(item.kind==='cargo') actions=`<button class="primary" data-action="salvage-workbench">Разобрать · ${salvageDuration(state)} сек.</button>`;
     else if(storage&&item.kind==='find') actions=`<button class="secondary" data-action="withdraw-find" data-id="${item.id}" data-count="1">Взять в рюкзак</button><button class="primary" data-action="make" data-id="${item.id}">Поставить дома</button>`;
     else if(storage) actions=`<button class="secondary" data-action="withdraw" data-id="${item.id}" data-count="1">Взять 1</button><button class="secondary" data-action="withdraw" data-id="${item.id}" data-count="${item.count}">Взять всё</button>`;
+    else if(item.kind==='resource') actions=`<button class="secondary" data-action="keep-resource" data-id="${item.id}" aria-pressed="${state.keepResources.includes(item.id)}">${icon('pin',18)} ${state.keepResources.includes(item.id)?'Оставлять при сдаче ✓':'Оставлять при сдаче'}</button>`;
     else if(item.kind==='find') actions=`<button class="primary" data-action="make" data-id="${item.id}">Поставить дома</button>`;
     else if(equipped) actions=`<button class="secondary" data-action="unequip" data-slot="${equipped[0]}">Снять</button>`;
     else if(item.kind==='gear'&&item.slot!=='tool') actions=`<button class="primary" data-action="equip" data-id="${item.id}">Надеть</button>`;
@@ -380,6 +383,13 @@ export class UI {
     for (const l of LOCATIONS.filter(l=>this.state.visited.includes(l.id))) {
       const [x, y] = p(l.x, l.z); ctx.fillStyle = l.color; ctx.beginPath(); ctx.arc(x, y, large ? 4 : 2.4, 0, Math.PI * 2); ctx.fill();
       if (large) { ctx.fillStyle = '#d7d7bd'; ctx.font = `${labelSize}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText(l.label, x, y + labelSize + 8); }
+    }
+    for(const mark of this.state.mapMarks) {
+      const [mx,my]=p(mark.x,mark.z);
+      if(mx<0||mx>w||my<0||my>h) continue;
+      ctx.fillStyle='#f0bd77';ctx.strokeStyle='#20342f';ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(mx,my-7);ctx.lineTo(mx+6,my);ctx.lineTo(mx,my+7);ctx.lineTo(mx-6,my);ctx.closePath();ctx.fill();ctx.stroke();
+      if(large) {ctx.font=`${labelSize}px sans-serif`;ctx.textAlign='center';ctx.lineWidth=3;ctx.strokeText(mark.label,mx,my-12);ctx.fillText(mark.label,mx,my-12);}
     }
     if (this.state.grave) { const [x, y] = p(this.state.grave.x, this.state.grave.z); ctx.fillStyle = '#e3a281'; ctx.font = '16px sans-serif'; ctx.fillText('×', x - 4, y + 4); }
     const [x, y] = p(this.state.x, this.state.z); ctx.fillStyle = '#f3dda5'; ctx.shadowBlur = 8; ctx.shadowColor = '#edc98b'; ctx.beginPath(); ctx.arc(x, y, large ? 5 : 3.5, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;

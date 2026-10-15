@@ -778,7 +778,7 @@ test('Furnished annex places precisely, lights windows, attaches shelves and res
  await page.keyboard.press('KeyB');await page.locator('[data-action="make"][data-id="lamp"]').click();await dropAt(page,-16,22);expect(await page.evaluate(()=>window.__quietDistrict.world.windowGlazing.some(p=>p.mesh.material.emissiveIntensity>0))).toBe(true);
  await page.keyboard.press('KeyB');await page.locator('[data-action="make"][data-id="wallshelf"]').click();await dropAt(page,-18.895,24.5);expect(await page.evaluate(()=>window.__quietDistrict.state.placed.length)).toBe(4);
  const audit=await page.evaluate(()=>{const g=window.__quietDistrict;g.visibilityPaused=true;const bed=g.world.placedGroups[0];let meshes=0;bed.group.traverse(m=>{if(m.isMesh)meshes++;});return {legal:g.state.placed.every((p,i)=>g.world.canPlace(p,i)),height:bed.group.position.y,meshes,door:!g.world.blocked(-18,25.5),roof:g.world.constructionRoofs.length};});expect(audit.legal&&audit.door).toBe(true);expect(audit.height).toBe(.205);expect(audit.meshes).toBeLessThanOrEqual(4);expect(audit.roof).toBeGreaterThan(0);
- await page.keyboard.press('KeyB');await page.locator('[data-action="toggle-furniture"][data-index="2"]').click();expect(await page.evaluate(()=>window.__quietDistrict.world.windowGlazing.every(p=>p.mesh.material.emissiveIntensity===0))).toBe(true);await page.keyboard.press('Escape');await page.evaluate(()=>window.__quietDistrict.save(false));const context=page.context();await page.close();const restored=await context.newPage();await restored.goto('/');await expect(restored.locator('[data-action="start"]')).toBeEnabled({timeout:90000});expect(await restored.evaluate(()=>window.__quietDistrict.state.placed.length)).toBe(4);expect(await restored.evaluate(()=>window.__quietDistrict.state.placed[0].z)).toBe(23.3);await restored.close();
+ await page.keyboard.press('KeyB');await page.locator('[data-action="toggle-furniture"][data-index="2"]').click();expect(await page.evaluate(()=>window.__quietDistrict.world.windowGlazing.every(p=>p.mesh.material.emissiveIntensity===0))).toBe(true);await page.keyboard.press('Escape');await page.evaluate(()=>window.__quietDistrict.save(false));const context=page.context();await page.close();const restored=await context.newPage();restored.on('pageerror',e=>page.__errors.push(e.message));await restored.goto('/');await expect(restored.locator('[data-action="start"]')).toBeEnabled({timeout:90000});expect(await restored.evaluate(()=>window.__quietDistrict.state.placed.length)).toBe(4);expect(await restored.evaluate(()=>window.__quietDistrict.state.placed[0].z)).toBe(23.3);await restored.close();
 });
 test('Wall replacement and dismantling select the exact rendered part without extra material costs',async({page})=>{
  test.setTimeout(180000);await start(page,{x:-20,z:22,construction:furnishedAnnex,stash:{wood:0,stone:0,metal:1,cloth:1}});await page.keyboard.press('KeyB');await page.locator('[data-action="architecture"]').click();await page.locator('[data-action="structure-select"][data-id="window"]').click();const p=await page.evaluate(()=>window.__quietDistrict.world.screenPosition(-16,1.5,25.5));await page.mouse.move(p.x,p.y);const chosen=await page.evaluate(()=>window.__quietDistrict.build.part);expect(chosen).toMatchObject({id:'window',x:-16,z:25.5,axis:'x'});await page.mouse.click(p.x,p.y);expect(await page.evaluate(()=>window.__quietDistrict.state.stash)).toMatchObject({wood:0,stone:1,metal:0,cloth:0});await page.keyboard.press('Escape');
@@ -936,4 +936,49 @@ test('Static shadow batches reduce garden draws with matching pixels and indepen
   const render=enabled=>{for(const b of w.staticShadows){b.mesh.castShadow=enabled;b.sources.forEach(m=>m.castShadow=!enabled);}w.mirrors.last=-Infinity;w.renderer.info.reset();w.update(0,false,true);gl.finish();const pixels=new Uint8Array(960*600*4);gl.readPixels(0,0,960,600,gl.RGBA,gl.UNSIGNED_BYTE,pixels);return {calls:w.renderer.info.render.calls,triangles:w.renderer.info.render.triangles,pixels};};
   render(false);const baseline=render(false);render(true);const optimized=render(true);let sum=0,changed=0;for(let i=0;i<optimized.pixels.length;i++){const d=Math.abs(optimized.pixels[i]-baseline.pixels[i]);sum+=d;if(d)changed++;}const sources=new Set(w.staticShadows.flatMap(b=>b.sources));return {baseline:{calls:baseline.calls,triangles:baseline.triangles},optimized:{calls:optimized.calls,triangles:optimized.triangles},meanDifference:sum/optimized.pixels.length,changed,batches:w.staticShadows.length,sources:sources.size,independent:w.buildings.every(b=>[...b.roofMeshes,...b.wallMeshes].every(m=>!sources.has(m)))&&w.nodes.every(n=>!sources.has(n.group)),shadow:w.sun.shadow.mapSize.x,reflection:w.mirrors.capture.getRenderTarget().width};
  });console.log('Garden shadow comparison',JSON.stringify(result));expect(result.batches).toBeGreaterThan(0);expect(result.baseline.calls-result.optimized.calls).toBeGreaterThan(100);expect(result.meanDifference).toBeLessThan(.25);expect(result.independent).toBe(true);expect(result.shadow).toBe(2048);expect(result.reflection).toBe(512);await page.screenshot({path:'/tmp/quiet-v202-garden.png'});
+});
+
+test('Manual map notes and retained resources work through UI, save and distant routes remain clear',async({page})=>{
+ test.setTimeout(240000);
+ await start(page,{bag:{wood:3,metal:4},meals:2,medkits:3,owned:['axe','pick','bridge'],openedGates:['yard','salvage','garage-path','pump-path']});
+ await page.keyboard.press('KeyI');await page.locator('#inventory-grid [data-id="wood"]').click();
+ await page.locator('[data-action="keep-resource"]').click();await expect(page.locator('[data-action="keep-resource"]')).toHaveAttribute('aria-pressed','true');
+ await page.locator('[data-action="storage"]').click();await page.locator('[data-action="deposit"]').click();
+ expect(await page.evaluate(()=>{const s=window.__quietDistrict.state;return {bag:s.bag,meals:s.meals,medkits:s.medkits};})).toEqual({bag:{wood:3},meals:2,medkits:3});
+ await page.keyboard.press('Escape');await page.keyboard.press('KeyM');await page.locator('[data-action="map-mark-mode"]').click();
+ await page.locator('#map-mark-label').fill('Запас у озера <дом>');
+ const canvas=page.locator('#large-map'),rect=await canvas.boundingBox();
+ await canvas.click({position:{x:rect.width*(104/420+.5),y:rect.height*(164/420+.5)}});
+ await expect(page.locator('[data-action="map-go"]')).toContainText('Запас у озера <дом>');await expect(page.locator('#map-mark-label')).toHaveCount(0);
+ await page.locator('[data-action="map-mark-mode"]').click();await page.locator('#map-mark-label').fill('Лишняя');await canvas.click({position:{x:rect.width*.3,y:rect.height*.4}});
+ await page.locator('[data-action="map-remove"]').last().click();await expect(page.locator('[data-action="map-go"]')).toHaveCount(1);
+ const saved=await page.evaluate(()=>{const g=window.__quietDistrict;g.save();return JSON.parse(localStorage.getItem('quiet-district-save-v1'));});
+ expect(saved.keepResources).toEqual(['wood']);expect(saved.mapMarks).toHaveLength(1);expect(saved.mapMarks[0].x).toBeCloseTo(104,0);expect(saved.mapMarks[0].z).toBeCloseTo(164,0);
+ await page.locator('[data-action="map-go"]').click();await expect(page.locator('#panel')).toBeHidden();expect(await page.evaluate(()=>window.__quietDistrict.path.length)).toBeGreaterThan(0);
+ const audit=await page.evaluate(async()=>{
+  const g=window.__quietDistrict,w=g.world;g.visibilityPaused=true;g.path=[];g.motion.reset();
+  const {OUTLAND_WAYMARKS,OUTLAND_PATHS,OUTLAND_PLACES}=await import('/src/outlands.js');
+  const legs=[];
+  const walk=(x,z)=>{
+   g.navigate(x,z,false);if(!g.path.length)throw Error('Route unavailable');let steps=0;
+   while(g.path.length&&steps<20000){g.movement(1/60);steps++;}
+   if(g.path.length||Math.hypot(g.state.x-x,g.state.z-z)>1)throw Error('Route stopped before arrival '+JSON.stringify({x:g.state.x,z:g.state.z,to:{x,z}}));
+   legs.push(steps);g.motion.reset();
+  };
+  walk(104,164);const supply=w.nodes.find(n=>n.name.startsWith('дом у озера')&&n.loot.fish);
+  walk(supply.x,supply.z+1.3);g.beginNode(supply);if(!g.job)throw Error('Cannot collect lake supplies');g.finishJob();
+  walk(-18,23);g.action('deposit',{});const {craft}=await import('/src/game.js');const cooked=craft(g.state,'meal').ok;g.save();
+  const signs=OUTLAND_WAYMARKS.map(s=>({post:w.blocked(s.x,s.z),offRoad:!OUTLAND_PATHS.some(r=>Math.abs(s.x-r.x)<r.w/2+.4&&Math.abs(s.z-r.z)<r.d/2+.4)}));
+  const routes=OUTLAND_PLACES.map(p=>{g.state.x=-18;g.state.z=23;const path=w.pathTo(p.x,p.z);return {id:p.id,clear:path.length>0&&path.every(n=>!w.blocked(n.x,n.z))};});
+  return {signs,routes,legs,cooked};
+ });expect(audit.cooked).toBe(true);expect(audit.legs).toHaveLength(3);expect(audit.signs.every(s=>s.post&&s.offRoad)).toBe(true);expect(audit.routes.every(r=>r.clear)).toBe(true);
+ // A new page has no start() init script: restore the real saved progress.
+ const context=page.context();await page.close();const restored=await context.newPage();await restored.goto('/');
+ await expect(restored.locator('[data-action="start"]')).toBeEnabled({timeout:60000});await restored.locator('[data-action="start"]').click();
+ expect(await restored.evaluate(()=>window.__quietDistrict.state.mapMarks)).toEqual(saved.mapMarks);
+ expect(await restored.evaluate(()=>window.__quietDistrict.state.keepResources)).toEqual(['wood']);
+ await restored.keyboard.press('KeyM');await expect(restored.locator('[data-action="map-go"]')).toContainText('Запас у озера <дом>');
+ await restored.setViewportSize({width:390,height:844});await expect(restored.locator('[data-action="map-remove"]')).toBeVisible();
+ expect(await restored.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await restored.close();
 });
