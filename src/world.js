@@ -105,9 +105,11 @@ export class World {
       const merged = new THREE.Mesh(geometry, batch.material); merged.castShadow = true; merged.receiveShadow = true;merged.matrixAutoUpdate=false;
       for (const mesh of batch.meshes) { mesh.parent.remove(mesh); mesh.geometry.dispose(); }
       this.scene.add(merged);
+      // These vertices are already in world space; camera and light motion never move them.
+      merged.updateMatrixWorld(true);merged.matrixWorldAutoUpdate=false;merged.userData.staticBatch=true;
     }
     // Merged forest meshes no longer need thousands of empty transform parents.
-    for(const group of [...this.scene.children])if(group.userData.staticTree){for(const child of [...group.children]){this.scene.attach(child);child.updateMatrix();child.matrixAutoUpdate=false;}this.scene.remove(group);}
+    for(const group of [...this.scene.children])if(group.userData.staticTree){for(const child of [...group.children]){this.scene.attach(child);child.updateMatrix();child.updateMatrixWorld(true);child.matrixAutoUpdate=false;child.matrixWorldAutoUpdate=false;child.userData.staticBatch=true;}this.scene.remove(group);}
   }
   box(x, y, z, w, h, d, c, parent = this.scene, extra) {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), extra || mat(c));

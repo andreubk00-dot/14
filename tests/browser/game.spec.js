@@ -876,3 +876,37 @@ test('Forest expansion connects every clearing and cabin, keeps all loot reachab
 test('Settled roofs stop material writes and still react to interiors, separate canopies and new roof pieces',async({page})=>{
  await start(page);const audit=await page.evaluate(()=>{const g=window.__quietDistrict,w=g.world;g.visibilityPaused=true;g.state.x=-73;g.state.z=-75;w.updateRoofs(3);const b=w.buildings.find(b=>b.x===-73&&b.z===-87),canopy=b.roofMeshes.find(m=>m.userData.canopyBounds),m=b.roofMeshes.find(m=>!m.userData.canopyBounds).material;let writes=0,opacity=m.opacity;Object.defineProperty(m,'opacity',{get:()=>opacity,set:v=>{writes++;opacity=v;},configurable:true});for(let i=0;i<20;i++)w.updateRoofs(.016);const skipped=writes===0;g.state.x=-73;g.state.z=-80.8;w.updateRoofs(2);const awning=canopy.material.opacity===.035&&m.opacity===1;g.state.z=-87;w.updateRoofs(2);const inside=m.opacity===.035;g.state.z=-75;w.updateRoofs(2);const added=w.cutawayDetail(w.box(b.x,b.h+.1,b.z,.2,.2,.2,'#a09873'),b,true);added.material.opacity=.3;w.updateRoofs(2);return {appended:added.material.opacity===1,skipped,awning,inside,restored:m.opacity===1,emptyTrees:w.scene.children.filter(g=>g.userData.staticTree&&!g.children.length).length};});expect(audit).toEqual({appended:true,skipped:true,awning:true,inside:true,restored:true,emptyTrees:0});
 });
+
+test('Forest supplies travel home, upgrade the collector and dryer, and nursery flowers can be planted',async({page})=>{
+ test.setTimeout(180000);
+ await start(page,{stash:{metal:14,cloth:4},cultivars:['herbs'],placed:[{id:'raincatcher',x:-13,z:23,harvested:0,rainWater:0},{id:'dryrack',x:-17,z:23,harvested:0},{id:'cropbed',x:-21,z:23,crop:null,plantedAt:null,harvested:0}]});
+ for(const name of ['аккумулятор и ремонтные детали','запасной насос и детали','фильтры поливной системы','семена цветов']){
+  const approach=await page.evaluate(name=>{const g=window.__quietDistrict,w=g.world,n=w.nodes.find(n=>n.name.endsWith(name));if(!n)throw Error(name);g.path=[];g.motion.reset();
+   for(let a=0;a<Math.PI*2;a+=Math.PI/12){const x=n.x+Math.sin(a)*1.3,z=n.z+Math.cos(a)*1.3;if(w.blocked(x,z)||!w.canSee(x,z,n.x,n.z,n.collider,true))continue;g.state.x=x;g.state.z=z;w.move(x,z);if(g.nearestInteraction()?.entity===n)return n.id;}throw Error('Unreachable '+name);
+  },name);
+  await page.keyboard.press('KeyE');await expect.poll(()=>page.evaluate(id=>window.__quietDistrict.state.depleted[id]!==undefined,approach),{timeout:15000}).toBe(true);
+ }
+ expect(await page.evaluate(()=>window.__quietDistrict.state.cultivars)).toEqual(['herbs','flowers']);
+ await jump(page,-18,18);await page.keyboard.press('KeyI');await page.locator('[data-action="storage"]').click();await page.locator('[data-action="deposit"]').click();await page.keyboard.press('Escape');
+ for(const index of [0,1]){
+  await jump(page,index===0?-13:-17,21.7);await page.keyboard.press('KeyB');await page.locator(`[data-action="station-details"][data-index="${index}"]`).click();
+  await page.locator(`[data-action="upgrade-station"][data-index="${index}"]`).click();await expect(page.locator('#panel')).toContainText('установлено');await page.keyboard.press('Escape');
+ }
+ await jump(page,-21,21.7);await page.keyboard.press('KeyE');await page.locator('[data-action="plant-crop"][data-id="flowers"]').click();await expect(page.locator('#panel')).toContainText('Полевые цветы');
+ const saved=await page.evaluate(()=>{const g=window.__quietDistrict;g.save();const s=JSON.parse(localStorage.getItem('quiet-district-save-v1'));return {upgrades:s.placed.slice(0,2).map(p=>p.upgrade),crop:s.placed[2].crop,cultivars:s.cultivars,battery:s.stash.battery,pump:s.stash.pumpmodule,filters:s.stash.filterunit};});
+ expect(saved).toEqual({upgrades:[1,1],crop:'flowers',cultivars:['herbs','flowers'],battery:0,pump:0,filters:0});
+});
+
+test('Static scenery skips world matrix products with identical transforms and moving actors stay live',async({page})=>{
+ await start(page,{x:-80,z:-72});
+ const audit=await page.evaluate(()=>{const g=window.__quietDistrict,w=g.world;g.visibilityPaused=true;const meshes=[];w.scene.traverse(m=>{if(m.userData.staticBatch)meshes.push(m);});let products=0;const originals=meshes.map(m=>m.matrixWorld.multiplyMatrices),matrices=meshes.map(m=>m.matrixWorld.toArray());
+  meshes.forEach((m,i)=>{m.matrixWorld.multiplyMatrices=function(...args){products++;return originals[i].apply(this,args);};});
+  const count=enabled=>{meshes.forEach(m=>m.matrixWorldAutoUpdate=enabled);products=0;w.scene.updateMatrixWorld(true);return products;};
+  const baselineProducts=count(true),frozenProducts=count(false);const same=meshes.every((m,i)=>m.matrixWorld.toArray().every((v,j)=>v===matrices[i][j]));meshes.forEach((m,i)=>m.matrixWorld.multiplyMatrices=originals[i]);
+  // Timings exclude instrumentation, shader work and pixel rendering.
+  const measure=enabled=>{meshes.forEach(m=>m.matrixWorldAutoUpdate=enabled);for(let i=0;i<20;i++)w.scene.updateMatrixWorld(true);const samples=[];for(let j=0;j<7;j++){const t=performance.now();for(let i=0;i<50;i++)w.scene.updateMatrixWorld(true);samples.push((performance.now()-t)/50);}return samples.sort((a,b)=>a-b)[3];};
+  const baseline={products:baselineProducts,median:measure(true)},frozen={products:frozenProducts,median:measure(false)};
+  const enemy=w.enemies[0],before=enemy.group.matrixWorld.elements[12];enemy.x+=1;w.update(.016,false,true);w.scene.updateMatrixWorld(true);
+  return {meshes:meshes.length,baseline,frozen,same,actorMoves:enemy.group.matrixWorld.elements[12]!==before,shadow:w.sun.shadow.mapSize.x,reflection:w.mirrors.capture.getRenderTarget().width};
+ });console.log('Static transform comparison',JSON.stringify(audit));expect(audit.meshes).toBeGreaterThan(1000);expect(audit.baseline.products).toBe(audit.meshes);expect(audit.frozen.products).toBe(0);expect(audit.same&&audit.actorMoves).toBe(true);
+});

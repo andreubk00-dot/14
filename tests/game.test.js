@@ -745,3 +745,32 @@ test('Distant positions, graves, new finds and forest notes persist alongside ol
 test('Forest shortcut uses the existing axe and opening state without blocking access to the whole region',()=>{
  const gate=GATES.find(g=>g.id==='forest-cut'),s=freshState();s.x=gate.x;s.z=gate.z;assert.equal(openGate(s,gate.id).ok,false);s.owned=['axe'];assert.equal(openGate(s,gate.id).ok,true);assert.ok(validateSave(s).openedGates.includes(gate.id));assert.equal(openGate(s,gate.id).ok,false);
 });
+
+// The expanded map should supply existing home improvements, without another currency.
+test('Forest workshops and nursery supply existing station upgrades with bounded special parts',()=>{
+ const stock=(id,i)=>OUTLAND_SUPPLIES[OUTLAND_BUILDINGS.findIndex(b=>b.id===id)*2+i];
+ assert.equal(OUTLAND_SUPPLIES.length,34);
+ const battery=stock('quarryshop',0),pump=stock('eastshop',0),filters=stock('nursery',1);
+ assert.equal(battery[4].battery,1);assert.equal(pump[4].pumpmodule,1);assert.equal(filters[4].filterunit,2);
+ for(const n of [battery,pump,filters])for(const cycle of [0,1,5,100]){
+  const items=expeditionLoot({id:'node-230',type:n[0],x:n[2],z:n[3],originalLoot:n[4],regionProfile:n[8]},cycle);
+  for(const id of ['battery','pumpmodule','filterunit'])assert.equal(items[id],n[4][id]);
+  assert.ok(Object.keys(items).every(id=>Object.hasOwn(n[4],id)));
+ }
+ const s=freshState();s.stash={metal:14,cloth:4};
+ for(const n of [battery,pump,filters]){assert.equal(collect(s,n[4]).full,false);deposit(s);}
+ s.placed=[{id:'raincatcher',x:-13,z:23},{id:'dryrack',x:-17,z:23}];
+ for(const item of s.placed)assert.equal(upgradeStation(s,item).ok,true);
+ assert.equal(s.stash.battery,0);assert.equal(s.stash.pumpmodule,0);assert.equal(s.stash.filterunit,0);
+ const restored=validateSave(JSON.parse(JSON.stringify(s)));assert.ok(restored.placed.every(p=>p.upgrade===1));
+});
+test('Nursery seeds unlock flowers while dacha seeds retain the vegetable route',()=>{
+ for(const [id,crop] of [['nursery','flowers'],['gardenhouse','vegetables']]){
+  const n=OUTLAND_SUPPLIES[OUTLAND_BUILDINGS.findIndex(b=>b.id===id)*2],s=freshState();
+  const received=collect(s,n[4]).received;assert.equal(discoverCultivar(s,{seedCrop:n[9]},received).name,CROPS[crop].name);
+  const bed={id:'cropbed',x:-17,z:23,crop:null};s.placed=[bed];s.stash.water=1;
+  assert.equal(plantCrop(s,bed,crop).ok,true);s.elapsed=CROPS[crop].interval;
+  assert.equal(harvestProduction(s,bed).ok,true);assert.ok(s.bag[crop]>0);
+  assert.ok(validateSave(s).cultivars.includes(crop));
+ }
+});

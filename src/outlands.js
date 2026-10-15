@@ -53,7 +53,21 @@ export function outlandReserved(x,z,pad=1){
  const p={x,z};return Math.hypot(x+160,z-120)<12+pad||inside(p,FOREST_LAKE.dock,pad+1)||OUTLAND_PATHS.some(r=>inside(p,r,pad))||OUTLAND_BUILDINGS.some(r=>inside(p,r,pad+1.5))||inForestWater(x,z,pad)||Math.abs(x)<116&&Math.abs(z)<116;
 }
 const loot={cabin:[{cloth:4,wood:3},{water:3,herbs:2}],workshop:[{metal:4,parts:2},{wood:5,wire:2}],ranger:[{cloth:3,wood:4},{parts:2,wire:2}],garden:[{seeds:4,herbs:3},{vegetables:4,water:2}],fish:[{fish:3,herbs:2},{wood:4,water:3}],kitchen:[{vegetables:4,herbs:2},{water:3,wood:3}]};
-export const OUTLAND_SUPPLIES=OUTLAND_BUILDINGS.flatMap(b=>loot[b.role].map((items,i)=>['crate',`${b.sign.toLocaleLowerCase('ru')} · ${i?'сухой запас':'кладовая'}`,b.x+(i?1:-1)*b.w/4,b.z,items,null,null,null,Object.keys(items),b.role==='garden'?'vegetables':null]));
+// Keep the two established slots per building so old node IDs and claims survive.
+function supplies(b){
+ const items=loot[b.role].map(stock=>({...stock}));
+ if(b.id==='quarryshop')items[0]={metal:4,parts:2,battery:1};
+ if(b.id==='eastshop')items[0]={metal:4,parts:2,pumpmodule:1};
+ if(b.id==='nursery')return [{seeds:4,flowers:2},{filterunit:2,water:2}];
+ return items;
+}
+const supplyNames={quarryshop:['аккумулятор и ремонтные детали','дерево и провод'],eastshop:['запасной насос и детали','дерево и провод'],nursery:['семена цветов','фильтры поливной системы']};
+export const OUTLAND_SUPPLIES=OUTLAND_BUILDINGS.flatMap(b=>supplies(b).map((items,i)=>[
+ 'crate',`${b.sign.toLocaleLowerCase('ru')} · ${supplyNames[b.id]?.[i]||(i?'сухой запас':'кладовая')}`,
+ b.x+(i?1:-1)*b.w/4,b.z,items,null,null,null,
+ Object.keys(items).filter(id=>!['battery','pumpmodule','filterunit'].includes(id)),
+ b.role==='garden'&&i===0?(b.id==='nursery'?'flowers':'vegetables'):null,
+]));
 // Frozen v0.20 positions: later expansions append after this complete content block.
 export const OUTLAND_RESOURCE_SITES=[
  [-141,20,0,'forestry',0],
@@ -187,7 +201,7 @@ export const OUTLAND_FINDS=[
  ['find','Инструментальный шкаф смотрителя',-176,121.5,{},null,'toolcabinet'],
 ];
 export const OUTLAND_MEMORIES=[
- {id:'forest-ranger',name:'Журнал лесничего',x:-165.3,z:4.1,y:.975,text:'«Дрова оставили в сарае, камень берут у старого разреза. На дачах ещё есть печи и целая мебель. Не всё успели вывезти». Последние страницы пахнут дымом.'},
+ {id:'forest-ranger',name:'Журнал лесничего',x:-165.3,z:4.1,y:.975,text:'«Дрова оставили в сарае, камень берут у старого разреза. Аккумулятор оставили в ремонтном сарае у разреза, запасной насос — в восточной мастерской. На дачах ещё есть печи и целая мебель». Последние страницы пахнут дымом.'},
  {id:'forest-lake',name:'Записка у рыбацких снастей',x:88.7,z:149.1,y:.975,text:'«На траву берёт окунь. Вечером у настила выходит форель. Печь исправна — оставляю тому, кто будет жить здесь после нас». Под запиской лежит высохший лист.'},
  {id:'forest-north',name:'Пластинка без конверта',x:-41.3,z:-160.9,y:.975,text:'На обороте обложки: «Поставь тихо, чтобы было слышно дождь. Домой доберёмся по северной тропе». Игла ещё стоит у начала дорожки.'},
 ];
