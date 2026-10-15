@@ -5,9 +5,11 @@ export const GATES=[
  {id:'garage-path',name:'Калитка ремонтного двора',x:-15,z:-37,w:2.8,d:.22,tool:'cutter',duration:2.5},
  {id:'housing-debris',name:'Доски в проходе',x:15,z:25.5,w:2.8,d:.8,tool:'axe',duration:3,kind:'boards',loot:{wood:5}},
  {id:'workshop-debris',name:'Металлический завал',x:41,z:18,w:3.2,d:.8,tool:'wrench',duration:4,kind:'metal',loot:{metal:3,parts:1}},
+ {id:'forest-cut',name:'Упавшие доски на лесной дороге',x:-24,z:120,w:2.8,d:.8,tool:'axe',duration:3,kind:'boards',loot:{wood:5}},
  {id:'pump-path',name:'Сервисная калитка',x:49,z:-16,w:2.8,d:.22,tool:'wrench',duration:2.5},
 ];
 export const FISHING_SPOTS=[
+ {id:'forestlake',name:'Лесное озеро',x:104,z:164,desc:'Старый настил среди леса. Окунь у берега, форель подходит к вечеру.'},
  {id:'harbor',name:'Промышленная набережная',x:104,z:-20,desc:'Тихая вода у деревянного настила. Вечером здесь ловится форель.'},
  {id:'pond',name:'Затопленный причал',x:19.7,z:-17,desc:'Окунь в камышах. В темноте к настилу подходит форель.'},
  {id:'backwater',name:'Тихая заводь',x:28,z:55.2,desc:'Карась у берега. Блесна привлекает редкую рыбу, раковины чаще встречаются у старого причала.'},

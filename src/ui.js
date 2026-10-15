@@ -1,3 +1,4 @@
+import {FOREST_LAKE} from './outlands.js';
 import {SUPPLY_FIELDS,FOOD_EFFECTS,activeFood,foodTime} from './food.js';
 import {cargoStorageCapacity,salvageDuration} from './salvage.js';
 import {CARGO_WEIGHT,CARGO_NAME,cargoLoot} from './salvage.js';
@@ -363,12 +364,13 @@ export class UI {
   renderMap(canvas, large = false) {
     const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
     const labelSize = Math.ceil((large ? 16 : 12) / Math.min(1, canvas.clientWidth / w || 1));
-    const zoom=large?(this.mapZoom||1):1,span=(WORLD_LIMIT+2)*2/zoom,cx=zoom>1?this.state.x:0,cz=zoom>1?this.state.z:0;const p=(x,z)=>[(x-cx+span/2)/span*w,(z-cz+span/2)/span*h];
+    const zoom=large?(this.mapZoom||1):Math.max(1,(WORLD_LIMIT+2)*2/100),span=(WORLD_LIMIT+2)*2/zoom,cx=zoom>1?this.state.x:0,cz=zoom>1?this.state.z:0;const p=(x,z)=>[(x-cx+span/2)/span*w,(z-cz+span/2)/span*h];
     ctx.clearRect(0, 0, w, h); ctx.fillStyle = '#263a34'; ctx.fillRect(0, 0, w, h);
     ctx.strokeStyle = '#65796c18'; ctx.lineWidth = 1;
     for (let i = 0; i <= 10; i++) { ctx.beginPath(); ctx.moveTo(i / 10 * w, 0); ctx.lineTo(i / 10 * w, h); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, i / 10 * h); ctx.lineTo(w, i / 10 * h); ctx.stroke(); }
     ctx.fillStyle='#60716945';for(const r of ROADS) ctx.fillRect(...p(r.x-r.w/2,r.z-r.d/2),r.w/span*w,r.d/span*h);
     ctx.fillStyle='#557a764f';ctx.beginPath();ctx.ellipse(...p(23,-24),10/span*w,8/span*h,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.ellipse(...p(115,-20),9/span*w,30/span*h,0,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.ellipse(...p(FOREST_LAKE.x,FOREST_LAKE.z),FOREST_LAKE.rx/span*w,FOREST_LAKE.rz/span*h,0,0,Math.PI*2);ctx.fill();
     for(const l of LOCATIONS.filter(l=>this.state.visited.includes(l.id))) {
       ctx.fillStyle='#87927b40';ctx.fillRect(...p(l.x-4,l.z-3),8/span*w,6/span*h);
     }

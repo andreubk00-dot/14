@@ -342,7 +342,7 @@ test('Haul recap keeps the last positive delivery and expanded-world coordinates
 import { mapPoint } from '../src/district.js';
 test('Expanded map coordinates match the drawn bounds and outskirts are not clamped to the old district',()=>{
  assert.deepEqual(mapPoint(.5,.5),{x:0,z:0});
- const p=mapPoint((-49+WORLD_LIMIT+2)/((WORLD_LIMIT+2)*2),(32+WORLD_LIMIT+2)/((WORLD_LIMIT+2)*2));assert.equal(p.x,-49);assert.equal(p.z,32);
+ const p=mapPoint((-49+WORLD_LIMIT+2)/((WORLD_LIMIT+2)*2),(32+WORLD_LIMIT+2)/((WORLD_LIMIT+2)*2));assert.equal(p.x,-49);assert.ok(Math.abs(p.z-32)<1e-9);
  assert.equal(validateSave({...freshState(),x:51,z:-44}).x,51);
 });
 
@@ -400,7 +400,7 @@ test('Tools accelerate the appropriate machinery; loose scrap stays loose scrap'
 });
 
 import {openGate,consumeBait,packFurniture,unpackFurniture,updateRainCrops} from '../src/game.js';
-import {GATES,fishingProbabilities,weatherAt,gameHour} from '../src/expedition.js';
+import {GATES,FISHING_SPOTS,fishingProbabilities,weatherAt,gameHour} from '../src/expedition.js';
 test('Access gates need a nearby player and the right permanent tool; saves retain opened doors',()=>{
  const s=freshState(),g=GATES[0];s.owned=['cutter'];assert.equal(openGate(s,g.id).ok,false);s.x=g.x;s.z=g.z;s.owned=[];assert.equal(openGate(s,g.id).ok,false);s.owned=['cutter'];assert.equal(openGate(s,g.id).ok,true);assert.equal(openGate(s,g.id).ok,false);assert.deepEqual(validateSave(s).openedGates,['yard']);assert.deepEqual(s.owned,['cutter']);
 });
@@ -718,4 +718,30 @@ test('Appended garden finds and memories use existing save, claim and recovery s
  const s=freshState();for(let i=0;i<2;i++){const n=ORCHARD_FINDS[i];assert.equal(claimFind(s,{id:`node-${207+i}`,find:n[6]}).ok,true);assert.equal(claimFind(s,{id:`node-${207+i}`,find:n[6]}).ok,false);}
  s.notes=ORCHARD_MEMORIES.map(n=>n.id);const saved=validateSave(s);assert.deepEqual(saved.finds,{desklamp:1,wallshelf:1});assert.deepEqual(saved.notes,s.notes);assert.deepEqual(saved.findClaims,['node-207','node-208']);
  const old=freshState();old.depleted={'node-206':50};old.elapsed=80;assert.equal(validateSave(old).depleted['node-206'],50);
+});
+
+import {OUTLAND_LIMIT,OUTLAND_PLACES,OUTLAND_BUILDINGS,OUTLAND_PATHS,OUTLAND_RESOURCE_SITES,OUTLAND_RESOURCES,OUTLAND_SUPPLIES,OUTLAND_FINDS,OUTLAND_MEMORIES,FOREST_LAKE,inForestWater,forestTrees} from '../src/outlands.js';
+test('Expanded world has substantial new land, inhabited clearings and reusable resource sites',()=>{
+ assert.ok((WORLD_LIMIT/112)**2>3);assert.equal(WORLD_LIMIT,OUTLAND_LIMIT);assert.equal(OUTLAND_PLACES.length,9);assert.equal(OUTLAND_BUILDINGS.length,17);assert.ok(OUTLAND_RESOURCE_SITES.length>100);
+ for(const b of OUTLAND_BUILDINGS){assert.ok(Math.abs(b.x)+b.w/2<WORLD_LIMIT-2&&Math.abs(b.z)+b.d/2<WORLD_LIMIT-2);for(const p of OUTLAND_PATHS)assert.equal(overlaps(b,p,.17),false,b.id);}
+ for(const [type,,x,z,items,tool,,machine]of OUTLAND_RESOURCES){assert.ok(Math.abs(x)>112||Math.abs(z)>112);assert.equal(machine,type==='tree'?'standingtree':'quarry');assert.equal(tool,type==='tree'?'axe':'pick');assert.ok(type==='tree'?items.wood>=8:items.stone>=6);}
+});
+test('New forest covers all sides, avoids houses and leaves the pier free of trees',()=>{
+ const trees=forestTrees();assert.ok(trees.length>=1000);assert.deepEqual(forestTrees(),trees);
+ for(const direction of [p=>p.x<-116,p=>p.x>116,p=>p.z<-116,p=>p.z>116])assert.ok(trees.filter(direction).length>150);
+ for(const p of trees){assert.ok(Math.abs(p.x)>116||Math.abs(p.z)>116);assert.ok(!inForestWater(p.x,p.z));assert.ok(Math.abs(p.x-100)>8||Math.abs(p.z-164)>3);for(const b of OUTLAND_BUILDINGS)assert.ok(Math.abs(p.x-b.x)>b.w/2+1||Math.abs(p.z-b.z)>b.d/2+1);}
+});
+test('Forest lake blocks the shore conservatively while the full fishing approach stays on the deck',()=>{
+ for(let x=94;x<=105;x+=.25)assert.equal(inForestWater(x,164,.3),false);
+ for(const [x,z]of [[120,164],[104,168],[132,160],[105,166]])assert.equal(inForestWater(x,z,.3),true);
+ assert.equal(inForestWater(92,164,.3),false);assert.ok(FISHING_SPOTS.some(p=>p.id==='forestlake'&&p.x===104&&p.z===164));
+ assert.ok(fishingProbabilities(false,{spot:'forestlake',hour:22})[2]>fishingProbabilities(false,{spot:'forestlake',hour:12})[2]);
+});
+test('Distant positions, graves, new finds and forest notes persist alongside older claims',()=>{
+ const s=freshState();s.x=190;s.z=-185;s.elapsed=200;s.findClaims=['node-209'];s.grave={x:-195,z:198,loot:{wood:7},finds:{armchair:1}};
+ const first=210+OUTLAND_SUPPLIES.length+OUTLAND_RESOURCES.length;assert.equal(claimFind(s,{id:`node-${first}`,find:OUTLAND_FINDS[0][6]}).ok,true);s.notes=OUTLAND_MEMORIES.map(n=>n.id);s.visited.push('forestlake','dachas');
+ const clean=validateSave(JSON.parse(JSON.stringify(s)));assert.equal(clean.x,190);assert.equal(clean.z,-185);assert.equal(clean.grave.x,-195);assert.equal(clean.grave.z,198);assert.ok(clean.findClaims.includes('node-209'));assert.ok(clean.findClaims.includes(`node-${first}`));assert.deepEqual(clean.notes,s.notes);assert.ok(clean.visited.includes('forestlake'));
+});
+test('Forest shortcut uses the existing axe and opening state without blocking access to the whole region',()=>{
+ const gate=GATES.find(g=>g.id==='forest-cut'),s=freshState();s.x=gate.x;s.z=gate.z;assert.equal(openGate(s,gate.id).ok,false);s.owned=['axe'];assert.equal(openGate(s,gate.id).ok,true);assert.ok(validateSave(s).openedGates.includes(gate.id));assert.equal(openGate(s,gate.id).ok,false);
 });

@@ -1,3 +1,4 @@
+import {OUTLAND_SUPPLIES,OUTLAND_RESOURCES,OUTLAND_FINDS,OUTLAND_PATROLS,inForestWater,buildOutlandScenery} from './outlands.js';
 import {ORCHARD_FINDS,ORCHARD_PATROL,furnishOrchard,buildOrchardGarden} from './orchard.js';
 import {QUARTERS,FRONTIER_BUILDINGS,FRONTIER_NODES,FRONTIER_RESOURCES} from './frontier.js';
 import {closedRooms,structureColliders,replacementPlan,partKey} from './construction.js';
@@ -101,10 +102,12 @@ export class World {
       const geometry = mergeGeometries(parts);
       parts.forEach(p => p.dispose());
       if (!geometry) continue;
-      const merged = new THREE.Mesh(geometry, batch.material); merged.castShadow = true; merged.receiveShadow = true;
+      const merged = new THREE.Mesh(geometry, batch.material); merged.castShadow = true; merged.receiveShadow = true;merged.matrixAutoUpdate=false;
       for (const mesh of batch.meshes) { mesh.parent.remove(mesh); mesh.geometry.dispose(); }
       this.scene.add(merged);
     }
+    // Merged forest meshes no longer need thousands of empty transform parents.
+    for(const group of [...this.scene.children])if(group.userData.staticTree){for(const child of [...group.children]){this.scene.attach(child);child.updateMatrix();child.matrixAutoUpdate=false;}this.scene.remove(group);}
   }
   box(x, y, z, w, h, d, c, parent = this.scene, extra) {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), extra || mat(c));
@@ -199,7 +202,7 @@ export class World {
     this.mirrors=new DistrictReflections(this);this.reflection=this.mirrors.capture;
     for (let i = 0; i < 19; i++) this.puddle(rng() * 7 - 3.5, rng() * 78 - 39, 0.9 + rng() * 2.5, 0.5 + rng());
     this.mirrors.surface(-.8,17,2.5,1.15);this.mirrors.surface(-18,23,2,1);
-    this.buildHome(); this.buildMarket(); this.buildDepot(); this.furnishExpeditions(); this.buildOutskirts(); this.buildScenes(); this.buildExpandedDistrict(); this.buildNewQuarter(); this.buildDeepDistrict(); this.buildPond(); this.buildTower();this.buildExpeditionDetails();this.buildFrontier();
+    this.buildHome(); this.buildMarket(); this.buildDepot(); this.furnishExpeditions(); this.buildOutskirts(); this.buildScenes(); this.buildExpandedDistrict(); this.buildNewQuarter(); this.buildDeepDistrict(); this.buildPond(); this.buildTower();this.buildExpeditionDetails();this.buildFrontier();this.buildOutlands();
     // Treelines frame the district, leaving the traversable paths readable.
     for (let i = 0; i < 180; i++) {
       const x = rng() * 126 - 63, z = rng() * 126 - 63;
@@ -235,7 +238,7 @@ export class World {
       const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(1.55 - i * 0.25, 0), mat(shade));
       mesh.position.set((rng() - 0.5) * 0.8, 2.8 + i * 0.85, (rng() - 0.5) * 0.8); mesh.scale.y = 1.1; mesh.rotation.y = rng() * 6; mesh.castShadow = true; group.add(mesh);
     }
-    this.collider(x, z, 0.65 * s, 0.65 * s); return group;
+    this.collider(x, z, 0.65 * s, 0.65 * s);group.userData.staticTree=true;return group;
   }
   bush(x, z, s = 0.5, parent = this.scene) {
     const mesh = new THREE.Mesh(new THREE.IcosahedronGeometry(s, 0), mat('#536d4b')); mesh.position.set(x, s * 0.5, z); mesh.scale.set(1.4, 0.8, 1.1); mesh.castShadow = true; parent.add(mesh); return mesh;
@@ -342,14 +345,18 @@ export class World {
   updateRoofs(dt) {
     for(const b of this.buildings) {
       b.inside=isInsideBuilding(b,this.state.x,this.state.z);
+      const key=`${b.inside}:${b.roofMeshes.length}:${b.wallMeshes.length}:`+b.roofMeshes.filter(m=>m.userData.canopyBounds&&isInsideBuilding(m.userData.canopyBounds,this.state.x,this.state.z)).map(m=>m.id).join(',');
+      if(b.cutawayStable&&b.cutawayState===key)continue;
+      b.cutawayState=key;let settled=true;
       const updated=new Set();
       for(const [meshes,target] of [[b.roofMeshes,b.inside?0.035:1],[b.wallMeshes,b.inside?0.13:1]]) {
         for(const mesh of meshes) {
           const canopy=mesh.userData.canopyBounds,under=b.inside||canopy&&isInsideBuilding(canopy,this.state.x,this.state.z);
-          if(!updated.has(mesh.material)) { mesh.material.opacity=fadeOpacity(mesh.material.opacity,under?(canopy?.035:target):(mesh.material.userData.baseOpacity??1),dt); mesh.material.depthWrite=mesh.material.opacity>.98; updated.add(mesh.material); }
+          if(!updated.has(mesh.material)) { const opacity=under?(canopy?.035:target):(mesh.material.userData.baseOpacity??1),next=fadeOpacity(mesh.material.opacity,opacity,dt);if(Math.abs(next-opacity)>.0001)settled=false;mesh.material.opacity=Math.abs(next-opacity)<=.0001?opacity:next;mesh.material.depthWrite=mesh.material.opacity>.98;updated.add(mesh.material); }
           mesh.castShadow=!under&&(mesh.material.userData.baseOpacity??1)>.8;
         }
       }
+      b.cutawayStable=settled;
     }
   }
   building(x, z, w, d, h, shade, sign, options={}) {
@@ -840,6 +847,7 @@ export class World {
     for(const z of [-38,-20,-2]){this.box(105.02,1,z,.12,.12,2.4,'#7a8e7c');this.collider(105.02,z,.12,2.4);this.box(103.2,.42,z+.8,1,.16,.45,'#9a8a66');this.collider(103.2,z+.8,1,.45);}
     }finally{rng=savedRng;}
   }
+  buildOutlands(){const savedRng=rng;rng=rand(202020);try{buildOutlandScenery(this);}finally{rng=savedRng;}}
   createNodes() {
     const definitions = [
       ['scrap', 'Куча металлолома', -7, 17, { metal: 4, parts: 1 }],
@@ -944,7 +952,7 @@ export class World {
       ['crate','Ящик под служебным навесом',56.8,-31.5,{parts:3,wire:2}],
       ['crate','Сухие травы кухонной кладовой',31,36.8,{herbs:4,seeds:2,cloth:1}],
       ['crate','Запас ремонтной смены',54,9.5,{parts:3,metal:2}],
-      ...FRONTIER_NODES,...FRONTIER_RESOURCES,...ORCHARD_FINDS,
+      ...FRONTIER_NODES,...FRONTIER_RESOURCES,...ORCHARD_FINDS,...OUTLAND_SUPPLIES,...OUTLAND_RESOURCES,...OUTLAND_FINDS,
     ];
     definitions.forEach(([type, name, x, z, loot, requires, find, machine,regionProfile,seedCrop], i) => {
       const group = new THREE.Group(); group.position.set(x,this.furnitureElevation(x,z),z); this.scene.add(group);
@@ -978,7 +986,7 @@ export class World {
     });
   }
   createEnemies() {
-    for (const [i, initial] of [[8, -4], [26, 11], [-11, -18], [-22, -24], [50,20], [56,12],[-47,-21],[-56,-13],[53.5,-35],...QUARTERS.filter(q=>['rail','port'].includes(q.style)).flatMap(q=>q.style==='port'?[[q.x-19,q.z],[q.x+8,q.z-5]]:[[q.x-19,q.z],[q.x+19,q.z]]),[ORCHARD_PATROL.x,ORCHARD_PATROL.z]].entries()) {
+    for (const [i, initial] of [[8, -4], [26, 11], [-11, -18], [-22, -24], [50,20], [56,12],[-47,-21],[-56,-13],[53.5,-35],...QUARTERS.filter(q=>['rail','port'].includes(q.style)).flatMap(q=>q.style==='port'?[[q.x-19,q.z],[q.x+8,q.z-5]]:[[q.x-19,q.z],[q.x+19,q.z]]),[ORCHARD_PATROL.x,ORCHARD_PATROL.z],...OUTLAND_PATROLS.map(p=>[p.x,p.z])].entries()) {
       let [x,z]=initial;
       if(this.blocked(x,z,.35)){
         const free=[];for(let dx=-3;dx<=3;dx+=.5)for(let dz=-3;dz<=3;dz+=.5)if(!this.blocked(x+dx,z+dz,.35))free.push({x:x+dx,z:z+dz,d:dx*dx+dz*dz});free.sort((a,b)=>a.d-b.d);
@@ -1091,8 +1099,8 @@ export class World {
         const cells=new Map();
         const matrix = new THREE.Matrix4(), quaternion = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
         let used = 0;
-        for (let i = 0; i < 3000 && used < 750; i++) {
-          const radius=used<450?63:WORLD_LIMIT-2;const x = rng() * radius*2 - radius, z = rng() * radius*2 - radius;if(used>=450&&Math.abs(x)<64&&Math.abs(z)<64)continue;
+        for (let i = 0; i < 7000 && used < 1150; i++) {
+          const radius=used<450?63:used<750?110:WORLD_LIMIT-6;const x = rng() * radius*2 - radius, z = rng() * radius*2 - radius;if(used>=450&&used<750&&Math.abs(x)<64&&Math.abs(z)<64||used>=750&&Math.abs(x)<116&&Math.abs(z)<116)continue;
           if (this.onRoad(x,z,.5) || this.blocked(x, z, 1) || this.buildings.some(b=>isInsideBuilding(b,x,z))) continue;
           p.set(x, 0.02, z); quaternion.setFromAxisAngle(Y, rng() * 6.28); s.setScalar(0.7 + rng() * 0.6); matrix.compose(p, quaternion, s);
           const key=`${Math.floor(x/24)}:${Math.floor(z/24)}`;if(!cells.has(key))cells.set(key,[]);cells.get(key).push(matrix.clone());used++;
@@ -1153,6 +1161,7 @@ export class World {
   onRoad(x,z,margin=0) {return [...ROADS,...SCENES,...this.canopies].some(r=>Math.abs(x-r.x)<r.w/2+margin&&Math.abs(z-r.z)<r.d/2+margin);}
   canSee(ax,az,bx,bz,ignore=null,wallsOnly=false){return ![...this.collisionIndex.query(Math.min(ax,bx),Math.min(az,bz),Math.max(ax,bx),Math.max(az,bz))].some(r=>r!==ignore&&!r.disabled&&(!wallsOnly||r.cover||r.construction)&&(r.w>.45||r.d>.45)&&segmentHitsRect(ax,az,bx,bz,r))&&!this.state.placed.some(p=>(!wallsOnly||['yardgate','yardfence'].includes(p.id))&&furnitureColliders(p).some(r=>segmentHitsRect(ax,az,bx,bz,r)));}
   blocked(x, z, radius = 0.3) {
+    if(inForestWater(x,z,radius))return true;
     if(Math.pow((x-115)/9,2)+Math.pow((z+20)/30,2)<1)return true;
     if (x < -WORLD_LIMIT || x > WORLD_LIMIT || z < -WORLD_LIMIT || z > WORLD_LIMIT) return true;
     if(Math.pow((x-30)/6.8,2)+Math.pow((z-59)/3.7,2)<1&&!(x>=25.2&&x<=29.5&&z<56.2))return true;
