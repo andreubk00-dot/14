@@ -1,3 +1,4 @@
+import {staticShadowBatches} from './shadow-batches.js';
 import {OUTLAND_SUPPLIES,OUTLAND_RESOURCES,OUTLAND_FINDS,OUTLAND_PATROLS,inForestWater,buildOutlandScenery} from './outlands.js';
 import {ORCHARD_FINDS,ORCHARD_PATROL,furnishOrchard,buildOrchardGarden} from './orchard.js';
 import {QUARTERS,FRONTIER_BUILDINGS,FRONTIER_NODES,FRONTIER_RESOURCES} from './frontier.js';
@@ -11,8 +12,8 @@ import { GATES, gateForPoint, weatherAt } from './expedition.js';
 import { FINDS, MEMORIES, SCENES,RESOURCE_SITES, machineKind, cropInfo } from './homelife.js';
 import { LOCATIONS, ROADS, WORLD_LIMIT, expeditionLoot } from './district.js';
 export { LOCATIONS } from './district.js';
-import { circleHitsRect, furnitureColliders, yardRouteClear, footprint, solidFootprint, placementAllowed, repairFurniture } from './layout.js';
-import { isInsideBuilding, fadeOpacity } from './roofs.js';
+import { circleHitsRect, furnitureColliders, yardRouteClear, footprint, solidFootprint, placementAllowed, placementStatus, repairFurniture } from './layout.js';
+import { isInsideBuilding, updateCutawayMaterial } from './roofs.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -110,6 +111,7 @@ export class World {
     }
     // Merged forest meshes no longer need thousands of empty transform parents.
     for(const group of [...this.scene.children])if(group.userData.staticTree){for(const child of [...group.children]){this.scene.attach(child);child.updateMatrix();child.updateMatrixWorld(true);child.matrixAutoUpdate=false;child.matrixWorldAutoUpdate=false;child.userData.staticBatch=true;}this.scene.remove(group);}
+    this.staticShadows=staticShadowBatches(this.scene,this.scene.children.filter(m=>m.userData.staticBatch),this.sun.shadow.getFrustum());
   }
   box(x, y, z, w, h, d, c, parent = this.scene, extra) {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), extra || mat(c));
@@ -354,7 +356,7 @@ export class World {
       for(const [meshes,target] of [[b.roofMeshes,b.inside?0.035:1],[b.wallMeshes,b.inside?0.13:1]]) {
         for(const mesh of meshes) {
           const canopy=mesh.userData.canopyBounds,under=b.inside||canopy&&isInsideBuilding(canopy,this.state.x,this.state.z);
-          if(!updated.has(mesh.material)) { const opacity=under?(canopy?.035:target):(mesh.material.userData.baseOpacity??1),next=fadeOpacity(mesh.material.opacity,opacity,dt);if(Math.abs(next-opacity)>.0001)settled=false;mesh.material.opacity=Math.abs(next-opacity)<=.0001?opacity:next;mesh.material.depthWrite=mesh.material.opacity>.98;updated.add(mesh.material); }
+          if(!updated.has(mesh.material)) { const opacity=under?(canopy?.035:target):(mesh.material.userData.baseOpacity??1),done=updateCutawayMaterial(mesh.material,opacity,dt);if(!done)settled=false;updated.add(mesh.material); }
           mesh.castShadow=!under&&(mesh.material.userData.baseOpacity??1)>.8;
         }
       }
@@ -1173,9 +1175,14 @@ export class World {
   }
   repairFurniture() { return repairFurniture(this.colliders,this.state.placed,this.state.construction); }
   furnitureElevation(x,z) { return this.buildings.some(b=>isInsideBuilding(b,x,z))||this.state.construction.some(p=>p.id==='floor'&&Math.abs(x-p.x)<=1&&Math.abs(z-p.z)<=1)?.205:.025; }
-  canPlace(item,ignore=-1) {
-    if(item.id==='raincatcher'&&this.sheltered(item.x,item.z))return false;return placementAllowed(item,this.colliders,this.state.placed,ignore,this.state.construction) && !overlapsPlayer(item,this.state)&&yardRouteClear(this.state,item,this.colliders,ignore);
+  placementStatus(item,ignore=-1) {
+    const status=placementStatus(item,this.colliders,this.state.placed,ignore,this.state.construction);if(!status.ok)return status;
+    if(item.id==='raincatcher'&&this.sheltered(item.x,item.z))return {ok:false,reason:'Накопителю нужен открытый участок двора'};
+    if(overlapsPlayer(item,this.state))return {ok:false,reason:'Отойди от места установки'};
+    if(!yardRouteClear(this.state,item,this.colliders,ignore))return {ok:false,reason:'Ограда перекроет проход к дому'};
+    return {ok:true};
   }
+  canPlace(item,ignore=-1) {return this.placementStatus(item,ignore).ok;}
   move(x, z) {
     if (!this.blocked(x, this.state.z)) this.state.x = x;
     if (!this.blocked(this.state.x, z)) this.state.z = z;
@@ -1387,7 +1394,7 @@ export class World {
   }
   updateConstructionRoofs(dt) {
     const inside=this.buildings.some(b=>b.x===-18&&b.z===15&&isInsideBuilding(b,this.state.x,this.state.z))||this.state.construction.some(p=>p.id==='floor'&&Math.abs(p.x-this.state.x)<1&&Math.abs(p.z-this.state.z)<1);
-    for(const [meshes,target]of [[this.constructionWalls,inside?.13:1],[this.constructionRoofs,inside?.035:1]])for(const m of meshes||[]){m.material.opacity=fadeOpacity(m.material.opacity,target*(m.material.userData.baseOpacity??1),dt);m.material.depthWrite=m.material.opacity>.98;m.castShadow=!inside&&(m.material.userData.baseOpacity??1)>.8;}
+    for(const [meshes,target]of [[this.constructionWalls,inside?.13:1],[this.constructionRoofs,inside?.035:1]])for(const m of meshes||[]){updateCutawayMaterial(m.material,target*(m.material.userData.baseOpacity??1),dt);m.castShadow=!inside&&(m.material.userData.baseOpacity??1)>.8;}
   }
   canBuildStructure(part) {
     const result=replacementPlan(this.state,part,this.colliders);if(!result.ok)return result;

@@ -399,9 +399,9 @@ export class UI {
     element.insertAdjacentHTML('beforeend','<button class="secondary full-width" data-action="bait-menu">Выбрать наживку</button>');
   }
   updateFishNeedle(value,tension) {const bar=document.querySelector('.line-tension i');if(bar)bar.style.width=`${(tension??.25)*100}%`; const needle = document.querySelector('.fish-meter i'); if (needle) needle.style.left = `${value}%`; }
-  buildHint(recipe, valid, rotation) {
+  buildHint(recipe, valid, rotation,reason) {
     const element = document.getElementById('build-hint'); element.hidden = !recipe;
-    if (recipe) element.innerHTML = `${icon('build', 20)}<div><strong>${recipe.name}</strong><span>${['wallclock','fishtrophy','wallshelf'].includes(recipe.id)?(valid?'Нажми, чтобы закрепить на стене':'Выбери стену внутри убежища'):valid?'Нажми на землю, чтобы разместить':'Выбери свободное место в убежище'}</span></div>${['wallclock','fishtrophy','wallshelf'].includes(recipe.id)||recipe.structural&&['floor','dismantle'].includes(recipe.id)?'':`<button data-action="rotate-build">${icon('rotate',17)} ${Math.round(rotation*180/Math.PI)}°</button>`}<button data-action="cancel-build" aria-label="Отменить строительство">${icon('close', 17)}</button>`;
+    if (recipe) element.innerHTML = `${icon('build', 20)}<div><strong>${recipe.name}</strong><span>${!valid&&reason?escape(reason):['wallclock','fishtrophy','wallshelf'].includes(recipe.id)?(valid?'Нажми, чтобы закрепить на стене':'Выбери стену внутри убежища'):valid?'Нажми на землю, чтобы разместить':'Выбери свободное место в убежище'}</span></div>${['wallclock','fishtrophy','wallshelf'].includes(recipe.id)||recipe.structural&&['floor','dismantle'].includes(recipe.id)?'':`<button data-action="rotate-build">${icon('rotate',17)} ${Math.round(rotation*180/Math.PI)}°</button>`}<button data-action="cancel-build" aria-label="Отменить строительство">${icon('close', 17)}</button>`;
   }
   floating(items, world) {
     const root = document.getElementById('floating-text'); root.replaceChildren();

@@ -52,6 +52,10 @@
 .context kbd { font-size: 16px; }
 .task-progress { bottom: 224px; font-size: 18px; width: min(440px, calc(100vw - 28px)); }
 .build-hint { bottom: 224px; font-size: 18px; max-width: calc(100vw - 28px); }
+.build-hint > div { min-width: 0; }
+.build-hint strong { font-size: 17px; line-height: 1.3; }
+.build-hint span { font-size: 14px; line-height: 1.4; white-space: normal; }
+.build-hint button { flex-shrink: 0; }
 .region-banner { top: 180px; }
 .region-banner > span { font-size: 16px; }
 .panel { width: min(700px, 100vw); }

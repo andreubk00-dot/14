@@ -774,3 +774,62 @@ test('Nursery seeds unlock flowers while dacha seeds retain the vegetable route'
   assert.ok(validateSave(s).cultivars.includes(crop));
  }
 });
+
+import {placementStatus,furniturePoint} from '../src/layout.js';
+import {snapStructure} from '../src/construction.js';
+import {harvestTimeline,advanceHarvest} from '../src/harvesting.js';
+import {updateCutawayMaterial} from '../src/roofs.js';
+test('Placement explains bounds, blocked approaches, occupied furniture and rain cover',()=>{
+ const cases=[
+  [{id:'sofa',x:-24.8,z:13},[],[],/целиком/],
+  [{id:'planter',x:-18,z:19.5},[],[],/дверь/],
+  [{id:'planter',x:-16,z:12},[{x:-16,z:12,w:1,d:1}],[],/стена/],
+  [{id:'planter',x:-16,z:12},[],[{id:'sofa',x:-16,z:12}],/мебель/],
+  [{id:'raincatcher',x:-16,z:12},[],[],/открытый/],
+ ];
+ for(const [item,obstacles,placed,reason]of cases){assert.match(placementStatus(item,obstacles,placed).reason,reason);assert.equal(placementAllowed(item,obstacles,placed),false);}
+ assert.deepEqual(placementStatus({id:'planter',x:-16.3,z:12.2},[],[]),{ok:true});
+ const shelf={id:'wallshelf',...clockAnchor(-18,10.66,'wallshelf')};assert.match(placementStatus(shelf,[],[shelf]).reason,/занят/);assert.equal(placementStatus(shelf,[],[shelf],0).ok,true);
+});
+test('Furniture uses small increments while structural floors and edges still join exactly',()=>{
+ assert.deepEqual(furniturePoint(-16.31,12.24),{x:-16.3,z:12.2});assert.deepEqual(furniturePoint(-16.3,12.2),{x:-16.3,z:12.2});
+ const root=snapStructure('floor',-18.12,20.73,[]);assert.deepEqual(root,{id:'floor',x:-18,z:20.5});
+ assert.deepEqual(snapStructure('floor',-16.1,20.6,[root]),{id:'floor',x:-16,z:20.5});
+ assert.deepEqual(snapStructure('wall',-19.1,20.7,[root]),{id:'wall',x:-19,z:20.5,axis:'z'});
+});
+test('Harvesting has exactly one final contact at completion and repeated updates cannot replay beats',()=>{
+ for(const duration of [2,2.25,4,4.5]){
+  const beats=harvestTimeline(duration),strikes=beats.filter(b=>b.type==='strike');assert.equal(strikes.at(-1).time,duration);assert.equal(strikes.filter(b=>b.final).length,1);
+  for(const hit of strikes)assert.ok(beats.some(b=>b.type==='swing'&&Math.abs(hit.time-b.time-.2)<1e-8));
+  const job={beats,elapsed:duration-.001},early=advanceHarvest(job);assert.ok(early.every(b=>!b.final));assert.deepEqual(advanceHarvest(job),[]);
+  job.elapsed=duration;assert.deepEqual(advanceHarvest(job),[{type:'strike',time:duration,final:true}]);assert.deepEqual(advanceHarvest(job),[]);
+ }
+ assert.deepEqual(harvestTimeline(0),[]);
+});
+test('Harvest swishes use slice recordings and final contacts use the downloaded heavier samples',()=>{
+ const a=new DistrictAudio(),played=[];a.playSample=(id,volume,rate,pos)=>{played.push({id,pos});return true;};
+ a.swing('axe');a.swing('pick');assert.ok(played.every(p=>p.id==='knife_slice_2'));played.length=0;
+ a.resourceHit('standingtree',5,7);assert.match(played.at(-1).id,/^impact_wood_medium_00[01]$/);
+ a.resourceHit('standingtree',5,7,true);assert.match(played.at(-1).id,/^impact_wood_heavy_00[01]$/);
+ a.resourceHit('quarry',5,7,true);assert.match(played.at(-1).id,/^impact_mining_00[34]$/);assert.deepEqual(played.at(-1).pos,{x:5,z:7});
+});
+test('Restored cutaways return to the opaque pass, fading reopens blending and glazing stays translucent',()=>{
+ let version=0;const m={opacity:.035,transparent:true,set needsUpdate(v){if(v)version++;}};
+ assert.equal(updateCutawayMaterial(m,1,2),true);assert.equal(m.opacity,1);assert.equal(m.transparent,false);assert.equal(m.depthWrite,true);assert.equal(version,1);
+ updateCutawayMaterial(m,1,.016);assert.equal(version,1);
+ assert.equal(updateCutawayMaterial(m,.035,.1),false);assert.equal(m.transparent,true);assert.equal(m.depthWrite,false);assert.equal(version,2);
+ updateCutawayMaterial(m,.035,2);assert.equal(m.opacity,.035);updateCutawayMaterial(m,.38,2);assert.equal(m.opacity,.38);assert.equal(m.transparent,true);assert.equal(version,2);
+});
+
+import * as THREE from 'three';
+import {staticShadowBatches} from '../src/shadow-batches.js';
+test('Static shadow batches keep every solid triangle and leave moving or cutaway meshes independent',()=>{
+ const scene=new THREE.Scene(),make=(x,color,tag=true)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(1,2,1),new THREE.MeshStandardMaterial({color}));m.position.x=x;m.castShadow=true;m.userData.staticBatch=tag;scene.add(m);return m;};
+ const a=make(2,'#889977'),b=make(4,'#776655'),moving=make(5,'#ffffff',false),roof=make(6,'#ff0000');roof.userData.cutaway=true;scene.updateMatrixWorld(true);
+ const shadowFrustum=new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().makeOrthographic(-10,10,10,-10,-10,10));const result=staticShadowBatches(scene,[a,b,moving,roof],shadowFrustum);assert.equal(result.length,1);assert.equal(a.castShadow,false);assert.equal(b.castShadow,false);assert.equal(moving.castShadow,true);assert.equal(roof.castShadow,true);
+ const proxy=result[0].mesh;assert.equal(proxy.geometry.attributes.position.count,72);assert.equal(proxy.geometry.boundingSphere.center.x,3);assert.equal(proxy.material.colorWrite,false);assert.equal(proxy.material.depthWrite,false);assert.equal(proxy.intersectsFrustum(shadowFrustum),true);assert.equal(proxy.intersectsFrustum(new THREE.Frustum()),false);
+});
+
+test('Existing quarter-metre furniture coordinates survive saving without being snapped to the new preview grid',()=>{
+ const s=freshState();s.placed=[{id:'bed',x:-18,z:23.25,rotation:0,harvested:0}];assert.equal(validateSave(JSON.parse(JSON.stringify(s))).placed[0].z,23.25);
+});

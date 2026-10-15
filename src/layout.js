@@ -41,20 +41,29 @@ export function circleHitsRect(x,z,radius,rect) {
   const ex=Math.max(Math.abs(lx)-rect.w/2,0),ez=Math.max(Math.abs(lz)-rect.d/2,0);
   return ex*ex+ez*ez<radius*radius || (Math.abs(lx)<rect.w/2 && Math.abs(lz)<rect.d/2);
 }
-export function placementAllowed(item,obstacles,placed,ignore=-1,construction=[]) {
-  const yard=['yardfence','yardgate','yardpath'].includes(item.id),flat=item.id==='rug'||item.id==='yardpath';
-  if(yard&&(overlaps(footprint(item),{x:-18,z:15,w:12,d:9},.12)||construction.some(p=>p.id==='floor'&&overlaps(footprint(item),{...p,w:2,d:2},.05))))return false;
-  if(['wallclock','fishtrophy','wallshelf'].includes(item.id)) {const anchor=clockAnchor(item.x,item.z,item.id,construction);return !!anchor&&Math.hypot(item.x-anchor.x,item.z-anchor.z)<.05&&Math.cos((item.rotation||0)-anchor.rotation)>.99&&placed.every((p,i)=>i===ignore||!['wallclock','fishtrophy','wallshelf'].includes(p.id)||Math.hypot(p.x-item.x,p.z-item.z)>(footprint(p).w+footprint(item).w)/2+.1);}
-  const rect=footprint(item),c=Math.abs(Math.cos(rect.rotation)),s=Math.abs(Math.sin(rect.rotation));
-  const ex=(rect.w*c+rect.d*s)/2,ez=(rect.w*s+rect.d*c)/2;
-  if(rect.x-ex < -25 || rect.x+ex > -7 || rect.z-ez < 7 || rect.z+ez > (construction.length?25.5:25)) return false;
-  if(item.id==='raincatcher'&&overlaps(rect,{x:-18,z:15,w:12,d:9},.1))return false;
-  // Keep doors, the yard gate and the approach to each interaction clear.
-  const passages=[{x:-18,z:19.5,w:2.4,d:2.2},{x:-12,z:16,w:2.2,d:2.4},{x:-8.7,z:20,w:2,d:3},{x:-21,z:14.6,w:2.2,d:1},{x:-13.5,z:18.5,w:1.4,d:1},{x:-22,z:19,w:1.8,d:1}];
-  const doors=construction.filter(p=>p.id==='door').map(p=>p.axis==='x'?{x:p.x,z:p.z,w:1.2,d:1.5}:{x:p.x,z:p.z,w:1.5,d:1.2});
-  if([...doors,...obstacles.filter(o=>!o.disabled),...(flat?[]:passages)].some(o=>overlaps(rect,o,.12))) return false;
-  return placed.every((p,i)=>i===ignore || flat||p.id==='yardpath'||['wallclock','fishtrophy','wallshelf'].includes(item.id)||['wallclock','fishtrophy','wallshelf'].includes(p.id) || p.id==='rug' || !overlaps(rect,footprint(p),yard&&['yardfence','yardgate'].includes(p.id)?0:.15));
+export function placementStatus(item,obstacles,placed,ignore=-1,construction=[]) {
+ const yard=['yardfence','yardgate','yardpath'].includes(item.id),flat=item.id==='rug'||item.id==='yardpath';
+ if(yard&&(overlaps(footprint(item),{x:-18,z:15,w:12,d:9},.12)||construction.some(p=>p.id==='floor'&&overlaps(footprint(item),{...p,w:2,d:2},.05))))return {ok:false,reason:'Ограду и дорожки ставят во дворе, вне дома и пристройки'};
+ if(['wallclock','fishtrophy','wallshelf'].includes(item.id)) {
+  const anchor=clockAnchor(item.x,item.z,item.id,construction);
+  if(!anchor||Math.hypot(item.x-anchor.x,item.z-anchor.z)>=.05||Math.cos((item.rotation||0)-anchor.rotation)<=.99)return {ok:false,reason:'Выбери стену внутри убежища'};
+  if(placed.some((p,i)=>i!==ignore&&['wallclock','fishtrophy','wallshelf'].includes(p.id)&&Math.hypot(p.x-item.x,p.z-item.z)<=(footprint(p).w+footprint(item).w)/2+.1))return {ok:false,reason:'Этот участок стены уже занят'};
+  return {ok:true};
+ }
+ const rect=footprint(item),c=Math.abs(Math.cos(rect.rotation)),s=Math.abs(Math.sin(rect.rotation));
+ const ex=(rect.w*c+rect.d*s)/2,ez=(rect.w*s+rect.d*c)/2;
+ if(rect.x-ex < -25 || rect.x+ex > -7 || rect.z-ez < 7 || rect.z+ez > (construction.length?25.5:25))return {ok:false,reason:'Вещь должна целиком помещаться в границы убежища'};
+ if(item.id==='raincatcher'&&overlaps(rect,{x:-18,z:15,w:12,d:9},.1))return {ok:false,reason:'Накопителю нужен открытый участок двора'};
+ const passages=[{x:-18,z:19.5,w:2.4,d:2.2},{x:-12,z:16,w:2.2,d:2.4},{x:-8.7,z:20,w:2,d:3},{x:-21,z:14.6,w:2.2,d:1},{x:-13.5,z:18.5,w:1.4,d:1},{x:-22,z:19,w:1.8,d:1}];
+ const doors=construction.filter(p=>p.id==='door').map(p=>p.axis==='x'?{x:p.x,z:p.z,w:1.2,d:1.5}:{x:p.x,z:p.z,w:1.5,d:1.2});
+ if([...doors,...(flat?[]:passages)].some(o=>overlaps(rect,o,.12)))return {ok:false,reason:'Оставь свободными дверь и подход к станции'};
+ if(obstacles.some(o=>!o.disabled&&overlaps(rect,o,.12)))return {ok:false,reason:'Здесь мешает стена или другой объект'};
+ if(placed.some((p,i)=>i!==ignore&&!flat&&p.id!=='yardpath'&&!['wallclock','fishtrophy','wallshelf'].includes(p.id)&&p.id!=='rug'&&overlaps(rect,footprint(p),yard&&['yardfence','yardgate'].includes(p.id)?0:.15)))return {ok:false,reason:'Здесь уже стоит мебель'};
+ return {ok:true};
 }
+export function placementAllowed(...args){return placementStatus(...args).ok;}
+// Small increments keep mouse placement precise without changing structural module snapping.
+export const furniturePoint=(x,z)=>({x:Math.round(x*10)/10,z:Math.round(z*10)/10});
 export function repairFurniture(obstacles,placed,construction=[]) {
   let moved=0;
   placed.forEach((item,index)=>{

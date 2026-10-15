@@ -46,9 +46,9 @@ export class DistrictAudio {
   collect() { this.playSample('handle_small_leather',.32); }
   craft() { this.playSample('weapon_change',.4); }
   hit() { this.playSample('enemy_hurt',.5); }
-  swing(id){this.playSample(id==='axe'?'chop':id==='spear'?'knife_slice_2':'knife_slice',.2);}
+  swing(id){this.playSample(['axe','pick','spear'].includes(id)?'knife_slice_2':'knife_slice',.2);}
   weaponHit(id,x,z){this.variant(id==='unarmed'?'impact_wood_medium':'impact_metal_medium',2,.5,Number.isFinite(x)?{x,z}:null);}
-  resourceHit(kind,x,z){this.variant(kind==='quarry'?'impact_mining':'impact_wood_medium',2,.48,Number.isFinite(x)?{x,z}:null);}
+  resourceHit(kind,x,z,final=false){const position=Number.isFinite(x)?{x,z}:null;if(!final)return this.variant(kind==='quarry'?'impact_mining':'impact_wood_medium',2,.48,position);const index=Math.floor(Math.random()*2)+(kind==='quarry'?3:0),prefix=kind==='quarry'?'impact_mining':'impact_wood_heavy';return this.playSample(`${prefix}_${String(index).padStart(3,'0')}`,.56,.96+Math.random()*.08,position);}
   shoot(id='pistol') { this.playSample(id==='carbine'?'blaster_repeater':'blaster',.45); }
   step(surface='grass') { this.variant(`footstep_${surface}`,3,.24); }
   bite() { this.playSample('metal_click',.42); }
