@@ -28,6 +28,12 @@ const profiles={
  retail:[{vegetables:5,water:2},{cloth:4,parts:2},{medicine:1,herbs:4}],
 };
 function supplies(b){
+ if(b.style==='orchard')return [
+  [{seeds:4,herbs:3},{seeds:3,cloth:2},{wood:4,water:2}],
+  [{seeds:4,flowers:2},{vegetables:5,water:2},{herbs:5,wood:2}],
+  [{cloth:4,wood:3,seeds:1},{herbs:3,water:2},{vegetables:4,cloth:2}],
+  [{wood:5,parts:2,seeds:1},{metal:4,wire:2},{herbs:4,seeds:2}],
+ ][b.index];
  if(b.style==='school')return b.index===3?[{cloth:5,herbs:3},{medicine:2,cloth:3},{water:2,herbs:3}]:b.index===2?[{vegetables:5,water:2},{herbs:3,wood:3},{cloth:3,seeds:2}]:[{cloth:5,wood:3},{wire:2,parts:2},{cloth:3,water:2}];
  if(b.style==='retail'&&b.index!==2)return b.index===1?[{metal:4,parts:2},{cloth:5,wire:2},{wood:5,water:2}]:[{vegetables:5,water:2},{herbs:3,cloth:2},{wood:4,vegetables:3}];
  if(b.style==='rail'&&b.index!==1)return [{cloth:4,wood:3},{wire:3,parts:2},{water:3,cloth:2}];

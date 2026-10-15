@@ -1,3 +1,4 @@
+import {ORCHARD_FINDS,ORCHARD_PATROL,furnishOrchard,buildOrchardGarden} from './orchard.js';
 import {QUARTERS,FRONTIER_BUILDINGS,FRONTIER_NODES,FRONTIER_RESOURCES} from './frontier.js';
 import {closedRooms,structureColliders,replacementPlan,partKey} from './construction.js';
 import {installLightCulling} from './render-budget.js';
@@ -191,7 +192,7 @@ export class World {
     const ground = this.box(0, -0.22, 0, (WORLD_LIMIT+6)*2, 0.4, (WORLD_LIMIT+6)*2, color.ground);
     ground.material = new THREE.MeshStandardMaterial({ map: this.texture('ground'), roughness: 0.96 });ground.material.map.repeat.setScalar(14*(WORLD_LIMIT+6)*2/140);
     const roadMaterial=new THREE.MeshStandardMaterial({map:this.texture('road'),roughness:.6,metalness:.12});
-    for(const r of ROADS) this.box(r.x,.015,r.z,r.w,.04,r.d,color.road).material=roadMaterial;
+    for(const r of ROADS){const mesh=this.box(r.x,.015,r.z,r.w,.04,r.d,r.garden?'#898768':color.road);if(!r.garden)mesh.material=roadMaterial;}
     for (let z = -39; z < 41; z += 7) this.box(0, 0.048, z, 0.09, 0.008, 2.1, '#a19b7c');
     for (const x of [-4.25, 4.25]) { this.box(x, 0.1, 0, 0.4, 0.18, 126, '#777b70'); }
     for (let z = -34; z < 35; z += 14) this.lamp(z % 3 ? -4.3 : 4.3, z, 5.2, z > -10);
@@ -355,12 +356,16 @@ export class World {
     const group = new THREE.Group(); group.position.set(x, 0, z); this.scene.add(group);
     this.box(0, 0.09, 0, w + 0.3, 0.2, d + 0.3, '#77786d', group);
     const wallHeight=options.greenhouse?.6:h;
-    this.wall(0,-d/2,w,.32,wallHeight,shade,group);
+    if(options.backDoor){
+      this.wall(-w*.3,-d/2,w*.4,.32,wallHeight,shade,group);this.wall(w*.3,-d/2,w*.4,.32,wallHeight,shade,group);
+      this.box(0,(h+2.3)/2,-d/2,w*.2,h-2.3,.32,shade,group);
+    }else this.wall(0,-d/2,w,.32,wallHeight,shade,group);
     this.wall(-w/2,0,.32,d,wallHeight,shade,group);
     this.wall(w/2,0,.32,d,wallHeight,shade,group);
     this.wall(-w*.3,d/2,w*.4,.32,wallHeight,shade,group);
     this.wall(w*.3,d/2,w*.4,.32,wallHeight,shade,group);
     if(!options.greenhouse) for (let xx = -w / 2 + 1.4; xx < w / 2 - 0.5; xx += 2.8) {
+      if(options.backDoor&&Math.abs(xx)<w*.1+.7)continue;
       this.box(xx, h * 0.65, -d / 2 + 0.18, 1.2, 1.35, 0.05, '#3e5350', group);
       this.box(xx, h * 0.65, -d / 2 + 0.24, 0.07, 1.4, 0.07, '#b1ab91', group);
       this.box(xx, h * 0.65, -d / 2 + 0.24, 1.25, 0.07, 0.07, '#b1ab91', group);
@@ -802,7 +807,7 @@ export class World {
   buildFrontier() {
     const savedRng=rng;rng=rand(1717);try{
     for(const b of FRONTIER_BUILDINGS){
-      this.building(b.x,b.z,b.w,b.d,b.h,b.shade,b.sign,{roofStyle:b.roofStyle,pitch:b.pitch,greenhouse:b.greenhouse,roofColor:b.style==='village'?'#79634e':b.style==='rail'?'#677b80':'#536e62'});
+      this.building(b.x,b.z,b.w,b.d,b.h,b.shade,b.sign,{backDoor:b.style==='orchard'&&b.index===2,roofStyle:b.roofStyle,pitch:b.pitch,greenhouse:b.greenhouse,roofColor:b.style==='village'?'#79634e':b.style==='rail'?'#677b80':'#536e62'});
       const room=this.buildings.at(-1),back=b.z-b.d/2+1.1;
       // Furnish along the back wall, leaving a wide central approach to all supplies.
       const shelfX=b.x-b.w/2+1.1;
@@ -816,11 +821,13 @@ export class World {
       if(b.style==='rail'&&b.index===0){this.cutawayDetail(this.box(b.x, b.h+.9,b.z-b.d/2,2,1.8,1,'#8d8876'),room);this.cutawayDetail(this.label('ВОКЗАЛ',b.x,b.h+1,b.z-b.d/2+.6,2),room);}
       if(b.style==='port'){for(let z=b.z-b.d/2+.5;z<b.z+b.d/2;z+=1.4)this.cutawayDetail(this.box(b.x-b.w/2-.05,2,z,.08,3.6,.06,'#4a625d'),room);}
       if(b.style==='village'||b.style==='retail'){this.canopy(b.x,b.z+b.d/2+1.2,b.w*.7,2,2.6,'#74816b');this.box(b.x-b.w*.25,.35,b.z+b.d/2+1,1.3,.6,.6,'#89926f');this.collider(b.x-b.w*.25,b.z+b.d/2+1,1.3,.6);}
-      if(b.style==='orchard'){for(const x of [b.x-b.w/2+1.2,b.x+b.w/2-1.2]){this.box(x,.35,b.z+.5,.7,.5,2,'#a09873');for(const z of [b.z,b.z+1])this.bush(x,z,.3);this.collider(x,b.z+.5,.7,2);}}
+      if(b.style==='orchard'&&b.index===0){for(const x of [b.x-b.w/2+1.2,b.x+b.w/2-1.2]){this.box(x,.35,b.z+.5,.7,.5,2,'#a09873');for(const z of [b.z,b.z+1])this.bush(x,z,.3);this.collider(x,b.z+.5,.7,2);}}
     }
+    for(const b of FRONTIER_BUILDINGS.filter(b=>b.style==='orchard'))furnishOrchard(this,b,this.buildings.find(r=>r.x===b.x&&r.z===b.z));
+    buildOrchardGarden(this);
     for(const q of QUARTERS){
       // Courtyard islands never cross the street or building approaches.
-      for(const side of [-1,1]){const x=q.x+side*5,z=q.z+6;this.box(x,.12,z,3,.22,3,'#797f69');this.collider(x,z,3,3);this.tree(x,z,.85);this.bush(x+1,z+.6,.45);}
+      for(const side of q.style==='orchard'?[]:[-1,1]){const x=q.x+side*5,z=q.z+6;this.box(x,.12,z,3,.22,3,'#797f69');this.collider(x,z,3,3);this.tree(x,z,.85);this.bush(x+1,z+.6,.45);}
       this.car(q.x-18,q.z+6,0,'#75877c');
       for(const offset of [-17,17]){const x=q.x+offset,z=q.z+2;this.cylinder(x,1.8,z,.05,3.6,'#4d635b',this.scene,6);this.collider(x,z,.12,.12);const glow=this.box(x,3.6,z,.5,.12,.35,'#edc992');glow.material=new THREE.MeshStandardMaterial({color:'#eed2a0',emissive:'#d4a56d',emissiveIntensity:1.3});}
       for(const side of [-1,1])this.mirrors.surface(q.x+side*8,q.z,1.5,.6);
@@ -937,7 +944,7 @@ export class World {
       ['crate','Ящик под служебным навесом',56.8,-31.5,{parts:3,wire:2}],
       ['crate','Сухие травы кухонной кладовой',31,36.8,{herbs:4,seeds:2,cloth:1}],
       ['crate','Запас ремонтной смены',54,9.5,{parts:3,metal:2}],
-      ...FRONTIER_NODES,...FRONTIER_RESOURCES,
+      ...FRONTIER_NODES,...FRONTIER_RESOURCES,...ORCHARD_FINDS,
     ];
     definitions.forEach(([type, name, x, z, loot, requires, find, machine,regionProfile,seedCrop], i) => {
       const group = new THREE.Group(); group.position.set(x,this.furnitureElevation(x,z),z); this.scene.add(group);
@@ -971,7 +978,7 @@ export class World {
     });
   }
   createEnemies() {
-    for (const [i, initial] of [[8, -4], [26, 11], [-11, -18], [-22, -24], [50,20], [56,12],[-47,-21],[-56,-13],[53.5,-35],...QUARTERS.filter(q=>['rail','port'].includes(q.style)).flatMap(q=>q.style==='port'?[[q.x-19,q.z],[q.x+8,q.z-5]]:[[q.x-19,q.z],[q.x+19,q.z]])].entries()) {
+    for (const [i, initial] of [[8, -4], [26, 11], [-11, -18], [-22, -24], [50,20], [56,12],[-47,-21],[-56,-13],[53.5,-35],...QUARTERS.filter(q=>['rail','port'].includes(q.style)).flatMap(q=>q.style==='port'?[[q.x-19,q.z],[q.x+8,q.z-5]]:[[q.x-19,q.z],[q.x+19,q.z]]),[ORCHARD_PATROL.x,ORCHARD_PATROL.z]].entries()) {
       let [x,z]=initial;
       if(this.blocked(x,z,.35)){
         const free=[];for(let dx=-3;dx<=3;dx+=.5)for(let dz=-3;dz<=3;dz+=.5)if(!this.blocked(x+dx,z+dz,.35))free.push({x:x+dx,z:z+dz,d:dx*dx+dz*dz});free.sort((a,b)=>a.d-b.d);
@@ -1544,6 +1551,6 @@ export class World {
   }
   zoom(delta) { this.viewSize = THREE.MathUtils.clamp(this.viewSize + delta * 0.025, 23, 52); this.resize(); }
   setQuality(quality) { this.state.settings.quality = quality; this.renderer.setPixelRatio(quality === 'low' ? 1 : Math.min(devicePixelRatio, 1.7)); this.renderer.shadowMap.enabled = quality !== 'low'; if(this.reflection)this.reflection.visible=false;this.renderDirty=true; this.resize(); }
-  surfaceAt(x,z){if(this.buildings.some(b=>isInsideBuilding(b,x,z))||this.state.construction.some(p=>p.id==='floor'&&Math.abs(p.x-x)<=1&&Math.abs(p.z-z)<=1))return 'wood';if(this.state.placed.some(p=>p.id==='yardpath'&&circleHitsRect(x,z,.01,footprint(p))))return 'concrete';return ROADS.some(r=>Math.abs(x-r.x)<=r.w/2&&Math.abs(z-r.z)<=r.d/2)?'concrete':'grass';}
+  surfaceAt(x,z){if(this.buildings.some(b=>isInsideBuilding(b,x,z))||this.state.construction.some(p=>p.id==='floor'&&Math.abs(p.x-x)<=1&&Math.abs(p.z-z)<=1))return 'wood';if(this.state.placed.some(p=>p.id==='yardpath'&&circleHitsRect(x,z,.01,footprint(p))))return 'concrete';return ROADS.some(r=>!r.garden&&Math.abs(x-r.x)<=r.w/2&&Math.abs(z-r.z)<=r.d/2)?'concrete':'grass';}
   location() { return LOCATIONS.reduce((best, location) => Math.hypot(this.state.x - location.x, this.state.z - location.z) < Math.hypot(this.state.x - best.x, this.state.z - best.z) ? location : best); }
 }

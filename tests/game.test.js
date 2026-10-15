@@ -442,7 +442,7 @@ test('Packed save sanitizer ignores malformed records and unknown bait without c
 });
 
 import {startDrying,saveLoadout,applyLoadout} from '../src/game.js';
-import {gearProfile,segmentHitsRect,droneSees,attackCharge} from '../src/survival.js';
+import {DRONE_TYPES,gearProfile,segmentHitsRect,droneSees,attackCharge} from '../src/survival.js';
 test('Rain collector stores only exposed rainfall and retains water when a harvest cannot fit',()=>{
  const s=freshState();s.elapsed=200;s.placed=[{id:'raincatcher',x:-16,z:23,rotation:0,harvested:0},{id:'raincatcher',x:-16,z:12,rotation:0,harvested:0}];updateRainCrops(s,200,(_x,z)=>z<20);assert.ok(s.placed[0].rainWater>5);assert.equal(s.placed[1].rainWater,undefined);s.bag={wood:26};const amount=s.placed[0].rainWater;assert.equal(harvestProduction(s,s.placed[0]).ok,false);assert.equal(s.placed[0].rainWater,amount);s.bag={};assert.equal(harvestProduction(s,s.placed[0]).received.water,5);assert.ok(s.placed[0].rainWater<1);assert.equal(validateSave(s).placed[0].rainWater,s.placed[0].rainWater);
 });
@@ -693,4 +693,29 @@ test('Prepared meals change actual stamina drain and recovery without changing m
 test('Orchard seed discoveries belong to stocked agricultural rooms',()=>{
  const discoveries=FRONTIER_NODES.filter(n=>n[9]);assert.equal(discoveries.length,4);assert.ok(discoveries.some(n=>n[9]==='flowers'));
  for(const n of discoveries){assert.ok(n[4].seeds>0);assert.ok(n[2]<-60&&n[3]<-50);}
+});
+
+import {ORCHARD_ROUTES,ORCHARD_COVER,ORCHARD_PATHS,ORCHARD_PATROL,ORCHARD_FINDS,ORCHARD_MEMORIES} from '../src/orchard.js';
+test('Quiet garden detour stays out of patrol sight throughout its full patrol circle',()=>{
+ for(let phase=0;phase<Math.PI*2;phase+=.1){
+  const e={x:ORCHARD_PATROL.x+Math.sin(phase)*2.2,z:ORCHARD_PATROL.z+Math.cos(phase)*2.2};
+  for(let i=1;i<ORCHARD_ROUTES.quiet.length;i++){
+   const a=ORCHARD_ROUTES.quiet[i-1],b=ORCHARD_ROUTES.quiet[i],steps=Math.ceil(Math.hypot(b.x-a.x,b.z-a.z)*4);
+   for(let n=0;n<=steps;n++){const x=a.x+(b.x-a.x)*n/steps,z=a.z+(b.z-a.z)*n/steps;if(Math.hypot(e.x-x,e.z-z)<=DRONE_TYPES.guardian.vision)assert.equal(segmentHitsRect(e.x,e.z,x,z,ORCHARD_COVER),true,`${phase}: ${x},${z}`);}
+  }
+ }
+ const length=route=>route.slice(1).reduce((n,p,i)=>n+Math.hypot(p.x-route[i].x,p.z-route[i].z),0);
+ assert.ok(length(ORCHARD_ROUTES.quiet)>length(ORCHARD_ROUTES.direct)*1.3);
+ assert.deepEqual(ORCHARD_ROUTES.quiet.at(-1),ORCHARD_ROUTES.direct.at(-1));
+ for(const path of ORCHARD_PATHS){assert.equal(path.garden,true);for(const b of FRONTIER_BUILDINGS)assert.equal(overlaps(path,b,.17),false);}
+});
+test('Orchard room contents differ by purpose and reusable loot remains tied to the same room',()=>{
+ const rooms=FRONTIER_BUILDINGS.filter(b=>b.style==='orchard');const roomNodes=b=>FRONTIER_NODES.filter(n=>Math.abs(n[2]-b.x)<b.w/2&&Math.abs(n[3]-b.z)<b.d/2);
+ assert.ok(roomNodes(rooms[0]).filter(n=>n[4].seeds).length>=2);assert.ok(roomNodes(rooms[1]).some(n=>n[4].flowers));assert.ok(roomNodes(rooms[2]).some(n=>n[4].cloth));assert.ok(roomNodes(rooms[3]).some(n=>n[4].metal));assert.ok(roomNodes(rooms[3]).some(n=>n[4].parts));
+ for(const b of rooms)for(const n of roomNodes(b))for(const cycle of [1,4,9]){const loot=expeditionLoot({id:'node-170',type:n[0],x:n[2],z:n[3],originalLoot:n[4],regionProfile:n[8]},cycle);assert.ok(Object.keys(loot).every(id=>Object.hasOwn(n[4],id)));}
+});
+test('Appended garden finds and memories use existing save, claim and recovery systems',()=>{
+ const s=freshState();for(let i=0;i<2;i++){const n=ORCHARD_FINDS[i];assert.equal(claimFind(s,{id:`node-${207+i}`,find:n[6]}).ok,true);assert.equal(claimFind(s,{id:`node-${207+i}`,find:n[6]}).ok,false);}
+ s.notes=ORCHARD_MEMORIES.map(n=>n.id);const saved=validateSave(s);assert.deepEqual(saved.finds,{desklamp:1,wallshelf:1});assert.deepEqual(saved.notes,s.notes);assert.deepEqual(saved.findClaims,['node-207','node-208']);
+ const old=freshState();old.depleted={'node-206':50};old.elapsed=80;assert.equal(validateSave(old).depleted['node-206'],50);
 });

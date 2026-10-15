@@ -1,3 +1,4 @@
+import {ORCHARD_PATHS} from './orchard.js';
 import {FRONTIER_LOCATIONS,FRONTIER_ROADS,QUARTERS} from './frontier.js';
 export const WORLD_LIMIT=112;
 export const LOCATIONS=[
@@ -26,7 +27,7 @@ export const LOCATIONS=[
 ];
 // Paths avoid foundations; the map and vegetation use the same rectangles.
 export const ROADS=[
- ...FRONTIER_ROADS,
+ ...FRONTIER_ROADS,...ORCHARD_PATHS,
  {x:49,z:-18,w:3,d:10},{x:-15,z:-39,w:3,d:8},{x:10,z:56,w:3,d:16},{x:6,z:56,w:12,d:3},
  {x:26,z:29,w:3,d:22},{x:-44,z:-14,w:24,d:3},
  {x:27,z:40,w:3,d:30},{x:-44,z:50,w:3,d:22},{x:51,z:-32,w:3,d:32},
