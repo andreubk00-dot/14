@@ -1,3 +1,4 @@
+import {roadSurfaces} from './roads.js';
 import {WORLD_BOUNDS,FLOOD_PLACES,FLOOD_PATHS} from './floodplain.js';
 export {WORLD_BOUNDS} from './floodplain.js';
 import {OUTLAND_LIMIT,OUTLAND_PLACES,OUTLAND_PATHS} from './outlands.js';
@@ -32,14 +33,25 @@ export const LOCATIONS=[
 // Paths avoid foundations; the map and vegetation use the same rectangles.
 export const ROADS=[
  ...FRONTIER_ROADS,...ORCHARD_PATHS,...OUTLAND_PATHS,...FLOOD_PATHS,
- {x:49,z:-18,w:3,d:10},{x:-15,z:-39,w:3,d:8},{x:10,z:56,w:3,d:16},{x:6,z:56,w:12,d:3},
- {x:26,z:29,w:3,d:22},{x:-44,z:-14,w:24,d:3},
- {x:27,z:40,w:3,d:30},{x:-44,z:50,w:3,d:22},{x:51,z:-32,w:3,d:32},
+ // Door approaches end outside foundations; service lanes join the main streets.
+ {x:49,z:-15.2,w:2.4,d:10},{x:64,z:-27,w:2.4,d:38},{x:57.5,z:-43,w:13,d:2.4},
+ {x:58,z:-31.5,w:1.8,d:2.6},{x:61,z:-30,w:6,d:2.4},
+ {x:-7.5,z:-40,w:17,d:2.4},{x:-15,z:-41.4,w:1.8,d:1.6},
+ {x:14,z:55,w:28,d:1.2,garden:true},{x:19,z:53.5,w:2.4,d:21},{x:10,z:64,w:22,d:2.4},
+ {x:10,z:63.2,w:1.6,d:1.2,garden:true},
+ {x:13,z:43,w:26,d:2.4},{x:26,z:41.6,w:1.8,d:2.8,garden:true},
+ {x:27,z:54.7,w:1.8,d:1.2,garden:true},
+ {x:-43.5,z:-12.8,w:21,d:2.4},{x:-52,z:-13.8,w:1.8,d:1.2,garden:true},
+ {x:-29,z:13,w:2.4,d:20},{x:-39,z:32,w:4,d:20},{x:-46.4,z:41,w:29.2,d:4},
+ {x:-49,z:38.35,w:1.8,d:2.3,garden:true},{x:-58,z:38.65,w:1.6,d:.9,garden:true},
+ {x:-33,z:53,w:2.4,d:22},{x:-38.5,z:63,w:11,d:2.4},{x:-44,z:62.2,w:1.8,d:1.2,garden:true},
+ {x:51,z:19,w:1.8,d:3,garden:true},
  {x:0,z:0,w:7.8,d:126}, {x:-13.5,z:3,w:35,d:6},
  {x:30,z:-8,w:60,d:6}, {x:41,z:7,w:5,d:30}, {x:50,z:23,w:23,d:5},
- {x:-42,z:23,w:32,d:5},{x:-39,z:32,w:4,d:20},{x:-48,z:41,w:26,d:4},
+ {x:-42,z:23,w:32,d:5},
  {x:-34,z:-28,w:3,d:49},{x:-41,z:-37,w:17,d:3},
 ];
+export const ROAD_SURFACES=roadSurfaces(ROADS);
 export function discover(state,nodes=[]) {
  let changed=false;
  for(const l of LOCATIONS) if(!state.visited.includes(l.id)&&Math.hypot(state.x-l.x,state.z-l.z)<=l.radius) {state.visited.push(l.id);changed=true;}

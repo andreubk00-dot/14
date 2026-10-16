@@ -1,15 +1,17 @@
+import {RestorationWorld} from './restoration-world.js';
+import {roadSurfaces} from './roads.js';
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
-import {FLOOD_BUILDINGS,FLOOD_DOCKS,FLOOD_ISLANDS,FLOOD_WATER,CAMP,insideRect,islandOutline,FLOOD_RUINS,FLOOD_TREES,FLOOD_CANOPIES,FLOOD_OBSTACLES,FLOOD_POSTS} from './floodplain.js';
+import {FLOOD_BUILDINGS,FLOOD_DOCKS,FLOOD_ISLANDS,FLOOD_WATER,CAMP,insideRect,islandOutline,FLOOD_RUINS,FLOOD_TREES,FLOOD_CANOPIES,FLOOD_OBSTACLES,FLOOD_POSTS,FLOOD_STREETS} from './floodplain.js';
 // Only the new territory streams. Existing scene IDs and saved loot stay stable.
 export class FloodWorld{
  constructor(w){
   this.world=w;this.chunks=[];this.loads=0;this.unloads=0;
   // Logical shells stay resident: pathfinding and rain never depend on visual loading.
   for(const b of [...FLOOD_BUILDINGS,...FLOOD_CANOPIES]){const record={...b,roofMeshes:[],wallMeshes:[],inside:false};w.buildings.push(record);w.shelterIndex.add(record,.25);
-   if(!FLOOD_CANOPIES.includes(b))for(const [x,z,ww,dd]of [[b.x,b.z-b.d/2,b.w,.32],[b.x-b.w/2,b.z,.32,b.d],[b.x+b.w/2,b.z,.32,b.d],[b.x-b.w*.3,b.z+b.d/2,b.w*.4,.32],[b.x+b.w*.3,b.z+b.d/2,b.w*.4,.32]])w.collider(x,z,ww,dd).cover=true;
+   if(!FLOOD_CANOPIES.includes(b))for(const [x,z,ww,dd]of [...(b.backDoor?[[b.x-b.w*.3,b.z-b.d/2,b.w*.4,.32],[b.x+b.w*.3,b.z-b.d/2,b.w*.4,.32]]:[[b.x,b.z-b.d/2,b.w,.32]]),[b.x-b.w/2,b.z,.32,b.d],[b.x+b.w/2,b.z,.32,b.d],[b.x-b.w*.3,b.z+b.d/2,b.w*.4,.32],[b.x+b.w*.3,b.z+b.d/2,b.w*.4,.32]])w.collider(x,z,ww,dd).cover=true;
   }
-  for(const b of FLOOD_BUILDINGS){w.collider(b.x-b.w/2+1.2,b.z-b.d/2+1,1.6,.65);w.collider(b.x+b.w/2-1.2,b.z-b.d/2+1,1.6,.8);if(!['camp','pumpworks','keeper','glasshouse'].includes(b.id))w.collider(b.x-b.w/2+1.2,b.z+1.8,1.3,1.8);}
+  for(const b of FLOOD_BUILDINGS){w.collider(b.x-b.w/2+1.2,b.z-b.d/2+1,1.6,.65);w.collider(b.x+b.w/2-1.2,b.z-b.d/2+1,1.6,.8);if(!['camp','pumpworks','keeper','glasshouse','servicehall'].includes(b.id))w.collider(b.x-b.w/2+1.2,b.z+1.8,1.3,1.8);}
   w.collider(290,60.5,1.2,1.8);w.collider(286,60,1.5,.7);
   for(const t of FLOOD_TREES)w.collider(t.x,t.z,.65*t.scale,.65*t.scale);
   for(const post of FLOOD_POSTS)w.collider(post.x,post.z,post.w,post.d);
@@ -41,6 +43,8 @@ export class FloodWorld{
    for(const b of FLOOD_BUILDINGS.filter(b=>b.place===place.id)){w.box(b.x,b.h/2,b.z,b.w,b.h,b.d,'#586e66',horizon);w.box(b.x,b.h+.2,b.z,b.w+.5,.4,b.d+.5,'#52675f',horizon);}
    this.chunks.push({place,horizon,group:null});
   }
+  for(const x of [278,282])w.collider(x,-68,.32,2).cover=true;
+  this.restorations=new RestorationWorld(w);for(const r of this.restorations.routes){this.batch(r.complete);this.batch(r.broken);}
   this.boat=new THREE.Group();this.boat.name='rowing-boat';this.boat.userData.streaming=true;w.scene.add(this.boat);
   this.makeBoat();this.boat.scale.setScalar(.8);this.update(true);
  }
@@ -75,6 +79,7 @@ export class FloodWorld{
     else {w.box(left,.38,b.z+1.8,1.3,.5,1.8,'#61756c');w.box(left,.72,b.z+1.8,1.3,.16,1.8,'#b8baa3');}
     yield;
    }
+   if(chunk.place.id==='floodworks'){for(const x of [278,282])w.box(x,1.5,-68,.32,3,2,'#7d8983');w.box(280,.1,-68,4,.2,2,'#92998a');}
    for(const t of FLOOD_TREES.filter(t=>t.place===chunk.place.id))w.tree(t.x,t.z,t.scale);
    for(const c of FLOOD_CANOPIES.filter(c=>c.place===chunk.place.id)){const record=this.records.find(r=>r.id===c.id),roof=w.box(c.x,c.h,c.z,c.w,.12,c.d,'#8b937a');roof.material=roof.material.clone();roof.material.transparent=true;roof.material.userData.baseOpacity=1;roof.userData.cutaway=true;record.roofMeshes=[roof];record.wallMeshes=[];record.cutawayStable=false;for(const side of [-1,1])w.box(c.x+side*(c.w/2-.2),c.h/2,c.z+c.d/2-.2,.14,c.h,.14,'#8c8267');}
    for(const o of FLOOD_OBSTACLES.filter(o=>o.place===chunk.place.id)){
@@ -105,11 +110,11 @@ export class FloodWorld{
     // Posts and retaining edges make the dry footprint readable from the water.
     for(const side of [-1,1])w.box(p.x,.05,p.z+side*p.d/2,p.w,.25,.25,'#788579');
     if(p.id==='floodhomes'){
-     w.box(350,.03,27,48,.06,4,'#6a7770');w.box(350,.03,-1,3,.06,48,'#6a7770');
      for(const x of [326,378]){w.box(x,2,30,.12,4,.12,'#7c897e');w.box(x+.7,4,30,1.5,.12,.16,'#7c897e');}
     }
     if(p.id==='floodworks')for(const x of [266,302]){w.box(x,3,-72,.22,6,.22,'#718780');w.box(x,6,-72,2,.2,.2,'#899a86');}
    }
+   for(const r of roadSurfaces(FLOOD_STREETS.filter(r=>r.place===p.id))){const mesh=new THREE.Mesh(new THREE.PlaneGeometry(r.w,r.d),new THREE.MeshStandardMaterial({color:'#7c8271',roughness:.98}));mesh.rotation.x=-Math.PI/2;mesh.position.set(r.x,.045,r.z);mesh.receiveShadow=true;mesh.userData.ownedStreamMaterial=true;w.scene.add(mesh);}
    yield;
  }
  advance(chunk){
@@ -134,13 +139,13 @@ export class FloodWorld{
   for(const chunk of only?[only]:this.chunks){if(!chunk.group||chunk.coverDone||chunk.place.id==='shore')continue;const p=chunk.place,source=w.assets['grass-small'].scene;source.updateMatrixWorld(true);
    source.traverse(child=>{if(!child.isMesh)return;const geometry=child.geometry.clone().applyMatrix4(child.matrixWorld),matrix=new THREE.Matrix4(),quaternion=new THREE.Quaternion(),position=new THREE.Vector3(),scale=new THREE.Vector3(),axis=new THREE.Vector3(0,1,0),transforms=[];
     let seed=Math.round(p.x*100+p.z);const random=()=>((seed=Math.imul(seed,1664525)+1013904223>>>0)/4294967296);
-    for(let i=0;i<250&&transforms.length<80;i++){const x=p.x+(random()-.5)*(p.w-5),z=p.z+(random()-.5)*(p.d-5);if(FLOOD_BUILDINGS.some(b=>insideRect(x,z,b,2.5))||FLOOD_DOCKS.some(d=>insideRect(x,z,d,2))||w.nodes.some(n=>Math.hypot(x-n.x,z-n.z)<2)||Math.abs(z-70)<2)continue;position.set(x,.045,z);quaternion.setFromAxisAngle(axis,random()*6.28);scale.setScalar(.8+random()*.5);matrix.compose(position,quaternion,scale);transforms.push(matrix.clone());}
+    for(let i=0;i<250&&transforms.length<80;i++){const x=p.x+(random()-.5)*(p.w-5),z=p.z+(random()-.5)*(p.d-5);if(FLOOD_BUILDINGS.some(b=>insideRect(x,z,b,2.5))||FLOOD_DOCKS.some(d=>insideRect(x,z,d,2))||w.nodes.some(n=>Math.hypot(x-n.x,z-n.z)<2)||FLOOD_STREETS.some(r=>insideRect(x,z,r,1)))continue;position.set(x,.045,z);quaternion.setFromAxisAngle(axis,random()*6.28);scale.setScalar(.8+random()*.5);matrix.compose(position,quaternion,scale);transforms.push(matrix.clone());}
     const cover=new THREE.InstancedMesh(geometry,child.material,transforms.length);transforms.forEach((m,i)=>cover.setMatrixAt(i,m));cover.computeBoundingSphere();cover.receiveShadow=true;cover.userData.streamSharedMaterial=true;chunk.group.add(cover);
    });chunk.coverDone=true;
   }
  }
  unload(chunk){
-  if(!chunk.group&&!chunk.staging)return;const root=chunk.group||chunk.staging;chunk.steps?.return();const geometries=new Set(),materials=new Set(),textures=new Set();root.traverse(m=>{if(!m.isMesh)return;geometries.add(m.geometry);if(!m.userData.streamSharedMaterial&&(m.userData.cutaway||m.material.map||m.userData.campEmber)){materials.add(m.material);if(m.material.map)textures.add(m.material.map);}});
+  if(!chunk.group&&!chunk.staging)return;const root=chunk.group||chunk.staging;chunk.steps?.return();const geometries=new Set(),materials=new Set(),textures=new Set();root.traverse(m=>{if(!m.isMesh)return;geometries.add(m.geometry);if(!m.userData.streamSharedMaterial&&(m.userData.cutaway||m.material.map||m.userData.campEmber||m.userData.ownedStreamMaterial)){materials.add(m.material);if(m.material.map)textures.add(m.material.map);}});
   root.removeFromParent();for(const g of geometries)g.dispose();for(const m of materials)m.dispose();for(const t of textures)t.dispose();
   for(const r of this.records.filter(r=>r.place===chunk.place.id)){r.roofMeshes=[];r.wallMeshes=[];r.cutawayStable=false;}
   chunk.group=null;chunk.staging=null;chunk.steps=null;chunk.coverDone=false;chunk.horizon.visible=true;this.unloads++;this.world.renderDirty=true;
@@ -153,9 +158,9 @@ export class FloodWorld{
   pending.sort((a,b)=>a.distance-b.distance);this.pending=pending.map(p=>p.chunk);for(const chunk of force?this.pending:this.pending.slice(0,1)){if(force)this.load(chunk);else this.advance(chunk);}this.pending=this.pending.filter(c=>!c.group);
  }
  syncBoat(dt,moving){
-  const w=this.world,b=w.state.boat;this.waterSurface.material.uniforms.time.value=w.time;this.campLight.intensity=w.state.camp.ready&&this.chunks.some(c=>c.place.id==='reedcamp'&&c.group)?8:0;this.boat.position.set(b.x,.1+Math.sin(w.time*1.7)*.025,b.z);this.boat.rotation.set(Math.sin(w.time*1.3)*.012,b.heading,Math.sin(w.time*1.8)*.018);this.boat.visible=Math.hypot(b.x-w.state.x,b.z-w.state.z)<110;
+  const w=this.world,b=w.state.boat;this.restorations.sync();this.waterSurface.material.uniforms.time.value=w.time;this.campLight.intensity=w.state.camp.ready&&this.chunks.some(c=>c.place.id==='reedcamp'&&c.group)?8:0;this.boat.position.set(b.x,.1+Math.sin(w.time*1.7)*.025,b.z);this.boat.rotation.set(Math.sin(w.time*1.3)*.012,b.heading,Math.sin(w.time*1.8)*.018);this.boat.visible=Math.hypot(b.x-w.state.x,b.z-w.state.z)<110;
   this.wake.material.opacity=b.aboard&&moving?.16:.035;for(let i=0;i<this.oars.length;i++){this.oars[i].rotation.z=b.aboard&&moving?Math.sin(w.time*4)*(i?-.2:.2):0;}
   if(b.aboard){w.player.position.set(b.x,.33,b.z);w.facing=b.heading;w.shadow.visible=false;w.weaponRoot.visible=false;}else {w.shadow.visible=true;w.weaponRoot.visible=true;}
-  for(const chunk of this.chunks)if(chunk.place.id==='reedcamp'&&chunk.group)chunk.group.traverse(m=>{if(m.userData.campEmber)m.visible=w.state.camp.ready;});
+  for(const chunk of this.chunks)if(chunk.place.id==='reedcamp'&&chunk.group)chunk.group.traverse(m=>{if(m.userData.campEmber||m.userData.ownedStreamMaterial)m.visible=w.state.camp.ready;});
  }
 }

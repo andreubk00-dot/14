@@ -1,5 +1,7 @@
+import {curbSegments} from './roads.js';
+import {drainBlocked} from './restoration.js';
 import {FloodWorld} from './flood-world.js';
-import {WORLD_BOUNDS,FLOOD_BUILDINGS,FLOOD_SUPPLIES,FLOOD_PATROLS,inWorld,inFloodWater,boatWater,walkRegion,waterDestination} from './floodplain.js';
+import {WORLD_BOUNDS,FLOOD_BUILDINGS,FLOOD_SUPPLIES,RESTORED_SUPPLIES,FLOOD_PATROLS,inWorld,inFloodWater,boatWater,walkRegion,waterDestination} from './floodplain.js';
 import {staticColourKey,colourGeometry} from './static-colours.js';
 import {fitEnemyModel} from './enemy-models.js';
 import {MODEL_FILES} from './model-assets.js';
@@ -15,7 +17,7 @@ import {DRONE_TYPES,segmentHitsRect} from './survival.js';
 import {gridPath} from './navigation.js';
 import { GATES, gateForPoint, weatherAt } from './expedition.js';
 import { FINDS, MEMORIES, SCENES,RESOURCE_SITES, machineKind, cropInfo } from './homelife.js';
-import { LOCATIONS, ROADS, WORLD_LIMIT, expeditionLoot } from './district.js';
+import { LOCATIONS, ROADS, ROAD_SURFACES, WORLD_LIMIT, expeditionLoot } from './district.js';
 export { LOCATIONS } from './district.js';
 import { circleHitsRect, furnitureColliders, yardRouteClear, footprint, solidFootprint, placementAllowed, placementStatus, repairFurniture } from './layout.js';
 import { isInsideBuilding, updateCutawayMaterial } from './roofs.js';
@@ -226,10 +228,12 @@ export class World {
     const ground = this.box((WORLD_BOUNDS.minX+WORLD_BOUNDS.maxX)/2, -0.22, 0, WORLD_BOUNDS.maxX-WORLD_BOUNDS.minX+12, 0.4, WORLD_BOUNDS.maxZ-WORLD_BOUNDS.minZ+12, color.ground);
     ground.material = new THREE.MeshStandardMaterial({ map: this.texture('ground'), roughness: 0.96 });ground.material.map.repeat.set((WORLD_BOUNDS.maxX-WORLD_BOUNDS.minX+12)/10,(WORLD_BOUNDS.maxZ-WORLD_BOUNDS.minZ+12)/10);
     const roadMaterial=new THREE.MeshStandardMaterial({map:this.texture('road'),roughness:.6,metalness:.12});
-    for(const r of ROADS){const mesh=this.box(r.x,.015,r.z,r.w,.04,r.d,r.garden?'#898768':color.road);if(!r.garden)mesh.material=roadMaterial;}
-    for (let z = -39; z < 41; z += 7) this.box(0, 0.048, z, 0.09, 0.008, 2.1, '#a19b7c');
-    for (const x of [-4.25, 4.25]) { this.box(x, 0.1, 0, 0.4, 0.18, 126, '#777b70'); }
-    for (let z = -34; z < 35; z += 14) this.lamp(z % 3 ? -4.3 : 4.3, z, 5.2, z > -10);
+    roadMaterial.map.repeat.set(1,1);const trailMaterial=new THREE.MeshStandardMaterial({color:'#898768',roughness:.92});
+    for(const r of ROAD_SURFACES){const geometry=new THREE.PlaneGeometry(r.w,r.d),uv=geometry.attributes.uv;for(let i=0;i<uv.count;i++)uv.setXY(i,(r.x-r.w/2+uv.getX(i)*r.w)/8,(r.z+r.d/2-uv.getY(i)*r.d)/8);const mesh=new THREE.Mesh(geometry,r.garden?trailMaterial:roadMaterial);mesh.rotation.x=-Math.PI/2;mesh.position.set(r.x,.035,r.z);mesh.receiveShadow=true;this.scene.add(mesh);}
+    const crossings=ROADS.filter(r=>!(r.x===0&&r.w===7.8&&r.d===126));
+    for(let z=-39;z<41;z+=7)if(!crossings.some(r=>Math.abs(r.x)<r.w/2&&Math.abs(z-r.z)<r.d/2+1.1))this.box(0,.048,z,.09,.008,2.1,'#a19b7c');
+    for(const x of [-4.25,4.25])for(const [a,b]of curbSegments(crossings,x,-63,63))this.box(x,.1,(a+b)/2,.4,.18,b-a,'#777b70');
+    for (let z = -34; z < 35; z += 14) this.lamp(z % 3 ? -4.3 : 4.3, z===-6?-2.7:z, 5.2, z > -10);
     this.mirrors=new DistrictReflections(this);this.reflection=this.mirrors.capture;
     for (let i = 0; i < 19; i++) this.puddle(rng() * 7 - 3.5, rng() * 78 - 39, 0.9 + rng() * 2.5, 0.5 + rng());
     this.mirrors.surface(-.8,17,2.5,1.15);this.mirrors.surface(-18,23,2,1);
@@ -519,8 +523,8 @@ export class World {
     this.box(-27,.025,32.5,2.2,.045,1.5,'#aa8f78');
     for(const x of [-30.8,-29.2])this.box(x,.35,32,.15,.7,.8,'#66745e');this.box(-30,.78,32,2.2,.15,1.2,'#9c8963');this.collider(-30,32,2.2,1.2);
     for(const x of [-27.4,-26.8])this.cylinder(x,.14,32.2,.08,.14,'#c6bea3');
-    this.box(52,.5,22,2,1,1,'#817b62');this.collider(52,22,2,1);
-    this.cylinder(54.5,.55,23.5,.4,1.1,'#6e8274');this.collider(54.5,23.5,.8,.8);
+    this.box(52,.5,19,2,1,1,'#817b62');this.collider(52,19,2,1);
+    this.cylinder(54.5,.55,19.2,.4,1.1,'#6e8274');this.collider(54.5,19.2,.8,.8);
     for(const n of MEMORIES) {const h=n.y??(n.id==='dispatch'?1.48:n.id==='laundry'?1.61:n.id==='bus'?.7:n.id==='yard'?1.01:n.id==='salvage'?.21:.065);this.box(n.x,h,n.z,.3,.012,.23,'#e0d6b8');}
   }
   buildExpandedDistrict() {
@@ -652,7 +656,7 @@ export class World {
     for(const [x,z,left,right]of [[-15,-37,-24,-6],[49,-16,42,56]]){
       for(const [a,b]of [[left,x-1.5],[x+1.5,right]]){this.wall((a+b)/2,z,b-a,.16,1,'#7d876c');for(let xx=a;xx<=b;xx+=2)this.box(xx,.7,z,.15,1.4,.18,'#a19778');}
     }
-    this.lamp(42,-18,3.6,true);this.lamp(-6,-39,3.7,true);this.lamp(4.8,56,3.2,true);
+    this.lamp(42,-18,3.6,true);this.lamp(-6,-37.9,3.7,true);this.lamp(4.8,56,3.2,true);
     for(const [x,z,w,d]of [[44,-18,1.5,.8],[-12,-39,2,1],[13,56,1.6,.7]])this.mirrors.surface(x,z,w,d);
     for(const [x,z]of [[46,-20.7],[-10,-42.6],[6.3,49]]){this.box(x,.215,z,.7,.012,.5,'#6c705d');this.box(x+.2,.22,z+.15,.15,.018,.18,'#a39774');}
   }
@@ -668,7 +672,7 @@ export class World {
     // A clear door-sized break on the eastern side connects the switch room.
     for(const x of [-54.5,-52.5]){this.box(x,1.2,-23,1,2.4,1.2,'#7a9086');this.collider(x,-23,1,1.2);this.box(x,1.7,-22.36,.6,.2,.04,'#c9b77e');}
     this.canopy(-52,-13.9,9,2.2,3.2,'#718581');
-    this.lamp(-46.5,-14,3.8,true);this.lamp(19.5,42,3.7,true);
+    this.lamp(-46.5,-15.8,3.8,true);this.lamp(19.5,40.6,3.7,true);
     const clinic=this.buildings.find(b=>b.x===-49);this.partition(clinic,-48,32,.16,3,2.5);
     const residence=this.buildings.find(b=>b.x===15);this.partition(residence,18,18.5,.16,3,2.8);
     this.box(11.6,.7,18.5,1.3,1.4,1.2,'#8f826b');this.collider(11.6,18.5,1.3,1.2);this.box(11.6,1.46,18.5,1.4,.12,1.3,'#b9ac8b');
@@ -689,9 +693,9 @@ export class World {
     // A covered service yard, spare tyres and work tables keep entrances clear.
     this.box(46.5,.7,9,2,1.4,1,'#8c846c');this.collider(46.5,9,2,1);
     this.box(54,1,15,2.2,2,1,'#667770');this.collider(54,15,2.2,1);
-    for(const z of [20,22]) {this.cylinder(57,.3,z,.45,.6,'#3b4844');this.collider(57,z,.9,.9);}
-    this.car(49,25,.12,'#8a826f');
-    this.lamp(42.5,21,4,true);this.lamp(-40,39,3.6,true);
+    for(const z of [18,19.3]) {this.cylinder(60,.3,z,.45,.6,'#3b4844');this.collider(60,z,.9,.9);}
+    this.car(55,28.2,.12,'#8a826f');
+    this.lamp(44.1,19.8,4,true);this.lamp(-36.8,38.3,3.6,true);
     // Raised beds and surviving foliage grow along the greenhouse sides.
     for(const x of [-45.3,-38.7]) {
       this.box(x,.45,-44,1.2,.9,3.4,'#889178');this.collider(x,-44,1.2,3.4);
@@ -703,7 +707,7 @@ export class World {
     for(const [x,z,text] of [[-39,25,'КЛИНИКА'],[40,-4,'РЕМОНТ'],[-33,-34,'ОРАНЖЕРЕЯ']]) {
       this.box(x,1,z,.12,2,.12,'#7d8069');this.label(text,x,1.7,z+.08,2.5);this.collider(x,z,.12,.12);
     }
-    for(const [x,z] of [[-59,29],[-58,43],[-46,45],[60,5],[61,19],[48,32],[-52,-44],[-49,-53],[-35,-53]]) this.tree(x,z,1.1);
+    for(const [x,z] of [[-59,29],[-58,44.5],[-46,45],[60,5],[61,19],[48,32],[-54.5,-44],[-49,-53],[-35,-53]]) this.tree(x,z,1.1);
   }
   furnishExpeditions() {
     const shelf=(x,z,w,h,d,shade) => {
@@ -990,7 +994,7 @@ export class World {
       ['crate','Ящик под служебным навесом',56.8,-31.5,{parts:3,wire:2}],
       ['crate','Сухие травы кухонной кладовой',31,36.8,{herbs:4,seeds:2,cloth:1}],
       ['crate','Запас ремонтной смены',54,9.5,{parts:3,metal:2}],
-      ...FRONTIER_NODES,...FRONTIER_RESOURCES,...ORCHARD_FINDS,...OUTLAND_SUPPLIES,...OUTLAND_RESOURCES,...OUTLAND_FINDS,...FLOOD_SUPPLIES,
+      ...FRONTIER_NODES,...FRONTIER_RESOURCES,...ORCHARD_FINDS,...OUTLAND_SUPPLIES,...OUTLAND_RESOURCES,...OUTLAND_FINDS,...FLOOD_SUPPLIES,...RESTORED_SUPPLIES,
     ];
     definitions.forEach(([type, name, x, z, loot, requires, find, machine,regionProfile,seedCrop], i) => {
       const group = new THREE.Group(); group.position.set(x,this.furnitureElevation(x,z),z); this.scene.add(group);
@@ -1197,6 +1201,7 @@ export class World {
     for (const node of this.nodes) {
       const time = this.state.depleted[node.id];
       let visible=node.find?!this.state.findClaims.includes(node.id):time===undefined||this.state.elapsed-time>=node.respawnTime;
+      if(drainBlocked(node.x,node.z,0,this.state.restoredRoutes))visible=false;
       // A restored container must wait until the player leaves its footprint.
       if(visible&&!node.find&&time!==undefined&&node.collider&&circleHitsRect(this.state.x,this.state.z,.3,node.collider)) visible=false;
       if (visible && !node.group.visible && !node.find) {this.state.strippedNodes=this.state.strippedNodes.filter(id=>id!==node.id);this.state.brokenNodes=this.state.brokenNodes.filter(id=>id!==node.id); node.loot = {...(this.state.nodeLoot[node.id]||expeditionLoot(node,Math.floor(this.state.elapsed/node.respawnTime)))}; this.state.nodeLoot[node.id]={...node.loot}; }
@@ -1206,7 +1211,7 @@ export class World {
   onRoad(x,z,margin=0) {return [...ROADS,...SCENES,...this.canopies].some(r=>Math.abs(x-r.x)<r.w/2+margin&&Math.abs(z-r.z)<r.d/2+margin);}
   canSee(ax,az,bx,bz,ignore=null,wallsOnly=false){return ![...this.collisionIndex.query(Math.min(ax,bx),Math.min(az,bz),Math.max(ax,bx),Math.max(az,bz))].some(r=>r!==ignore&&!r.disabled&&(!wallsOnly||r.cover||r.construction)&&(r.w>.45||r.d>.45)&&segmentHitsRect(ax,az,bx,bz,r))&&!this.state.placed.some(p=>(!wallsOnly||['yardgate','yardfence'].includes(p.id))&&furnitureColliders(p).some(r=>segmentHitsRect(ax,az,bx,bz,r)));}
   blocked(x, z, radius = 0.3) {
-    if(!inWorld(x,z)||inFloodWater(x,z,radius)||inForestWater(x,z,radius))return true;
+    if(!inWorld(x,z)||inFloodWater(x,z,radius,this.state.restoredRoutes)||drainBlocked(x,z,radius,this.state.restoredRoutes)||inForestWater(x,z,radius))return true;
     if(Math.pow((x-115)/9,2)+Math.pow((z+20)/30,2)<1)return true;
 
     if(Math.pow((x-30)/6.8,2)+Math.pow((z-59)/3.7,2)<1&&!(x>=25.2&&x<=29.5&&z<56.2))return true;
@@ -1230,7 +1235,7 @@ export class World {
     this.player.position.set(this.state.x, 0.18, this.state.z);
   }
   pathTo(x, z) {
-    if(walkRegion(this.state.x,this.state.z)!==walkRegion(x,z))return [];
+    if(walkRegion(this.state.x,this.state.z,this.state.restoredRoutes)!==walkRegion(x,z,this.state.restoredRoutes))return [];
     // Grid A* routes around cars, walls and the water rather than walking into them.
     const sx = Math.round(this.state.x), sz = Math.round(this.state.z);
     const key = (x, z) => `${x},${z}`;
@@ -1243,7 +1248,7 @@ export class World {
       }
       if (!best) return []; gx = best.x; gz = best.z;
     }
-    if(walkRegion(this.state.x,this.state.z)!==walkRegion(gx,gz))return [];
+    if(walkRegion(this.state.x,this.state.z,this.state.restoredRoutes)!==walkRegion(gx,gz,this.state.restoredRoutes))return [];
     const furniture=this.state.placed.flatMap(p=>furnitureColliders(p));
     const edgeBlocked=(ax,az,bx,bz)=>{
       const obstacles=[...this.collisionIndex.query(Math.min(ax,bx)-.3,Math.min(az,bz)-.3,Math.max(ax,bx)+.3,Math.max(az,bz)+.3),...furniture];
@@ -1253,9 +1258,9 @@ export class World {
   }
   boatPathTo(x,z){
     const destination=waterDestination(x,z);let goal={x:Math.round(destination.x),z:Math.round(destination.z)};const start={x:Math.round(this.state.boat.x),z:Math.round(this.state.boat.z)};
-    if(!boatWater(goal.x,goal.z)){const free=[];for(let dx=-3;dx<=3;dx++)for(let dz=-3;dz<=3;dz++)if(boatWater(goal.x+dx,goal.z+dz))free.push({x:goal.x+dx,z:goal.z+dz,d:dx*dx+dz*dz});free.sort((a,b)=>a.d-b.d);if(!free.length)return [];goal=free[0];}
-    const edge=(ax,az,bx,bz)=>!boatWater((ax+bx)/2,(az+bz)/2);
-    return gridPath(start,goal,(x,z)=>!boatWater(x,z),40000,edge);
+    if(!boatWater(goal.x,goal.z,1.5,this.state.restoredRoutes)){const free=[];for(let dx=-3;dx<=3;dx++)for(let dz=-3;dz<=3;dz++)if(boatWater(goal.x+dx,goal.z+dz,1.5,this.state.restoredRoutes))free.push({x:goal.x+dx,z:goal.z+dz,d:dx*dx+dz*dz});free.sort((a,b)=>a.d-b.d);if(!free.length)return [];goal=free[0];}
+    const edge=(ax,az,bx,bz)=>!boatWater((ax+bx)/2,(az+bz)/2,1.5,this.state.restoredRoutes);
+    return gridPath(start,goal,(x,z)=>!boatWater(x,z,1.5,this.state.restoredRoutes),40000,edge);
   }
   enemyWaypoint(enemy,target,time){
     const clear=(ax,az,bx,bz)=>![...this.collisionIndex.query(Math.min(ax,bx)-.5,Math.min(az,bz)-.5,Math.max(ax,bx)+.5,Math.max(az,bz)+.5)].some(r=>!r.disabled&&segmentHitsRect(ax,az,bx,bz,{...r,w:r.w+.7,d:r.d+.7}))&&!this.state.placed.some(p=>furnitureColliders(p).some(r=>segmentHitsRect(ax,az,bx,bz,{...r,w:r.w+.7,d:r.d+.7})));

@@ -56,10 +56,10 @@ export const OUTLAND_PATHS=[
  path(-89.5,132,131,3),path(-24,120,3,36),path(-45,138,45,3),path(-48,166,3,56),path(-48,165,56,3),path(-48,194,56,3),
  path(34,132,116,3),path(45,144,3,24),path(35,153,20,2.4),path(92,145,3,26),path(89,157,6,2.4),path(94,164,4,2.6),
  path(128,132,72,3),path(167,128,3,100),path(155,178,24,3),path(128,190,78,3),path(92,178,3,32),path(34,194,116,3),
- path(-24,-136,3,64),path(-16.5,-168,61,3),path(-34,-150,20,2.4),path(-84,-133,3,72),path(-118.5,-133,69,3),path(-153,-140,3,12),path(-54,-133,60,3),
+ path(-24,-136,3,64),path(-16.5,-168,61,3),path(-34,-150,24,2.4),path(-84,-133,3,72),path(-118.5,-133,69,3),path(-153,-140,3,12),path(-54,-133,60,3),
  path(137,78,68,3),path(167,75,3,58),path(160,58,14,2.4),path(175,112,18,2.4),
  path(89.5,-168,155,2.4),path(167,-56,3,224),path(176,-129,18,2.4),path(86,-62,3,38),path(127,-62,82,3),
- ...OUTLAND_BUILDINGS.map(b=>path(b.x,b.z+b.d/2+2,1.6,3)),
+ ...OUTLAND_BUILDINGS.map(b=>{const front=b.z+b.d/2+.4,end=({bluecottage:165,gardenhouse:165,smallcottage:194,sharedkitchen:194,northshed:-168,eastshop:58,quarryshop:128})[b.id]??front+3;return path(b.x,(front+end)/2,1.6,end-front);}),
 ];
 const inside=(p,r,pad=0)=>Math.abs(p.x-r.x)<r.w/2+pad&&Math.abs(p.z-r.z)<r.d/2+pad;
 export function outlandReserved(x,z,pad=1){

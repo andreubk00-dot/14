@@ -1,3 +1,4 @@
+import {cleanRestorations} from './restoration.js';
 import {WORLD_BOUNDS,freshBoat,cleanBoat,FLOOD_DOCKS,CAMP,BOAT_REPAIR} from './floodplain.js';
 import {cleanMapMarks} from './map-marks.js';
 import {SUPPLY_FIELDS,FOOD_EFFECTS,activeFood} from './food.js';
@@ -105,7 +106,7 @@ export const FISH = [
 export const HOME = { x: -16, z: 16 };
 export function freshState() {
   return {
-    boat:freshBoat(),camp:{ready:false,store:{}},mapMarks:[],keepResources:[],cargo:[],storedCargo:[],strippedNodes:[],construction:[],brokenNodes:[],loadouts:[null,null],openedGates:[],packedFurniture:[],fishingBait:'none',visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
+    restoredRoutes:[],boat:freshBoat(),camp:{ready:false,store:{}},mapMarks:[],keepResources:[],cargo:[],storedCargo:[],strippedNodes:[],construction:[],brokenNodes:[],loadouts:[null,null],openedGates:[],packedFurniture:[],fishingBait:'none',visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
     version: 1, x: HOME.x + 1, z: HOME.z + 2, health: 100, stamina: 100,
     stash: { wood: 3, metal: 2, cloth: 2 }, bag: {}, owned: [],
     equipment: { weapon: 'pipe', armor: null, bag: null, boots: null },
@@ -130,7 +131,8 @@ function cleanFurniture(p,elapsed) {
 export function validateSave(input) {
   if (!input || input.version !== 1) return null;
   const state = freshState();
-  state.boat=cleanBoat(input.boat);
+  state.restoredRoutes=cleanRestorations(input.restoredRoutes);
+  state.boat=cleanBoat(input.boat,state.restoredRoutes);
   state.camp.ready=input.camp?.ready===true;
   let storedWeight=0;for(const id of Object.keys(RESOURCES)){const n=input.camp?.store?.[id];if(Number.isSafeInteger(n)&&n>0){const count=Math.min(n,Math.floor((CAMP.capacity-storedWeight)/RESOURCES[id].weight));if(count>0){state.camp.store[id]=count;storedWeight+=count*RESOURCES[id].weight;}}}
   state.mapMarks=cleanMapMarks(input.mapMarks);

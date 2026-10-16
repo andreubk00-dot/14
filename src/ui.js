@@ -1,4 +1,5 @@
-import {WORLD_BOUNDS,FLOOD_ISLANDS,FLOOD_WATER,FLOOD_DOCKS,CAMP,BOAT_REPAIR} from './floodplain.js';
+import {RESTORATIONS,restorationStatus} from './restoration.js';
+import {WORLD_BOUNDS,FLOOD_ISLANDS,FLOOD_WATER,FLOOD_DOCKS,CAMP,BOAT_REPAIR,FLOOD_STREETS} from './floodplain.js';
 import {atCamp,campWeight,fieldCost} from './game.js';
 import {FOREST_LAKE} from './outlands.js';
 import {SUPPLY_FIELDS,FOOD_EFFECTS,activeFood,foodTime} from './food.js';
@@ -11,7 +12,7 @@ import {STATION_UPGRADES,dryingBatch,collectorCapacity} from './upgrades.js';
 import {gearProfile} from './survival.js';
 import {BAITS,FISHING_SPOTS,gameHour,weatherAt} from './expedition.js';
 import { CROPS, FINDS, MEMORIES, cropInfo } from './homelife.js';
-import { LOCATIONS, WORLD_LIMIT, ROADS } from './district.js';
+import { LOCATIONS, WORLD_LIMIT, ROADS, ROAD_SURFACES } from './district.js';
 import { inventoryItems, EQUIPMENT_SLOTS } from './inventory.js';
 import { HOTBAR_ITEMS, hotbarItem } from './hotbar.js';
 import { RESOURCES, RECIPES, CONTRACTS, bagWeight, capacity, total, craftStatus, contractStatus, productionInfo, weapon } from './game.js';
@@ -150,7 +151,7 @@ export class UI {
   }
   context(target) {
     const element = document.getElementById('context'); element.hidden = !target;
-    if (target) this.setHTML('context', `<button data-action="interact"><span class="context-icon">${recipeIcon(({ 'boat-board':'boat','boat-land':'boat','boat-water':'boat','boat-repair':'craft',camp:'home',node: target.entity?.find||target.entity?.requires || ({ scrap: 'metal', herbs: target.entity?.originalLoot?.seeds ? 'seeds' : 'herbs', wood: 'wood', tree: 'axe', ore: 'pick', crate: 'chest', electronics: 'wire', cloth: 'cloth' })[target.entity?.type] || 'bag', station: 'craft', storage: 'chest', bed: 'bed', fish: 'rod', grave: 'bag', production: target.entity?.id || 'parts', water: 'water', orders: 'board', helper:'herbs',dryer:'dryrack',loadouts:'gearrack',gate:target.entity?.tool,garden:'cropbed',note:'book','furniture-toggle':target.entity?.id })[target.type], 21)}</span><kbd>E</kbd><span>${target.label}</span>${target.hint ? `<small>${target.hint}</small>` : ''}</button>${target.options>1?`<button class="context-next" data-action="cycle-interaction" aria-label="Выбрать другой предмет рядом">${icon('arrow',20)} ${target.optionIndex}/${target.options} <kbd>F</kbd></button>`:''}`);
+    if (target) this.setHTML('context', `<button data-action="interact"><span class="context-icon">${recipeIcon(({ 'boat-board':'boat','boat-land':'boat','boat-water':'boat','boat-repair':'craft',restoration:'wrench',camp:'home',node: target.entity?.find||target.entity?.requires || ({ scrap: 'metal', herbs: target.entity?.originalLoot?.seeds ? 'seeds' : 'herbs', wood: 'wood', tree: 'axe', ore: 'pick', crate: 'chest', electronics: 'wire', cloth: 'cloth' })[target.entity?.type] || 'bag', station: 'craft', storage: 'chest', bed: 'bed', fish: 'rod', grave: 'bag', production: target.entity?.id || 'parts', water: 'water', orders: 'board', helper:'herbs',dryer:'dryrack',loadouts:'gearrack',gate:target.entity?.tool,garden:'cropbed',note:'book','furniture-toggle':target.entity?.id })[target.type], 21)}</span><kbd>E</kbd><span>${target.label}</span>${target.hint ? `<small>${target.hint}</small>` : ''}</button>${target.options>1?`<button class="context-next" data-action="cycle-interaction" aria-label="Выбрать другой предмет рядом">${icon('arrow',20)} ${target.optionIndex}/${target.options} <kbd>F</kbd></button>`:''}`);
   }
   progress(label, ratio) {
     const element = document.getElementById('task-progress'); element.hidden = !label;
@@ -183,6 +184,7 @@ export class UI {
     const scroll = resetScroll ? 0 : document.querySelector('#panel .panel-body')?.scrollTop || 0;
     const element = document.getElementById('panel'), state = this.state;
     const headers = {
+      restoration:['ВОССТАНОВЛЕНИЕ',RESTORATIONS.find(p=>p.id===this.restorationId)?.name||'Ремонт','Постоянное изменение мира.'],
       camp:['В ДАЛЬНЕЙ ВЫЛАЗКЕ','Камышовая стоянка','Отдых, печь и местный ящик. Запасы остаются здесь.'],
       'boat-repair':['У БЕРЕГА','Гребная лодка','После ремонта можно свободно ходить между островами. Топливо не требуется.'],
       salvage:['НАХОДКА','Разбор техники','Выбери, что взять с собой.'],
@@ -266,6 +268,7 @@ export class UI {
         return `<article class="recipe-card order-card"><div class="recipe-top"><span class="recipe-icon">${resourceIcon(Object.keys(order.cost)[0], 27)}</span><div><h3>${order.title}</h3><p>${order.desc}</p></div></div><div class="order-costs"><small>Передать</small><div class="costs">${costHTML(state, order.cost)}</div></div><div class="order-rewards"><small>Получить на склад</small><div>${rewardHTML(order.reward)}</div></div><div class="order-footer"><span>${status.ok ? `${icon('check', 14)} Материалы собраны` : `${icon(status.remaining ? 'clock' : 'info', 14)} ${status.reason}`}</span><button class="craft-button" data-action="deliver-order" data-id="${order.id}" ${!status.ok || !home ? 'disabled' : ''}>Передать</button></div></article>`;
       }).join('')}</div><p class="panel-note">Заказы повторяются. Время ожидания идёт во время вылазок.</p>`;
     }
+    if(this.panel==='restoration'){const p=RESTORATIONS.find(p=>p.id===this.restorationId);if(p){const status=restorationStatus(state,p.id);body=`<div class="field-feature">${recipeIcon('wrench',54)}<h3>${p.name}</h3><p>${p.desc}</p></div><p class="panel-note">Нужен гаечный ключ. Материалы берутся из рюкзака после завершения работы.</p><div class="costs field-costs">${Object.entries(p.cost).map(([id,n])=>`<span class="cost ${(state.bag[id]||0)>=n?'enough':'missing'}">${resourceIcon(id,28)} ${RESOURCES[id].name} ${state.bag[id]||0}/${n}</span>`).join('')}</div><button class="primary full-width" data-action="start-restoration" data-id="${p.id}" ${status.ok?'':'disabled'}>${icon('craft',22)} Начать · ${p.duration} сек.</button>${status.ok?'':`<p class="panel-note">${status.reason}</p>`}`;}}
     if(this.panel==='boat-repair'||this.panel==='camp'){
       const boat=this.panel==='boat-repair',ready=boat?state.boat.repaired:state.camp.ready,cost=boat?BOAT_REPAIR:CAMP.cost;
       const fieldCosts=Object.entries(cost).map(([id,n])=>`<span class="cost ${(state.bag[id]||0)>=n?'enough':'missing'}">${resourceIcon(id,26)}<span class="field-cost-name">${RESOURCES[id].name}</span><b>${state.bag[id]||0}</b><small>/${n}</small></span>`).join('');
@@ -289,7 +292,7 @@ export class UI {
     const nearbyFish=FISHING_SPOTS.some(p=>Math.hypot(p.x-state.x,p.z-state.z)<3),selectedBait=BAITS[state.fishingBait];
     const canCast=nearbyFish&&state.owned.includes('rod')&&(!selectedBait.tool||state.owned.includes(selectedBait.tool))&&(!selectedBait.resource||state.bag[selectedBait.resource]>0);
     const footer=this.panel==='fishing'?`<button class="primary full-width" data-action="cast-selected" ${canCast?'':'disabled'}>Забросить удочку ${icon('arrow',18)}</button>`:`${icon('clock',14)} Игра на паузе <span>ESC — закрыть</span>`;
-    element.innerHTML = `<header class="panel-header"><div class="eyebrow">${eyebrow}</div><button class="icon-button" data-action="close" aria-label="Закрыть меню">${icon('close')}</button><div class="panel-title"><span class="panel-title-icon">${icon(({ 'boat-repair':'boat',camp:'home',craft: 'craft',salvage:'craft','salvage-workbench':'craft',cook:'meal', inventory: 'bag', storage: 'chest', build: 'build', map: 'map', journal: 'book', settings: 'settings', architecture:'build',station:'craft', dryer:'dryrack',loadouts:'gearrack',fishing:'rod',garden:'herbs',note:'book',orders: 'board', helper: 'herbs' })[this.panel], 27)}</span><h2>${title}</h2></div>${subtitle ? `<p>${subtitle}</p>` : ''}</header><div class="panel-body">${body}</div><footer class="panel-footer">${footer}</footer>`;
+    element.innerHTML = `<header class="panel-header"><div class="eyebrow">${eyebrow}</div><button class="icon-button" data-action="close" aria-label="Закрыть меню">${icon('close')}</button><div class="panel-title"><span class="panel-title-icon">${icon(({ 'boat-repair':'boat',restoration:'craft',camp:'home',craft: 'craft',salvage:'craft','salvage-workbench':'craft',cook:'meal', inventory: 'bag', storage: 'chest', build: 'build', map: 'map', journal: 'book', settings: 'settings', architecture:'build',station:'craft', dryer:'dryrack',loadouts:'gearrack',fishing:'rod',garden:'herbs',note:'book',orders: 'board', helper: 'herbs' })[this.panel], 27)}</span><h2>${title}</h2></div>${subtitle ? `<p>${subtitle}</p>` : ''}</header><div class="panel-body">${body}</div><footer class="panel-footer">${footer}</footer>`;
     element.querySelector('.panel-body').scrollTop = scroll;
     if (this.panel === 'map') {
       const canvas = document.getElementById('large-map'); this.renderMap(canvas, true);canvas.addEventListener('wheel',event=>{event.preventDefault();this.mapZoom=Math.max(1,Math.min(4,(this.mapZoom||1)+(event.deltaY<0?.5:-.5)));this.renderMap(canvas,true);},{passive:false});
@@ -390,11 +393,13 @@ export class UI {
     ctx.clearRect(0, 0, w, h); ctx.fillStyle = '#263a34'; ctx.fillRect(0, 0, w, h);
     ctx.strokeStyle = '#65796c18'; ctx.lineWidth = 1;
     for (let i = 0; i <= 10; i++) { ctx.beginPath(); ctx.moveTo(i / 10 * w, 0); ctx.lineTo(i / 10 * w, h); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, i / 10 * h); ctx.lineTo(w, i / 10 * h); ctx.stroke(); }
-    ctx.fillStyle='#60716945';for(const r of ROADS) ctx.fillRect(...p(r.x-r.w/2,r.z-r.d/2),r.w/span*w,r.d/spanZ*h);
+    ctx.fillStyle='#60716945';for(const r of ROAD_SURFACES) ctx.fillRect(...p(r.x-r.w/2,r.z-r.d/2),r.w/span*w,r.d/spanZ*h);
     ctx.fillStyle='#557a764f';ctx.beginPath();ctx.ellipse(...p(23,-24),10/span*w,8/spanZ*h,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.ellipse(...p(115,-20),9/span*w,30/spanZ*h,0,0,Math.PI*2);ctx.fill();
     ctx.beginPath();ctx.ellipse(...p(FOREST_LAKE.x,FOREST_LAKE.z),FOREST_LAKE.rx/span*w,FOREST_LAKE.rz/spanZ*h,0,0,Math.PI*2);ctx.fill();
     ctx.fillStyle='#557a76';ctx.fillRect(...p(FLOOD_WATER.x-FLOOD_WATER.w/2,FLOOD_WATER.z-FLOOD_WATER.d/2),FLOOD_WATER.w/span*w,FLOOD_WATER.d/spanZ*h);
     ctx.fillStyle='#78846a';for(const i of FLOOD_ISLANDS)ctx.fillRect(...p(i.x-i.w/2,i.z-i.d/2),i.w/span*w,i.d/spanZ*h);
+    ctx.fillStyle='#69786b';for(const r of FLOOD_STREETS)ctx.fillRect(...p(r.x-r.w/2,r.z-r.d/2),r.w/span*w,r.d/spanZ*h);
+    ctx.fillStyle='#b0a17c';for(const r of RESTORATIONS.filter(r=>this.state.restoredRoutes.includes(r.id)).flatMap(r=>r.decks||[]))ctx.fillRect(...p(r.x-r.w/2,r.z-r.d/2),r.w/span*w,r.d/spanZ*h);
     ctx.fillStyle='#b0a17c';for(const d of FLOOD_DOCKS)ctx.fillRect(...p(d.x-d.w/2,d.z-d.d/2),d.w/span*w,d.d/spanZ*h);
     if(this.state.boat.repaired&&(this.state.visited.includes('floodshore')||this.state.boat.aboard)){const [bx,bz]=p(this.state.boat.x,this.state.boat.z);ctx.save();ctx.translate(bx,bz);ctx.rotate(-this.state.boat.heading);ctx.fillStyle='#e9c28a';ctx.beginPath();ctx.moveTo(0,-7);ctx.lineTo(4,5);ctx.lineTo(-4,5);ctx.closePath();ctx.fill();ctx.restore();}
     for(const l of LOCATIONS.filter(l=>this.state.visited.includes(l.id))) {

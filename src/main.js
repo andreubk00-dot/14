@@ -1,3 +1,4 @@
+import {RESTORATIONS,restorationStatus,restoreRoute,drainBlocked} from './restoration.js';
 import {FLOOD_DOCKS,CAMP,dockNearBoat,rowBoat,inWorld} from './floodplain.js';
 import {repairField,atCamp,transferCamp,cookCamp} from './game.js';
 import {beginEnemyAttack,advanceEnemyAttack,segmentDistance} from './enemy-combat.js';
@@ -193,6 +194,7 @@ class QuietDistrict {
       const index=Number(data.index),stored=data.stored==='true';if(Math.hypot(this.state.x+21,this.state.z-13)>=4.5){this.ui.toast('Подойди к станции рецептов.');return;}
       const cargo=(stored?this.state.storedCargo:this.state.cargo)[index];if(!cargo)return;this.ui.close();this.world.playCharacterAction('pickup');this.job={type:'process-salvage',cargo,index,stored,elapsed:0,duration:salvageDuration(this.state),label:'Разбираем технику на верстаке…'};return;
     }
+    if(action==='start-restoration'){const id=data.id,result=restorationStatus(this.state,id);if(!result.ok){this.ui.toast(result.reason);return;}const p=RESTORATIONS.find(p=>p.id===id);this.ui.close();this.job={type:'restore-route',projectId:id,elapsed:0,duration:p.duration,x:this.state.x,z:this.state.z,label:p.name+'…'};this.world.playCharacterAction('pickup');return;}
     if(action==='field-repair'){const result=repairField(this.state,data.id);if(result.ok){this.audio.craft();this.ui.toast(data.id==='boat'?'Лодка готова к выходу на воду.':'Стоянка восстановлена. Можно отдохнуть и оставить запасы.','success');this.world.renderDirty=true;this.changed();}else this.ui.toast(result.reason);return;}
     if(action==='camp-transfer'){const result=transferCamp(this.state,data.id,data.direction,Number(data.count));if(!result.ok)this.ui.toast(result.reason);this.changed();return;}
     if(action==='camp-cook'){const result=cookCamp(this.state,data.id);if(result.ok){this.audio.craft();this.ui.toast('Еда готова.','success');}else this.ui.toast(result.reason);this.changed();return;}
@@ -442,6 +444,7 @@ class QuietDistrict {
     const s = this.state, candidates = [];
     if(s.boat.aboard){const dock=dockNearBoat(s.boat);return dock?{type:'boat-land',x:dock.boat.x,z:dock.boat.z,label:'Причалить · '+dock.name,hint:'Выйти на настил',entity:dock,distance:0}:{type:'boat-water',x:s.x,z:s.z,label:'На воде',hint:'WASD / стрелки · подойди к причалу для высадки',distance:0};}
     const add = (type, x, z, label, hint, entity, range = 2.4) => { const distance = Math.hypot(s.x - x, s.z - z); if (distance < range) candidates.push({ type, x, z, label, hint, entity, distance }); };
+    for(const p of RESTORATIONS)if(!s.restoredRoutes.includes(p.id)&&Math.hypot(s.x-p.x,s.z-p.z)<2.6&&this.world.canSee(s.x,s.z,p.x,p.z,null,true))add('restoration',p.x,p.z,p.name,s.owned.includes('wrench')?'Ремонт · материалы из рюкзака':'Нужен гаечный ключ',p,2.6);
     for(const note of this.world.memories) if((s.x-note.x)**2+(s.z-note.z)**2<1.8**2&&this.world.canSee(s.x,s.z,note.x,note.z,null,true))add('note',note.x,note.z,'Прочитать запись',note.name,note,1.8);
     for (const node of this.world.nodes) if (node.group.visible&&(s.x-node.x)**2+(s.z-node.z)**2<2.4**2&&(!node.accessGate||s.openedGates.includes(node.accessGate))&&this.world.canSee(s.x,s.z,node.x,node.z,node.collider,true)) add('node', node.x, node.z, `${s.brokenNodes.includes(node.id)?'Забрать добычу':['appliance','motor'].includes(node.machine)?'Осмотреть технику':({ tree: 'Рубить дерево', wood: 'Собрать доски', stone:'Добыть камень', ore: 'Добыть металл', herbs: 'Собрать растения', electronics: 'Разобрать электронику', crate: 'Открыть ящик', cloth: 'Собрать ткань', scrap: 'Разобрать лом', drop: 'Забрать добычу' })[node.type] || (node.find?'Забрать находку':'Собрать')} · ${node.name}`, node.requires && !s.owned.includes(node.requires) ? `Нужно: ${RECIPES.find(r => r.id === node.requires)?.name}` : node.find?`Вес находки: ${FINDS[node.find].weight}`:s.brokenNodes.includes(node.id)?'Оставшиеся ресурсы в рюкзак':dismantleInfo(s.owned,node).kind?`${dismantleInfo(s.owned,node).duration.toFixed(1)} сек. · ${dismantleInfo(s.owned,node).fast?'инструмент ускоряет разбор':'ручной разбор'}`:'Добыча в рюкзак', node);
     const nearBoat=FLOOD_DOCKS.find(d=>Math.hypot(s.boat.x-d.boat.x,s.boat.z-d.boat.z)<3.2&&Math.hypot(s.x-d.foot.x,s.z-d.foot.z)<2.8);
@@ -482,6 +485,7 @@ class QuietDistrict {
     if(target.type==='boat-land'){this.landBoat();return;}
     if(target.type==='boat-board'){const b=this.state.boat;b.aboard=true;b.vx=b.vz=0;b.lastDock=target.entity.id;this.state.x=b.x;this.state.z=b.z;this.motion.reset();this.keys.clear();this.swing=null;this.world.player.position.set(b.x,.33,b.z);this.world.renderDirty=true;this.audio.water();this.changed();return;}
     if(target.type==='boat-repair'){this.ui.open('boat-repair');return;}
+    if(target.type==='restoration'){this.ui.restorationId=target.entity.id;this.ui.open('restoration');return;}
     if(target.type==='camp'){this.ui.open('camp');return;}
     if(target.type==='dryer'){this.ui.stationIndex=undefined;this.ui.dryerIndex=this.state.placed.indexOf(target.entity);this.ui.open('dryer');return;}
     if(target.type==='yardgate'){const result=toggleYardGate(this.state,target.entity,this.world.colliders);if(!result.ok)this.ui.toast(result.reason);else {this.world.renderDirty=true;this.world.syncFurniture();this.audio.playSample(target.entity.open?'door_open_1':'door_close_1',.3);this.changed();}return;}
@@ -523,7 +527,7 @@ class QuietDistrict {
   }
   beginNode(node){if(!this.world.canSee(this.state.x,this.state.z,node.x,node.z,node.collider,true)){this.ui.toast('Подойди к находке со стороны открытого прохода.');return;}if(['appliance','motor'].includes(node.machine)){this.ui.salvageNode=node.id;this.ui.open('salvage');}else this.harvest(node);}
   harvest(node) {
-    if (!node.group.visible || this.job||this.swing) return;
+    if (!node.group.visible ||drainBlocked(node.x,node.z,0,this.state.restoredRoutes)|| this.job||this.swing) return;
     if(node.accessGate&&!this.state.openedGates.includes(node.accessGate)){this.ui.toast('Сначала открой вход в помещение подходящим инструментом.');return;}
     if (node.requires && !this.state.owned.includes(node.requires)) { this.ui.toast(`Нужно изготовить: ${RECIPES.find(r => r.id === node.requires).name}`); return; }
     if (bagWeight(this.state) >= capacity(this.state)) { this.ui.toast('Рюкзак полон. Вернись домой и сложи добычу.'); return; }
@@ -540,6 +544,7 @@ class QuietDistrict {
   }
   finishJob() {
     const job = this.job; this.job = null; this.ui.progress(null);
+    if(job.type==='restore-route'){const result=restoreRoute(this.state,job.projectId);if(result.ok){this.world.syncNodes();this.world.flood.restorations.sync();this.world.renderDirty=true;this.audio.craft();this.ui.toast(job.projectId==='drain-works'?'Ремонтный зал осушен. Сквозной выход открыт.':'Мостки восстановлены. Можно идти пешком.','success');this.changed();}else this.ui.toast(result.reason);return;}
     if (job.type === 'rest') { this.state.health = Math.max(this.state.health, job.max); this.state.stamina = 100; this.ui.toast('Силы вернулись. Дом ждёт новых находок.', 'success'); this.changed(); return; }
     if(job.type==='gate'){const result=openGate(this.state,job.gate.id);if(result.ok){this.world.syncGates();if(result.received)this.showLoot(result.received,job.gate.x,job.gate.z);this.audio.craft();this.ui.toast('Проход открыт.','success');this.changed();}else this.ui.toast(result.reason);return;}
     if(job.type==='process-salvage'){const list=job.stored?this.state.storedCargo:this.state.cargo;if(list[job.index]!==job.cargo)return;const result=processSalvage(this.state,job.index,job.stored);if(result.ok){this.audio.craft();this.ui.selectedItem=null;this.ui.toast('Техника разобрана. Материалы на складе.','success');this.ui.open('salvage-workbench');this.changed();}else this.ui.toast(result.reason);return;}
@@ -722,7 +727,7 @@ class QuietDistrict {
     }
     if(this.state.boat.aboard){
       if(!manual&&this.path.length){const len=Math.hypot(dx,dz);if(len){dx/=len;dz/=len;}}
-      const b=this.state.boat,oldX=b.x,oldZ=b.z,moved=rowBoat(b,dt,dx,dz);this.state.x=b.x;this.state.z=b.z;this.state.stamina=Math.min(100,this.state.stamina+dt*8);this.world.running=false;this.world.moveSpeed=0;
+      const b=this.state.boat,oldX=b.x,oldZ=b.z,moved=rowBoat(b,dt,dx,dz,()=>false,this.state.restoredRoutes);this.state.x=b.x;this.state.z=b.z;this.state.stamina=Math.min(100,this.state.stamina+dt*8);this.world.running=false;this.world.moveSpeed=0;
       if(!manual&&this.path.length&&Math.hypot(this.path[0].x-b.x,this.path[0].z-b.z)<.25)this.path.shift();
       if(!moved&&this.path.length){this.path=[];this.world.destination.visible=false;}
       this.world.player.position.set(b.x,.33,b.z);return Math.hypot(b.x-oldX,b.z-oldZ)>.0001;

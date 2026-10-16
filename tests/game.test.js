@@ -1027,3 +1027,35 @@ test('Map destinations on an island or pier direct a boat to safe docking water'
  assert.deepEqual(waterDestination(310,59),{x:310,z:59});
  for(const o of [...FLOOD_TREES.map(t=>({...t,w:.65*t.scale,d:.65*t.scale})),...FLOOD_OBSTACLES,...FLOOD_POSTS])for(const b of FLOOD_BUILDINGS)assert.equal(overlaps(o,b,.2),false,`Obstacle ${o.x},${o.z} clips ${b.id}`);
 });
+
+import {RESTORATIONS,restoreRoute,restorationStatus,cleanRestorations,drainBlocked,restoredDecks} from '../src/restoration.js';
+import {walkRegion,FLOOD_STREETS} from '../src/floodplain.js';
+import {roadSurfaces,surfaceEdges} from '../src/roads.js';
+test('Road union has exactly one surface per point, asphalt priority and stable cell boundaries',()=>{
+ const roads=[{x:-24,z:-24,w:12,d:4},{x:-24,z:-24,w:4,d:12},{x:-24,z:-23,w:14,d:8,garden:true}],surfaces=roadSurfaces(roads);
+ const inside=(x,z,r)=>Math.abs(x-r.x)<r.w/2&&Math.abs(z-r.z)<r.d/2;
+ for(let x=-32.125;x<-15;x+=.25)for(let z=-32.125;z<-15;z+=.25){const a=roads.filter(r=>inside(x,z,r)),b=surfaces.filter(r=>inside(x,z,r));assert.equal(b.length,a.length?1:0);if(b.length)assert.equal(b[0].garden,a.every(r=>r.garden));}
+ for(const r of surfaces){assert.ok(r.w>0&&r.d>0);assert.ok(Math.floor((r.x-r.w/2+1e-7)/24)===Math.floor((r.x+r.w/2-1e-7)/24));assert.ok(Math.floor((r.z-r.d/2+1e-7)/24)===Math.floor((r.z+r.d/2-1e-7)/24));}
+ assert.deepEqual(roadSurfaces([]),[]);assert.ok(surfaceEdges(roads).every(e=>!e.w!==!e.d));
+});
+test('Every mainland road joins the district network and flood roads avoid building foundations',()=>{
+ const seen=new Set([0]),queue=[0];while(queue.length){const r=ROADS[queue.shift()];ROADS.forEach((b,i)=>{if(!seen.has(i)&&Math.abs(r.x-b.x)<=(r.w+b.w)/2+.001&&Math.abs(r.z-b.z)<=(r.d+b.d)/2+.001){seen.add(i);queue.push(i);}});}assert.equal(seen.size,ROADS.length);
+ for(const r of FLOOD_STREETS)for(const b of FLOOD_BUILDINGS)assert.ok(Math.abs(r.x-b.x)>=(r.w+b.w)/2||Math.abs(r.z-b.z)>=(r.d+b.d)/2,`${b.id} intersects street`);
+});
+test('Restoration rechecks carried resources, tool, proximity and hull clearance atomically',()=>{
+ for(const p of RESTORATIONS){const s=freshState();s.x=p.x;s.z=p.z;s.bag={...p.cost};const before=structuredClone(s);assert.equal(restoreRoute(s,p.id).ok,false);assert.deepEqual(s,before);s.owned.push('wrench');s.bag={};s.stash={...p.cost};assert.equal(restoreRoute(s,p.id).ok,false);s.bag={...p.cost};s.x+=10;assert.equal(restoreRoute(s,p.id).ok,false);s.x=p.x;
+ if(p.decks){Object.assign(s.boat,{x:p.decks[0].x,z:p.decks[0].z});assert.equal(restorationStatus(s,p.id).ok,false);Object.assign(s.boat,FLOOD_DOCKS[0].boat);}
+ assert.equal(restorationStatus(s,p.id).ok,true);assert.deepEqual(s.bag,p.cost);assert.equal(restoreRoute(s,p.id).ok,true);assert.deepEqual(s.bag,Object.fromEntries(Object.keys(p.cost).map(k=>[k,0])));const after=structuredClone(s);assert.equal(restoreRoute(s,p.id).ok,false);assert.deepEqual(s,after);assert.deepEqual(validateSave(s).restoredRoutes,[p.id]);}
+ assert.deepEqual(cleanRestorations(['bad','camp-crossing','camp-crossing',null]),['camp-crossing']);assert.deepEqual(validateSave({...freshState(),restoredRoutes:null}).restoredRoutes,[]);
+});
+test('Repaired bridges join foot regions while all five docks remain reachable by boat',()=>{
+ const ids=RESTORATIONS.map(p=>p.id);assert.notEqual(walkRegion(301,49),walkRegion(325,35));assert.equal(walkRegion(301,49,ids),walkRegion(325,35,ids));assert.equal(walkRegion(358,76,ids),walkRegion(325,35,ids));assert.equal(inFloodWater(301,40,.3),true);assert.equal(inFloodWater(301,40,.3,ids),false);assert.equal(boatWater(301,40,1.5,ids),false);
+ for(const dock of FLOOD_DOCKS){const start={x:240,z:84},goal={x:Math.round(dock.boat.x),z:Math.round(dock.boat.z)};const route=gridPath(start,goal,(x,z)=>!boatWater(x,z,1.5,ids),40000,(ax,az,bx,bz)=>!boatWater((ax+bx)/2,(az+bz)/2,1.5,ids));assert.ok(route.length,`${dock.id} unreachable`);}
+ const b=cleanBoat({repaired:true,aboard:true,x:301,z:40},ids);assert.deepEqual({x:b.x,z:b.z},FLOOD_DOCKS[0].boat);assert.ok(restoredDecks(ids).length===3);
+ assert.equal(drainBlocked(280,-68,.3),true);assert.equal(drainBlocked(280,-73,.3,ids),false);assert.equal(drainBlocked(280,-57,.3),false);
+});
+import {curbSegments} from '../src/roads.js';
+test('Street curbs leave the full width of crossing roads and footpaths open',()=>{
+ const segments=curbSegments([{x:0,z:3,w:35,d:6},{x:5,z:-8,w:4,d:2}],4.25,-20,20);
+ assert.deepEqual(segments,[[-20,-9.25],[-6.75,-.25],[6.25,20]]);
+});
