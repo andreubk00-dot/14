@@ -1,3 +1,4 @@
+import {discoverNearby} from './expedition-balance.js';
 import {roadSurfaces} from './roads.js';
 import {WORLD_BOUNDS,FLOOD_PLACES,FLOOD_PATHS} from './floodplain.js';
 export {WORLD_BOUNDS} from './floodplain.js';
@@ -52,12 +53,7 @@ export const ROADS=[
  {x:-34,z:-28,w:3,d:49},{x:-41,z:-37,w:17,d:3},
 ];
 export const ROAD_SURFACES=roadSurfaces(ROADS);
-export function discover(state,nodes=[]) {
- let changed=false;
- for(const l of LOCATIONS) if(!state.visited.includes(l.id)&&Math.hypot(state.x-l.x,state.z-l.z)<=l.radius) {state.visited.push(l.id);changed=true;}
- for(const n of nodes) if(n.id.startsWith('node-')&&!state.foundNodes.includes(n.id)&&Math.hypot(state.x-n.x,state.z-n.z)<4) {state.foundNodes.push(n.id);changed=true;}
- return changed;
-}
+export function discover(state,nodes=[]){return discoverNearby(state,LOCATIONS,nodes);}
 export function cycleLoot(id,base,cycle) {
  if(!cycle) return {...base};
  let hash=2166136261;for(const char of `${id}:${cycle}`) hash=Math.imul(hash^char.charCodeAt(0),16777619)>>>0;

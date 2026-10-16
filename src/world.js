@@ -1,3 +1,6 @@
+import {supplyPeriod} from './expedition-balance.js';
+import {patrolRoute} from './patrols.js';
+import {dressRoom,roomTheme} from './room-dressing.js';
 import {curbSegments} from './roads.js';
 import {drainBlocked} from './restoration.js';
 import {FloodWorld} from './flood-world.js';
@@ -238,6 +241,7 @@ export class World {
     for (let i = 0; i < 19; i++) this.puddle(rng() * 7 - 3.5, rng() * 78 - 39, 0.9 + rng() * 2.5, 0.5 + rng());
     this.mirrors.surface(-.8,17,2.5,1.15);this.mirrors.surface(-18,23,2,1);
     this.buildHome(); this.buildMarket(); this.buildDepot(); this.furnishExpeditions(); this.buildOutskirts(); this.buildScenes(); this.buildExpandedDistrict(); this.buildNewQuarter(); this.buildDeepDistrict(); this.buildPond(); this.buildTower();this.buildExpeditionDetails();this.buildFrontier();this.buildOutlands();
+    for(const [x,z,theme]of [[-49,32,'clinic'],[29,6,'tailor'],[51,12,'workshop'],[-15,-48,'workshop'],[26,36,'kitchen'],[-42,-44,'garden'],[27,50,'fish'],[10,50,'kitchen'],[10,59,'tailor']]){const room=this.buildings.find(b=>b.x===x&&b.z===z);dressRoom(this,room,theme);}
     // Treelines frame the district, leaving the traversable paths readable.
     for (let i = 0; i < 180; i++) {
       const x = rng() * 126 - 63, z = rng() * 126 - 63;
@@ -356,7 +360,7 @@ export class World {
       parent.add(merged); mergedWalls.push(merged);
     }
     wallMeshes.splice(0,wallMeshes.length,...mergedWalls);
-    const building={x,z,w,d,roofMeshes,wallMeshes,inside:isInsideBuilding({x,z,w,d},this.state.x,this.state.z)};
+    const building={x,z,w,d,h,roofMeshes,wallMeshes,inside:isInsideBuilding({x,z,w,d},this.state.x,this.state.z)};
     for(const mesh of roofMeshes) { mesh.material.opacity=building.inside?0.035:mesh.material.userData.baseOpacity; mesh.material.depthWrite=!building.inside&&mesh.material.opacity>.98; }
     for(const mesh of wallMeshes) { mesh.material.opacity=building.inside?0.13:mesh.material.userData.baseOpacity; mesh.material.depthWrite=!building.inside&&mesh.material.opacity>.98; }
     const detailStart=building.wallMeshes.length;
@@ -373,7 +377,7 @@ export class World {
     this.buildings.push(building);this.shelterIndex.add(building,.25);
   }
   mergeBuildingDetails(building,start){
-    const meshes=building.wallMeshes.splice(start),colors=new Set(meshes.map(m=>m.material.color.getHexString())),batches=new Map();for(let i=building.wallMeshes.length-1;i>=0;i--){const m=building.wallMeshes[i];let parent=m,animated=false;while(parent){if(parent===this.solarRoof)animated=true;parent=parent.parent;}if(!animated&&!m.material.map&&!m.userData.canopyBounds&&(m.material.userData.baseOpacity??1)===1&&colors.has(m.material.color.getHexString()))meshes.push(...building.wallMeshes.splice(i,1));}this.scene.updateMatrixWorld(true);
+    const meshes=building.wallMeshes.splice(start),colors=new Set(meshes.map(m=>m.material.color.getHexString())),batches=new Map();for(let i=building.wallMeshes.length-1;i>=0;i--){const m=building.wallMeshes[i];let parent=m,animated=false;while(parent){if(parent===this.solarRoof)animated=true;parent=parent.parent;}if(!animated&&!m.userData.roomDressing&&!m.material.map&&!m.userData.canopyBounds&&(m.material.userData.baseOpacity??1)===1&&colors.has(m.material.color.getHexString()))meshes.push(...building.wallMeshes.splice(i,1));}this.scene.updateMatrixWorld(true);
     for(const m of meshes){const key=m.material.color.getHexString();if(!batches.has(key))batches.set(key,[]);batches.get(key).push(m);}
     for(const group of batches.values()){const parts=group.map(m=>m.geometry.clone().applyMatrix4(m.matrixWorld)),geometry=mergeGeometries(parts);parts.forEach(g=>g.dispose());if(!geometry){building.wallMeshes.push(...group);continue;}const material=group[0].material;for(const m of group){m.parent.remove(m);m.geometry.dispose();if(m.material!==material)m.material.dispose();}const merged=new THREE.Mesh(geometry,material);merged.userData.cutaway=true;merged.renderOrder=2;material.opacity=building.inside?.13:1;material.depthWrite=!building.inside;merged.castShadow=!building.inside;merged.receiveShadow=true;this.scene.add(merged);building.wallMeshes.push(merged);}
   }
@@ -872,6 +876,7 @@ export class World {
       if(b.style==='village'||b.style==='retail'){this.canopy(b.x,b.z+b.d/2+1.2,b.w*.7,2,2.6,'#74816b');this.box(b.x-b.w*.25,.35,b.z+b.d/2+1,1.3,.6,.6,'#89926f');this.collider(b.x-b.w*.25,b.z+b.d/2+1,1.3,.6);}
       if(b.style==='orchard'&&b.index===0){for(const x of [b.x-b.w/2+1.2,b.x+b.w/2-1.2]){this.box(x,.35,b.z+.5,.7,.5,2,'#a09873');for(const z of [b.z,b.z+1])this.bush(x,z,.3);this.collider(x,b.z+.5,.7,2);}}
     }
+    for(const b of FRONTIER_BUILDINGS){const room=this.buildings.find(r=>r.x===b.x&&r.z===b.z);dressRoom(this,room,roomTheme(b),b.index);}
     for(const b of FRONTIER_BUILDINGS.filter(b=>b.style==='orchard'))furnishOrchard(this,b,this.buildings.find(r=>r.x===b.x&&r.z===b.z));
     buildOrchardGarden(this);
     for(const q of QUARTERS){
@@ -1019,7 +1024,7 @@ export class World {
         for (let j = 0; j < 4; j++) this.box((rng() - 0.5) * 0.7, 0.2 + j * 0.12, (rng() - 0.5) * 0.6, 0.6 + rng() * 0.3, 0.25, 0.5, j % 2 ? '#7f897a' : '#626f67', group).rotation.y = rng() * 3;
       }
       const marker = this.marker(x, 1.5, z, type === 'herbs' ? '#a9c181' : '#e7c993');
-      const node = { id: `node-${i}`, type, name, x, z, loot: { ...(this.state.nodeLoot[`node-${i}`] || expeditionLoot({id:`node-${i}`,type,x,z,originalLoot:loot,regionProfile},this.state.depleted[`node-${i}`]===undefined?0:Math.floor(this.state.elapsed/(type==='herbs'?120:240)))) }, originalLoot: { ...loot },regionProfile,seedCrop, requires, find, accessGate:gateForPoint(x,z), machine:kind, group, marker, respawnTime: type === 'herbs' ? 120 : 240 };
+      const node = { id: `node-${i}`, type, name, x, z, loot: { ...(this.state.nodeLoot[`node-${i}`] || expeditionLoot({id:`node-${i}`,type,x,z,originalLoot:loot,regionProfile},this.state.depleted[`node-${i}`]===undefined?0:Math.floor(this.state.elapsed/(supplyPeriod({type,machine:kind,originalLoot:loot}))))) }, originalLoot: { ...loot },regionProfile,seedCrop, requires, find, accessGate:gateForPoint(x,z), machine:kind, group, marker, respawnTime: supplyPeriod({type,machine:kind,originalLoot:loot}) };
       if(kind||find||type==='crate') {const f=find?footprint({id:find,x:0,z:0}):null;const size=kind==='standingtree'?[.6,.6]:kind==='quarry'?[2.1,1.6]:find?(['wallclock','wallshelf'].includes(find)?[1.05,1.13]:[f.w*.6,f.d*.6]):type==='crate'?[1.05,1.13]:kind==='motor'?[1.35,.95]:kind==='appliance'?[1,.8]:kind==='radio'?[.9,.4]:[.9,.6];node.collider=this.collider(x,z,...size);}
       group.traverse(mesh => { mesh.userData.node = node; if (mesh.isMesh) this.pickables.push(mesh); });
       const fieldLights=[];group.traverse(o=>{if(o.isPointLight)fieldLights.push(o);});for(const light of fieldLights)this.pinLight(light,group);
@@ -1041,6 +1046,7 @@ export class World {
       const kind=i>=14?([...OUTLAND_PATROLS,...FLOOD_PATROLS][i-14].kind||'guardian'):([0,5,7].includes(i)?'scout':'guardian');
       const health=DRONE_TYPES[kind].health||52;
       const enemy = {kind,facing:0,alert:0,windup:0,patrolIndex:0, id: `drone-${i}`, x, z, originX: x, originZ: z, health: deadAt >= 0 && this.state.elapsed - deadAt < 180 ? 0 : health, maxHealth: health, group, core, cooldown: 0, deadAt, seed: rng() * 10 };
+      enemy.patrolRoute=patrolRoute(enemy.id,{x,z},(x,z,r)=>this.blocked(x,z,r));
       group.traverse(mesh => { mesh.userData.enemy = enemy; if (mesh.isMesh) this.pickables.push(mesh); }); const type=DRONE_TYPES[kind],vertices=[0,0,0];for(let a=-type.angle/2;a<=type.angle/2+.001;a+=type.angle/24)vertices.push(Math.sin(a)*type.vision,0,Math.cos(a)*type.vision);
       const geo=new THREE.BufferGeometry(),indices=[];geo.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));for(let j=1;j<vertices.length/3-1;j++)indices.push(0,j+1,j);geo.setIndex(indices);geo.computeVertexNormals();
       enemy.cone=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:kind==='scout'?'#9ab6ac':'#c6a875',transparent:true,opacity:.06,depthWrite:false,side:THREE.DoubleSide}));enemy.cone.position.set(x,.058,z);this.scene.add(enemy.cone);

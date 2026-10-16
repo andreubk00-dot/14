@@ -1059,3 +1059,24 @@ test('Street curbs leave the full width of crossing roads and footpaths open',()
  const segments=curbSegments([{x:0,z:3,w:35,d:6},{x:5,z:-8,w:4,d:2}],4.25,-20,20);
  assert.deepEqual(segments,[[-20,-9.25],[-6.75,-.25],[6.25,20]]);
 });
+
+import {supplyPeriod,discoverNearby} from '../src/expedition-balance.js';
+import {PATROL_ROUTES,patrolRoute,idlePatrolTarget} from '../src/patrols.js';
+import {roomTheme} from '../src/room-dressing.js';
+test('Supply recovery supports varied trips, preserves natural harvesting pace and never renews drops',()=>{
+ assert.equal(supplyPeriod({type:'herbs'}),120);assert.equal(supplyPeriod({type:'tree',machine:'standingtree'}),240);assert.equal(supplyPeriod({type:'ore',machine:'quarry'}),240);assert.equal(supplyPeriod({type:'crate'}),480);assert.equal(supplyPeriod({type:'scrap',machine:'motor'}),600);assert.equal(supplyPeriod({type:'crate',originalLoot:{battery:1}}),900);assert.equal(supplyPeriod({type:'drop',originalLoot:{battery:1}}),Infinity);
+});
+test('Discovery remains append-only, idempotent and respects distances and temporary drops',()=>{
+ const s=freshState(),places=[{id:'near',x:s.x,z:s.z,radius:2},{id:'far',x:s.x+3,z:s.z,radius:2}],nodes=[{id:'node-1',x:s.x,z:s.z},{id:'node-1',x:s.x,z:s.z},{id:'node-2',x:s.x+4,z:s.z},{id:'drop-1',x:s.x,z:s.z}];assert.equal(discoverNearby(s,places,nodes),true);assert.deepEqual(s.visited,['home','near']);assert.deepEqual(s.foundNodes,['node-1']);assert.equal(discoverNearby(s,places,nodes),false);
+ s.x+=1;assert.equal(discoverNearby(s,places,nodes),true);assert.deepEqual(s.foundNodes,['node-1','node-2']);assert.deepEqual(validateSave(s).foundNodes,s.foundNodes);
+});
+test('Room stocks and visual themes follow intended use without changing content identities',()=>{
+ const library=FRONTIER_BUILDINGS.find(b=>b.style==='school'&&b.index===1);assert.equal(roomTheme(library),'library');const books=FRONTIER_NODES.filter(n=>Math.abs(n[2]-library.x)<library.w/2&&Math.abs(n[3]-library.z)<library.d/2);assert.ok(books.every(n=>!n[4].parts&&!n[4].wire&&!n[4].medicine));
+ assert.equal(roomTheme({style:'village',index:1}),'tailor');assert.equal(roomTheme({style:'retail',index:2}),'clinic');
+ const pack=RECIPES.find(r=>r.id==='trailpack');assert.equal(pack.cost.battery,undefined);assert.equal(pack.capacity,80);assert.equal(pack.requires,'bag2');assert.ok(pack.cost.cloth>RECIPES.find(r=>r.id==='bag2').cost.cloth);
+ const fresh=freshState();fresh.owned=['bag','bag2'];fresh.stash={...pack.cost};assert.equal(craft(fresh,'trailpack').ok,true);assert.equal(capacity(fresh),80);assert.equal(validateSave(fresh).equipment.bag,'trailpack');
+});
+test('Patrol routes avoid blocked waypoints, keep leashes and advance through actual route length',()=>{
+ const blocked=(x,z)=>x===1&&z===0,origin={x:0,z:0},route=patrolRoute('unknown',origin,blocked);assert.ok(route.length>=3);assert.ok(route.every(p=>!blocked(p.x,p.z)&&Math.hypot(p.x,p.z)<9));
+ const enemy={x:0,z:0,patrolIndex:0,patrolRoute:[{x:0,z:0},{x:1,z:0},{x:0,z:2}]};assert.equal(idlePatrolTarget(enemy,blocked),null);assert.equal(enemy.patrolIndex,1);assert.equal(idlePatrolTarget(enemy,blocked),null);assert.equal(enemy.patrolIndex,2);assert.deepEqual(idlePatrolTarget(enemy,blocked),{x:0,z:2});enemy.z=2;assert.equal(idlePatrolTarget(enemy,blocked),null);assert.equal(enemy.patrolIndex,0);assert.equal(Object.keys(PATROL_ROUTES).length,9);
+});

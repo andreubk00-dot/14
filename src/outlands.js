@@ -1,3 +1,4 @@
+import {dressRoom} from './room-dressing.js';
 import {FLOOD_PATHS} from './floodplain.js';
 import * as THREE from 'three';
 // The old district remains in place. New places, supplies and harvest sites append to it.
@@ -73,6 +74,11 @@ function supplies(b){
  if(b.id==='fishhut')return [{cloth:3,wood:3},{fish:3,herbs:2,wire:1}];
  if(b.id==='northshed')return [{metal:4,parts:3,battery:1},{wood:5,wire:3}];
  if(b.id==='pinehouse')return [{cloth:5,wood:4},{herbs:3,water:3}];
+ if(b.id==='northhouse')return [{cloth:6,wood:3},{medicine:1,water:3}];
+ if(b.id==='bankhouse')return [{cloth:4,wood:2},{fish:3,water:3}];
+ if(b.id==='easthouse')return [{cloth:4,parts:2},{water:3,herbs:3}];
+ if(b.id==='gardenhouse')return [{seeds:3,vegetables:3},{herbs:4,water:2}];
+ if(b.id==='camp')return [{vegetables:4,wood:3},{fish:3,water:3}];
  if(b.id==='bluecottage')items[0]={cloth:6,wood:2};
  if(b.id==='sharedkitchen')items[0]={vegetables:5,herbs:3};
  if(b.id==='quarryshop')items[1]={metal:5,wire:3,wood:3};
@@ -267,7 +273,7 @@ export function buildOutlandScenery(w){
   }
   if(b.id==='quarryshop')for(const dx of [-.45,0,.45])w.box(right+dx,1.03,back,.25,.18,.3,'#8e9a91');
   if(b.id==='sharedkitchen')for(const dx of [-.3,.3])w.cylinder(right+dx,1.04,back,.09,.18,'#d4c5a1',w.scene,8);
-  w.mergeBuildingDetails(room,start);
+  w.mergeBuildingDetails(room,start);dressRoom(w,room,b.role,OUTLAND_BUILDINGS.indexOf(b));
   if(['cabin','ranger','fish'].includes(b.role))w.canopy(b.x,b.z+b.d/2+.65,b.w*.65,1.6,2.6,'#7e8068');
  }
  // Forestry: a timber drying rack and stacked cut logs beside the outer trail.

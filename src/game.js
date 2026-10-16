@@ -32,7 +32,7 @@ export const RESOURCES = {
 export const RECIPES = [
  {id:'cargorack',name:'Стеллаж для техники',category:'shelter',desc:'Хранение целой техники: +12 мест к четырём базовым. Работает после установки дома. Общий предел: 200 агрегатов.',cost:{wood:10,metal:6},placeable:true},
  {id:'precisionbench',name:'Разборочный верстак',category:'shelter',desc:'Разбор привезённой техники за 1,6 вместо 3,2 секунды. Ещё одна ремонтная деталь с каждого груза.',cost:{metal:18,parts:12,wire:6,battery:1},requires:'generator',fixed:true},
- {id:'trailpack',name:'Рюкзак дальнего маршрута',category:'gear',desc:'Вместимость 80 без штрафа скорости. Для вылазок в дальние кварталы.',cost:{cloth:18,metal:6,parts:6,battery:1},requires:'bag2',slot:'bag',capacity:80},
+ {id:'trailpack',name:'Рюкзак дальнего маршрута',category:'gear',desc:'Вместимость 80 без штрафа скорости. Для вылазок в дальние кварталы.',cost:{cloth:16,metal:4,parts:4},requires:'bag2',slot:'bag',capacity:80},
  {id:'quietboots',name:'Мягкие походные ботинки',category:'gear',desc:'Скорость +12% · дистанция обнаружения −15%. Тихий обход патрулей.',cost:{cloth:10,parts:4,metal:3},requires:'boots',slot:'boots',speedMultiplier:1.12,visibilityMultiplier:.85},
  {id:'yardfence',name:'Деревянная ограда',category:'shelter',desc:'Секция 2 м для двора. Секции ставятся вплотную; проход к дому должен оставаться свободным.',cost:{wood:4,stone:1},placeable:true},
  {id:'yardgate',name:'Дворовая калитка',category:'shelter',desc:'Проход в ограде. Открывается рядом клавишей E; створка участвует в коллизиях.',cost:{wood:4,metal:2},placeable:true},

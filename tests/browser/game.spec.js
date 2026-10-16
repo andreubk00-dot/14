@@ -4,6 +4,7 @@ import { test, expect } from '@playwright/test';
 test.beforeEach(async ({ page }) => {
   page.__errors = [];
   page.on('pageerror', error => page.__errors.push(error.message));
+  page.on('console',message=>{if(message.type()==='error')page.__errors.push(message.text());});
 });
 test.afterEach(async ({ page }) => { expect(page.__errors).toEqual([]); });
 
@@ -1198,4 +1199,23 @@ test('Restored crossings and drained hall agree with paths, collisions, loot and
  const roofs=await page.evaluate(()=>{const g=window.__quietDistrict,w=g.world;w.updateRoofs(1);return w.buildings.filter(b=>['servicehall','works-passage'].includes(b.id)).map(b=>({id:b.id,roof:b.roofMeshes.length,inside:b.inside}));});expect(roofs.find(r=>r.id==='servicehall')).toMatchObject({inside:true});expect(roofs.every(r=>r.roof>0)).toBe(true);
  await jump(page,277,-71.4);await page.keyboard.press('KeyE');await page.evaluate(()=>{const g=window.__quietDistrict;g.visibilityPaused=false;for(let i=0;i<302&&g.job;i++)g.tick(1/60);g.visibilityPaused=true;});expect(await page.evaluate(()=>window.__quietDistrict.state.bag.battery)).toBe(1);
  await page.evaluate(()=>window.__quietDistrict.save());const context=page.context();await page.close();const restored=await context.newPage();restored.on('pageerror',e=>page.__errors.push(e.message));try{await restored.goto('/');await expect(restored.locator('[data-action="start"]')).toBeEnabled({timeout:90000});await restored.locator('[data-action="start"]').click();expect(await restored.evaluate(()=>window.__quietDistrict.state.restoredRoutes)).toEqual(['camp-crossing','garden-crossing','drain-works']);expect(await restored.evaluate(()=>window.__quietDistrict.world.blocked(280,-68))).toBe(false);expect(await restored.evaluate(()=>window.__quietDistrict.state.bag.battery)).toBe(1);}finally{await restored.close();}
+});
+
+test('Purposeful room stocks, patrol loops and recovery periods support varied expeditions',async({page})=>{
+ test.setTimeout(240000);await start(page,{owned:['bridge','axe','pick','wrench','cutter'],openedGates:['yard','salvage','garage-path','pump-path']});
+ const audit=await page.evaluate(async()=>{
+  const g=window.__quietDistrict,w=g.world;g.visibilityPaused=true;const {PATROL_ROUTES}=await import('/src/patrols.js'),all=w.enemies,results=[];
+  for(const id of Object.keys(PATROL_ROUTES)){
+   const e=all.find(e=>e.id===id);w.enemies=[e];g.state.x=e.originX+24;g.state.z=e.originZ;e.x=e.originX;e.z=e.originZ;e.alert=0;e.suspicion=0;e.patrolIndex=0;e.route=null;e.routeAt=-Infinity;e.courseAt=-Infinity;const visited=new Set();let clipped=false;
+   for(let n=0;n<12000&&visited.size<e.patrolRoute.length;n++){const p=e.patrolRoute[e.patrolIndex];if(Math.hypot(e.x-p.x,e.z-p.z)<.4)visited.add(e.patrolIndex);g.state.elapsed+=1/60;g.updateEnemies(1/60);if(w.blocked(e.x,e.z,.34)){clipped=true;break;}}
+   results.push({id,visited:visited.size,total:e.patrolRoute.length,clipped,points:e.patrolRoute,at:{x:e.x,z:e.z},index:e.patrolIndex});
+  }w.enemies=all;
+  const rooms=w.buildings.filter(b=>b.dressingTheme),batches=rooms.map(b=>({theme:b.dressingTheme,count:b.wallMeshes.filter(m=>m.userData.roomDressing).length,colors:b.wallMeshes.find(m=>m.userData.roomDressing)?.geometry.hasAttribute('color'),finite:b.wallMeshes.filter(m=>m.userData.roomDressing).every(m=>Array.from(m.geometry.attributes.position.array).every(Number.isFinite))}));
+  g.state.x=29;g.state.z=6;w.updateRoofs(1);const room=w.buildings.find(b=>b.x===29&&b.z===6),detail=room.wallMeshes.find(m=>m.userData.roomDressing),inside=detail.material.opacity;g.state.x=36;g.state.z=20;w.updateRoofs(1);const outside=detail.material.opacity;
+  const library=w.nodes.filter(n=>n.name.startsWith('библиотека')),periods={herbs:w.nodes.find(n=>n.type==='herbs').respawnTime,ore:w.nodes.find(n=>n.machine==='quarry').respawnTime,stock:library[0].respawnTime,rare:w.nodes.find(n=>n.originalLoot.battery).respawnTime};
+  const crate=library[0];g.state.depleted[crate.id]=g.state.elapsed;delete g.state.nodeLoot[crate.id];g.state.x=-18;g.state.z=23;w.syncNodes();const depleted=!crate.group.visible;g.state.elapsed+=241;w.syncNodes();const stillEmpty=!crate.group.visible;g.state.elapsed+=240;w.syncNodes();const renewed=crate.group.visible;
+  return {results,batches,inside,outside,periods,depleted,stillEmpty,renewed,nodeCount:w.nodes.length,library:library.map(n=>n.originalLoot)};
+ });console.log('Expedition audit',JSON.stringify(audit));expect(audit.results.every(r=>r.visited===r.total&&!r.clipped)).toBe(true);expect(audit.batches.length).toBe(50);expect(audit.batches.every(b=>b.count===1&&b.colors&&b.finite)).toBe(true);expect(audit.inside).toBeLessThan(.14);expect(audit.outside).toBeGreaterThan(.99);expect(audit.periods).toEqual({herbs:120,ore:240,stock:480,rare:900});expect(audit.depleted&&audit.stillEmpty&&audit.renewed).toBe(true);expect(audit.nodeCount).toBe(385);expect(audit.library.every(l=>!l.parts&&!l.wire&&!l.medicine)).toBe(true);
+ await jump(page,29,6);await page.evaluate(()=>{const g=window.__quietDistrict,w=g.world;w.cameraCenter.set(29,0,6);w.viewSize=19;w.freezeBuildCamera=true;w.resize();w.updateRoofs(1);w.update(.016,false,true);});await page.screenshot({path:'/tmp/v250-tailor.png'});
+ await jump(page,-95,4);await page.evaluate(()=>{const g=window.__quietDistrict,w=g.world;w.cameraCenter.set(-95,0,4);w.updateRoofs(1);w.update(.016,false,true);});await page.screenshot({path:'/tmp/v250-library.png'});
 });

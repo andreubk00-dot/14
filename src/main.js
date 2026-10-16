@@ -1,3 +1,4 @@
+import {idlePatrolTarget} from './patrols.js';
 import {RESTORATIONS,restorationStatus,restoreRoute,drainBlocked} from './restoration.js';
 import {FLOOD_DOCKS,CAMP,dockNearBoat,rowBoat,inWorld} from './floodplain.js';
 import {repairField,atCamp,transferCamp,cookCamp} from './game.js';
@@ -622,7 +623,7 @@ class QuietDistrict {
     const visibility=gearProfile(this.state,RECIPES).visibility;
     for(const e of this.world.enemies){
       const type=DRONE_TYPES[e.kind]||DRONE_TYPES.guardian;
-      if(e.health<=0){e.windup=0;e.attack=null;if(this.state.elapsed-e.deadAt>180){e.health=e.maxHealth;e.x=e.originX;e.z=e.originZ;e.alert=0;e.suspicion=0;e.route=null;e.stagger=0;e.cooldown=0;delete this.state.droneDeaths[e.id];}continue;}
+      if(e.health<=0){e.windup=0;e.attack=null;if(this.state.elapsed-e.deadAt>180){e.health=e.maxHealth;e.x=e.originX;e.z=e.originZ;e.alert=0;e.suspicion=0;e.route=null;e.routeAt=-Infinity;e.courseAt=-Infinity;e.patrolIndex=0;e.stagger=0;e.cooldown=0;delete this.state.droneDeaths[e.id];}continue;}
       e.cooldown=Math.max(0,e.cooldown-dt);const distance=Math.hypot(e.x-this.state.x,e.z-this.state.z),leash=Math.hypot(e.x-e.originX,e.z-e.originZ);
       if(distance>30&&e.alert<=0&&!e.attack){e.suspicion=0;e.windup=0;continue;}
       const sight=distance<type.vision*visibility&&this.world.canSee(e.x,e.z,this.state.x,this.state.z),seen=leash<10&&droneSees(e,this.state,sight,visibility);
@@ -649,14 +650,14 @@ class QuietDistrict {
         target=e.kind==='gunner'&&sight&&distance<3?{x:e.x+(e.x-this.state.x)/(distance||1)*2,z:e.z+(e.z-this.state.z)/(distance||1)*2}:e.lastSeen;
         if(Math.hypot(target.x-e.originX,target.z-e.originZ)>9.5)target={x:e.originX,z:e.originZ};
       }
-      else {const a=e.patrolIndex*Math.PI/2;target={x:e.originX+Math.sin(a)*2.2,z:e.originZ+Math.cos(a)*2.2};if(this.world.blocked(target.x,target.z)||Math.hypot(e.x-target.x,e.z-target.z)<.35){e.patrolIndex=(e.patrolIndex+1)%4;continue;}}
+      else target=idlePatrolTarget(e,(x,z,r)=>this.world.blocked(x,z,r));
       if(!target||e.windup>0)continue;
       const destination=this.world.enemyWaypoint(e,target,this.state.elapsed);if(!destination)continue;
       const dx=destination.x-e.x,dz=destination.z-e.z,length=Math.hypot(dx,dz);if(length<(e.alert>0&&destination===target?1.3:.12))continue;
       const speed=e.alert>0?type.speed:type.patrolSpeed,nx=e.x+dx/length*speed*dt,nz=e.z+dz/length*speed*dt,oldX=e.x,oldZ=e.z;
       if(!this.world.blocked(nx,e.z,.35))e.x=nx;if(!this.world.blocked(e.x,nz,.35))e.z=nz;
       e.facing=Math.atan2(dx,dz);e.group.rotation.y=e.facing;
-      if(Math.hypot(e.x-oldX,e.z-oldZ)<.001){e.stuck=(e.stuck||0)+dt;if(e.stuck>.7){e.route=null;e.routeAt=-Infinity;if(e.alert<=0)e.patrolIndex=(e.patrolIndex+1)%4;e.stuck=0;}}else e.stuck=0;
+      if(Math.hypot(e.x-oldX,e.z-oldZ)<.001){e.stuck=(e.stuck||0)+dt;if(e.stuck>.7){e.route=null;e.routeAt=-Infinity;if(e.alert<=0)e.patrolIndex=(e.patrolIndex+1)%e.patrolRoute.length;e.stuck=0;}}else e.stuck=0;
     }
   }
   die() {
@@ -666,7 +667,7 @@ class QuietDistrict {
     this.motion.reset(); this.keys.clear(); this.touchMovement = { x: 0, z: 0 };
     const wasAboard=this.state.boat.aboard;respawn(this.state); this.path = []; this.target = null; this.job = null; this.cancelFishing(); this.cancelBuild();
     this.world.move(this.state.x, this.state.z); this.ui.progress(null); this.world.destination.visible = false;
-    for (const enemy of this.world.enemies) { enemy.x = enemy.originX; enemy.z = enemy.originZ; }
+    for (const enemy of this.world.enemies) { enemy.x = enemy.originX; enemy.z = enemy.originZ;enemy.patrolIndex=0;enemy.route=null;enemy.routeAt=-Infinity;enemy.courseAt=-Infinity; }
     this.updateGrave(); this.ui.toast(wasAboard?'Ты очнулся дома. Лодка у берегового причала, рюкзак — у последнего места высадки.':'Ты очнулся дома. Рюкзак остался на месте — его можно вернуть.'); this.changed();
   }
   updateGrave() {
