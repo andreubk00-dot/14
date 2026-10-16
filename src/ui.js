@@ -1,3 +1,5 @@
+import {WORLD_BOUNDS,FLOOD_ISLANDS,FLOOD_WATER,FLOOD_DOCKS,CAMP,BOAT_REPAIR} from './floodplain.js';
+import {atCamp,campWeight,fieldCost} from './game.js';
 import {FOREST_LAKE} from './outlands.js';
 import {SUPPLY_FIELDS,FOOD_EFFECTS,activeFood,foodTime} from './food.js';
 import {cargoStorageCapacity,salvageDuration} from './salvage.js';
@@ -111,7 +113,7 @@ export class UI {
     const minimap = document.querySelector('.minimap'); minimap.classList.toggle('collapsed', !state.settings.minimapExpanded);
     minimap.querySelector('[data-action="toggle-minimap"]').setAttribute('aria-expanded', String(!!state.settings.minimapExpanded));
     document.getElementById('toolbar-bag-count').textContent = `${Number(bag.toFixed(1))}/${cap}`;
-    this.renderHotbar();
+    this.renderHotbar();document.body.classList.toggle('aboard',state.boat.aboard);
     this.root.classList.toggle('home-zone', state.x >= -27 && state.x <= -6 && state.z >= 5 && state.z <= 27);
     this.setHTML('sound-button', icon(state.settings.sound ? 'sound' : 'mute'));
     const minutes = (17 * 60 + 42 + Math.floor(state.elapsed / 2)) % 1440;
@@ -120,7 +122,9 @@ export class UI {
     if (state.settings.minimapExpanded) this.renderMap(this.map);
   }
   renderHotbar() {
-    const state = this.state, choice = hotbarItem(state, state.hotbar[state.hotbarSelected]);
+    const state=this.state;
+    if(state.boat.aboard){this.setHTML('hotbar',`<div class="boat-controls">${icon('boat',36)}<div><strong>Гребная лодка</strong><small>WASD / стрелки · E у причала</small></div><button class="icon-button" data-action="map" aria-label="Открыть карту водного маршрута">${icon('map',26)}</button></div>`);return;}
+    const choice = hotbarItem(state, state.hotbar[state.hotbarSelected]);
     const selected = choice && (choice.slot !== 'weapon' && choice.id !== 'pipe' || state.equipment.weapon === choice.id) ? choice : hotbarItem(state, state.equipment.weapon);
     this.setHTML('hotbar', `<div class="hotbar-heading"><span>${selected ? `${recipeIcon(selected.id, 22)} <span class="hotbar-item-name">${selected.name}</span>${['pistol','carbine'].includes(selected.id)?`<b id="equipped-ammo" aria-label="Зарядов: ${state.ammo}">${icon('ammo',18)} ${state.ammo}</b>`:''}` : weapon(state).name}</span><button data-action="inventory" aria-label="Открыть рюкзак">${icon('bag', 22)} ${Number(bagWeight(state).toFixed(1))}/${capacity(state)}</button></div><div class="hotbar-slots">${state.hotbar.map((id, index) => {
       const item = hotbarItem(state, id), active = index === state.hotbarSelected && item && !item.supply && (item.slot !== 'weapon' && item.id !== 'pipe' || state.equipment.weapon === id);
@@ -146,7 +150,7 @@ export class UI {
   }
   context(target) {
     const element = document.getElementById('context'); element.hidden = !target;
-    if (target) this.setHTML('context', `<button data-action="interact"><span class="context-icon">${recipeIcon(({ node: target.entity?.find||target.entity?.requires || ({ scrap: 'metal', herbs: target.entity?.originalLoot?.seeds ? 'seeds' : 'herbs', wood: 'wood', tree: 'axe', ore: 'pick', crate: 'chest', electronics: 'wire', cloth: 'cloth' })[target.entity?.type] || 'bag', station: 'craft', storage: 'chest', bed: 'bed', fish: 'rod', grave: 'bag', production: target.entity?.id || 'parts', water: 'water', orders: 'board', helper:'herbs',dryer:'dryrack',loadouts:'gearrack',gate:target.entity?.tool,garden:'cropbed',note:'book','furniture-toggle':target.entity?.id })[target.type], 21)}</span><kbd>E</kbd><span>${target.label}</span>${target.hint ? `<small>${target.hint}</small>` : ''}</button>${target.options>1?`<button class="context-next" data-action="cycle-interaction" aria-label="Выбрать другой предмет рядом">${icon('arrow',20)} ${target.optionIndex}/${target.options} <kbd>F</kbd></button>`:''}`);
+    if (target) this.setHTML('context', `<button data-action="interact"><span class="context-icon">${recipeIcon(({ 'boat-board':'boat','boat-land':'boat','boat-water':'boat','boat-repair':'craft',camp:'home',node: target.entity?.find||target.entity?.requires || ({ scrap: 'metal', herbs: target.entity?.originalLoot?.seeds ? 'seeds' : 'herbs', wood: 'wood', tree: 'axe', ore: 'pick', crate: 'chest', electronics: 'wire', cloth: 'cloth' })[target.entity?.type] || 'bag', station: 'craft', storage: 'chest', bed: 'bed', fish: 'rod', grave: 'bag', production: target.entity?.id || 'parts', water: 'water', orders: 'board', helper:'herbs',dryer:'dryrack',loadouts:'gearrack',gate:target.entity?.tool,garden:'cropbed',note:'book','furniture-toggle':target.entity?.id })[target.type], 21)}</span><kbd>E</kbd><span>${target.label}</span>${target.hint ? `<small>${target.hint}</small>` : ''}</button>${target.options>1?`<button class="context-next" data-action="cycle-interaction" aria-label="Выбрать другой предмет рядом">${icon('arrow',20)} ${target.optionIndex}/${target.options} <kbd>F</kbd></button>`:''}`);
   }
   progress(label, ratio) {
     const element = document.getElementById('task-progress'); element.hidden = !label;
@@ -179,6 +183,8 @@ export class UI {
     const scroll = resetScroll ? 0 : document.querySelector('#panel .panel-body')?.scrollTop || 0;
     const element = document.getElementById('panel'), state = this.state;
     const headers = {
+      camp:['В ДАЛЬНЕЙ ВЫЛАЗКЕ','Камышовая стоянка','Отдых, печь и местный ящик. Запасы остаются здесь.'],
+      'boat-repair':['У БЕРЕГА','Гребная лодка','После ремонта можно свободно ходить между островами. Топливо не требуется.'],
       salvage:['НАХОДКА','Разбор техники','Выбери, что взять с собой.'],
       'salvage-workbench':['СТАНЦИЯ','Разбор привезённой техники','Дополнительные детали и провод. Результат поступает на склад.'],
       cook:['ДОМАШНЯЯ КУХНЯ','Кухонная печь','Еда и чай из добычи. Подойди к установленной печи.'],
@@ -260,6 +266,15 @@ export class UI {
         return `<article class="recipe-card order-card"><div class="recipe-top"><span class="recipe-icon">${resourceIcon(Object.keys(order.cost)[0], 27)}</span><div><h3>${order.title}</h3><p>${order.desc}</p></div></div><div class="order-costs"><small>Передать</small><div class="costs">${costHTML(state, order.cost)}</div></div><div class="order-rewards"><small>Получить на склад</small><div>${rewardHTML(order.reward)}</div></div><div class="order-footer"><span>${status.ok ? `${icon('check', 14)} Материалы собраны` : `${icon(status.remaining ? 'clock' : 'info', 14)} ${status.reason}`}</span><button class="craft-button" data-action="deliver-order" data-id="${order.id}" ${!status.ok || !home ? 'disabled' : ''}>Передать</button></div></article>`;
       }).join('')}</div><p class="panel-note">Заказы повторяются. Время ожидания идёт во время вылазок.</p>`;
     }
+    if(this.panel==='boat-repair'||this.panel==='camp'){
+      const boat=this.panel==='boat-repair',ready=boat?state.boat.repaired:state.camp.ready,cost=boat?BOAT_REPAIR:CAMP.cost;
+      const fieldCosts=Object.entries(cost).map(([id,n])=>`<span class="cost ${(state.bag[id]||0)>=n?'enough':'missing'}">${resourceIcon(id,26)}<span class="field-cost-name">${RESOURCES[id].name}</span><b>${state.bag[id]||0}</b><small>/${n}</small></span>`).join('');
+      if(!ready)body=`<div class="field-feature">${icon(boat?'boat':'home',54)}<h3>${boat?'Вернуть лодку на воду':'Место для дальних походов'}</h3><p>${boat?'Заделай обшивку и закрепи сиденья. Управление — WASD, стрелки или нажатие на воду. Высадка — у деревянных причалов.':'Восстанови лежанку, печь и сухой ящик. Здесь можно оставить добычу и передохнуть перед возвращением.'}</p></div><p class="panel-note">Материалы берутся только из рюкзака.</p><div class="costs field-costs">${fieldCosts}</div><button class="primary full-width" data-action="field-repair" data-id="${boat?'boat':'camp'}" ${fieldCost(state,cost)?'':'disabled'}>${icon('craft',22)} ${boat?'Починить лодку':'Обустроить стоянку'}</button>`;
+      else if(boat)body='<p class="panel-note">Лодка исправна. Подойди к ней на причале и нажми E.</p>';
+      else {
+        body=`<div class="field-feature"><h3>${icon('home',28)} Тихое место у воды</h3><p>Лежанка восстанавливает здоровье до 80 и всю выносливость. Для полного восстановления остаётся домашняя кровать.</p><button class="secondary full-width" data-action="camp-rest" ${state.health<80||state.stamina<100?'':'disabled'}>${icon('bed',22)} Передохнуть</button></div><div class="section-title"><h3>Местный ящик</h3><span>${campWeight(state).toFixed(1)} / ${CAMP.capacity}</span></div><p class="panel-note">Домашний склад доступен в убежище. Содержимое этого ящика останется на острове.</p><div class="camp-stocks">${Object.entries(RESOURCES).filter(([id])=>(state.bag[id]||0)+(state.camp.store[id]||0)>0).map(([id,r])=>`<article><div>${resourceIcon(id,34)}<span><strong>${r.name}</strong><small>Рюкзак: ${state.bag[id]||0} · здесь: ${state.camp.store[id]||0}</small></span></div><div><button class="secondary" data-action="camp-transfer" data-id="${id}" data-direction="deposit" data-count="${state.bag[id]||1}" ${(state.bag[id]||0)>0&&campWeight(state)<CAMP.capacity?'':'disabled'} aria-label="Оставить: ${r.name}">Оставить</button><button class="secondary" data-action="camp-transfer" data-id="${id}" data-direction="withdraw" data-count="${state.camp.store[id]||1}" ${(state.camp.store[id]||0)>0?'':'disabled'} aria-label="Взять: ${r.name}">Взять</button></div></article>`).join('')||'<p class="panel-note">Ящик и рюкзак пока пусты.</p>'}</div><div class="section-title"><h3>Походная печь</h3></div><p class="panel-note">Ингредиенты берутся из рюкзака. Нужные запасы сначала забери из ящика.</p><div class="recipe-list">${COOKING_RECIPES.map(id=>{const r=RECIPES.find(r=>r.id===id);return `<article class="recipe-card"><div class="recipe-top"><span class="recipe-icon">${recipeIcon(id,36)}</span><div><h3>${r.name}</h3><p>${r.desc}</p></div></div><div class="costs">${Object.entries(r.cost).map(([id,n])=>`<span class="cost ${(state.bag[id]||0)>=n?'enough':'missing'}">${resourceIcon(id,24)} ${state.bag[id]||0}/${n}</span>`).join('')}</div><button class="secondary full-width" data-action="camp-cook" data-id="${id}" ${fieldCost(state,r.cost)?'':'disabled'}>Приготовить</button></article>`;}).join('')}</div>`;
+      }
+    }
     if (this.panel === 'map') body = `<div class="storage-actions"><button class="secondary" data-action="map-zoom" data-delta=".5" aria-label="Приблизить карту">＋</button><button class="secondary" data-action="map-zoom" data-delta="-.5" aria-label="Отдалить карту">−</button><button class="secondary" data-action="map-zoom" data-delta="reset">Весь район</button></div><button class="secondary map-mark-button" data-action="map-mark-mode" aria-pressed="${!!this.mapMarking}">${icon('pin',20)} ${this.mapMarking?'Отменить отметку':'Добавить отметку'}</button>${this.mapMarking?'<label class="map-mark-editor">Название отметки<input id="map-mark-label" maxlength="32" placeholder="Например: запас дерева" autocomplete="off"><span>Нажми нужное место на карте.</span></label>':''}<canvas id="large-map" width="560" height="420" aria-label="Карта района"></canvas><p class="panel-note">На карте остаются места, где ты побывал. Светлые точки — замеченные запасы, серые — разобранные.</p><p class="panel-note">${this.mapMarking?'Сейчас нажатие ставит отметку.':'Нажми на карту, чтобы идти в выбранное место.'} Отметки сохраняются; удалить можно крестиком.</p><div class="map-marks">${state.mapMarks.map(m=>`<div><button data-action="map-go" data-id="${m.id}">${icon('pin',20)}<span>${escape(m.label)}</span>${icon('arrow',16)}</button><button data-action="map-remove" data-id="${m.id}" aria-label="Удалить отметку: ${escape(m.label)}">${icon('close',18)}</button></div>`).join('')}</div><div class="location-list">${LOCATIONS.filter(l=>state.visited.includes(l.id)).map(l => `<button data-action="travel" data-id="${l.id}"><span style="color:${l.color}">${icon('pin', 22)}</span><div><strong>${l.name}</strong><small>${l.subtitle}</small></div>${icon('arrow', 15)}</button>`).join('')}</div>${state.grave ? '<p class="map-warning">✕ На карте отмечен оставленный рюкзак. Его можно вернуть.</p>' : ''}`;
     if (this.panel === 'journal') {
       body = `<div class="journal-note"><span class="note-date">ПЕРВАЯ ЗАПИСЬ</span><p>«В мастерской пахнет мокрым деревом. Печь ещё работает. Если починить генератор, здесь можно остаться. Пока это просто комната. Но уже моя».</p></div><div class="story-steps">${[
@@ -274,13 +289,13 @@ export class UI {
     const nearbyFish=FISHING_SPOTS.some(p=>Math.hypot(p.x-state.x,p.z-state.z)<3),selectedBait=BAITS[state.fishingBait];
     const canCast=nearbyFish&&state.owned.includes('rod')&&(!selectedBait.tool||state.owned.includes(selectedBait.tool))&&(!selectedBait.resource||state.bag[selectedBait.resource]>0);
     const footer=this.panel==='fishing'?`<button class="primary full-width" data-action="cast-selected" ${canCast?'':'disabled'}>Забросить удочку ${icon('arrow',18)}</button>`:`${icon('clock',14)} Игра на паузе <span>ESC — закрыть</span>`;
-    element.innerHTML = `<header class="panel-header"><div class="eyebrow">${eyebrow}</div><button class="icon-button" data-action="close" aria-label="Закрыть меню">${icon('close')}</button><div class="panel-title"><span class="panel-title-icon">${icon(({ craft: 'craft',salvage:'craft','salvage-workbench':'craft',cook:'meal', inventory: 'bag', storage: 'chest', build: 'build', map: 'map', journal: 'book', settings: 'settings', architecture:'build',station:'craft', dryer:'dryrack',loadouts:'gearrack',fishing:'rod',garden:'herbs',note:'book',orders: 'board', helper: 'herbs' })[this.panel], 27)}</span><h2>${title}</h2></div>${subtitle ? `<p>${subtitle}</p>` : ''}</header><div class="panel-body">${body}</div><footer class="panel-footer">${footer}</footer>`;
+    element.innerHTML = `<header class="panel-header"><div class="eyebrow">${eyebrow}</div><button class="icon-button" data-action="close" aria-label="Закрыть меню">${icon('close')}</button><div class="panel-title"><span class="panel-title-icon">${icon(({ 'boat-repair':'boat',camp:'home',craft: 'craft',salvage:'craft','salvage-workbench':'craft',cook:'meal', inventory: 'bag', storage: 'chest', build: 'build', map: 'map', journal: 'book', settings: 'settings', architecture:'build',station:'craft', dryer:'dryrack',loadouts:'gearrack',fishing:'rod',garden:'herbs',note:'book',orders: 'board', helper: 'herbs' })[this.panel], 27)}</span><h2>${title}</h2></div>${subtitle ? `<p>${subtitle}</p>` : ''}</header><div class="panel-body">${body}</div><footer class="panel-footer">${footer}</footer>`;
     element.querySelector('.panel-body').scrollTop = scroll;
     if (this.panel === 'map') {
       const canvas = document.getElementById('large-map'); this.renderMap(canvas, true);canvas.addEventListener('wheel',event=>{event.preventDefault();this.mapZoom=Math.max(1,Math.min(4,(this.mapZoom||1)+(event.deltaY<0?.5:-.5)));this.renderMap(canvas,true);},{passive:false});
       canvas.addEventListener('click', event => {
         const rect = canvas.getBoundingClientRect();
-        const nx=(event.clientX-rect.left)/rect.width,nz=(event.clientY-rect.top)/rect.height,zoom=this.mapZoom||1,span=(WORLD_LIMIT+2)*2/zoom;const x=(zoom>1?this.state.x:0)+(nx-.5)*span,z=(zoom>1?this.state.z:0)+(nz-.5)*span;
+        const nx=(event.clientX-rect.left)/rect.width,nz=(event.clientY-rect.top)/rect.height,v=this.mapView(true);const x=v.cx+(nx-.5)*v.width,z=v.cz+(nz-.5)*v.height;
         if(this.mapMarking) this.actions('map-add',{x,z,label:document.getElementById('map-mark-label')?.value});
         else this.actions('map-point', { x, z });
       });
@@ -364,18 +379,26 @@ export class UI {
     const entries = Object.entries(RESOURCES);
     return `<div class="resource-grid">${entries.map(([id, resource]) => `<div class="resource-tile ${(resources[id] || 0) === 0 ? 'empty' : ''}"><span style="color:${resource.color}">${resourceIcon(id, 27)}</span><div><small>${resource.name}</small><b>${resources[id] || 0}</b></div></div>`).join('')}</div>`;
   }
+  mapView(large){
+    const zoom=large?(this.mapZoom||1):1,width=large?(WORLD_BOUNDS.maxX-WORLD_BOUNDS.minX+4)/zoom:100,height=large?(WORLD_BOUNDS.maxZ-WORLD_BOUNDS.minZ+4)/zoom:100;
+    return {width,height,cx:large&&zoom===1?(WORLD_BOUNDS.minX+WORLD_BOUNDS.maxX)/2:this.state.x,cz:large&&zoom===1?0:this.state.z};
+  }
   renderMap(canvas, large = false) {
     const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;
     const labelSize = Math.ceil((large ? 16 : 12) / Math.min(1, canvas.clientWidth / w || 1));
-    const zoom=large?(this.mapZoom||1):Math.max(1,(WORLD_LIMIT+2)*2/100),span=(WORLD_LIMIT+2)*2/zoom,cx=zoom>1?this.state.x:0,cz=zoom>1?this.state.z:0;const p=(x,z)=>[(x-cx+span/2)/span*w,(z-cz+span/2)/span*h];
+    const v=this.mapView(large),span=v.width,spanZ=v.height;const p=(x,z)=>[(x-v.cx+v.width/2)/v.width*w,(z-v.cz+v.height/2)/v.height*h];
     ctx.clearRect(0, 0, w, h); ctx.fillStyle = '#263a34'; ctx.fillRect(0, 0, w, h);
     ctx.strokeStyle = '#65796c18'; ctx.lineWidth = 1;
     for (let i = 0; i <= 10; i++) { ctx.beginPath(); ctx.moveTo(i / 10 * w, 0); ctx.lineTo(i / 10 * w, h); ctx.stroke(); ctx.beginPath(); ctx.moveTo(0, i / 10 * h); ctx.lineTo(w, i / 10 * h); ctx.stroke(); }
-    ctx.fillStyle='#60716945';for(const r of ROADS) ctx.fillRect(...p(r.x-r.w/2,r.z-r.d/2),r.w/span*w,r.d/span*h);
-    ctx.fillStyle='#557a764f';ctx.beginPath();ctx.ellipse(...p(23,-24),10/span*w,8/span*h,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.ellipse(...p(115,-20),9/span*w,30/span*h,0,0,Math.PI*2);ctx.fill();
-    ctx.beginPath();ctx.ellipse(...p(FOREST_LAKE.x,FOREST_LAKE.z),FOREST_LAKE.rx/span*w,FOREST_LAKE.rz/span*h,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#60716945';for(const r of ROADS) ctx.fillRect(...p(r.x-r.w/2,r.z-r.d/2),r.w/span*w,r.d/spanZ*h);
+    ctx.fillStyle='#557a764f';ctx.beginPath();ctx.ellipse(...p(23,-24),10/span*w,8/spanZ*h,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.ellipse(...p(115,-20),9/span*w,30/spanZ*h,0,0,Math.PI*2);ctx.fill();
+    ctx.beginPath();ctx.ellipse(...p(FOREST_LAKE.x,FOREST_LAKE.z),FOREST_LAKE.rx/span*w,FOREST_LAKE.rz/spanZ*h,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#557a76';ctx.fillRect(...p(FLOOD_WATER.x-FLOOD_WATER.w/2,FLOOD_WATER.z-FLOOD_WATER.d/2),FLOOD_WATER.w/span*w,FLOOD_WATER.d/spanZ*h);
+    ctx.fillStyle='#78846a';for(const i of FLOOD_ISLANDS)ctx.fillRect(...p(i.x-i.w/2,i.z-i.d/2),i.w/span*w,i.d/spanZ*h);
+    ctx.fillStyle='#b0a17c';for(const d of FLOOD_DOCKS)ctx.fillRect(...p(d.x-d.w/2,d.z-d.d/2),d.w/span*w,d.d/spanZ*h);
+    if(this.state.boat.repaired&&(this.state.visited.includes('floodshore')||this.state.boat.aboard)){const [bx,bz]=p(this.state.boat.x,this.state.boat.z);ctx.save();ctx.translate(bx,bz);ctx.rotate(-this.state.boat.heading);ctx.fillStyle='#e9c28a';ctx.beginPath();ctx.moveTo(0,-7);ctx.lineTo(4,5);ctx.lineTo(-4,5);ctx.closePath();ctx.fill();ctx.restore();}
     for(const l of LOCATIONS.filter(l=>this.state.visited.includes(l.id))) {
-      ctx.fillStyle='#87927b40';ctx.fillRect(...p(l.x-4,l.z-3),8/span*w,6/span*h);
+      ctx.fillStyle='#87927b40';ctx.fillRect(...p(l.x-4,l.z-3),8/span*w,6/spanZ*h);
     }
     if(large) for(const n of this.nodes||[]) if(this.state.foundNodes.includes(n.id)) {
       const [nx,ny]=p(n.x,n.z);ctx.fillStyle=n.group.visible?'#c6cb9a':'#778779';ctx.fillRect(nx-2,ny-2,4,4);

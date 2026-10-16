@@ -1,3 +1,5 @@
+import {FLOOD_DOCKS,CAMP,dockNearBoat,rowBoat,inWorld} from './floodplain.js';
+import {repairField,atCamp,transferCamp,cookCamp} from './game.js';
 import {beginEnemyAttack,advanceEnemyAttack,segmentDistance} from './enemy-combat.js';
 import {addMapMark} from './map-marks.js';
 import {harvestTimeline,advanceHarvest} from './harvesting.js';
@@ -51,7 +53,7 @@ class QuietDistrict {
       for (const item of this.state.placed) this.world.addPlaced(item);
       const room=gateForPoint(this.state.x,this.state.z,.5),closedRoom=this.world.gates.find(g=>g.id===room&&!this.state.openedGates.includes(g.id));
       if(closedRoom)this.world.move(closedRoom.x,closedRoom.z+1.2);
-      if (this.world.blocked(this.state.x, this.state.z)) {
+      if (!this.state.boat.aboard && this.world.blocked(this.state.x, this.state.z)) {
         const candidates = [];
         for (let dx = -5; dx <= 5; dx++) for (let dz = -5; dz <= 5; dz++) {
           const x = this.state.x + dx, z = this.state.z + dz;
@@ -139,6 +141,7 @@ class QuietDistrict {
       if (this.fish) return;
       const hit = this.world.pointer(event.clientX, event.clientY);
       this.job = null; this.ui.progress(null);
+      if(this.state.boat.aboard){this.target=null;this.navigate(hit.point.x,hit.point.z,false);return;}
       if (hit.enemy?.health > 0) {
         this.target = { type: 'enemy', entity: hit.enemy, x: hit.enemy.x, z: hit.enemy.z };
         const distance = Math.hypot(hit.enemy.x - this.state.x, hit.enemy.z - this.state.z);
@@ -172,8 +175,9 @@ class QuietDistrict {
     if (action === 'reload') { location.reload(); return; }
     if (action === 'start') { this.start(); return; }
     if (!this.started) return;
-    if (action === 'panel-open') { this.swing=null;this.world.clearWeaponEffect(); this.motion.reset(); this.path = []; this.target = null; this.job = null; this.keys.clear(); this.touchMovement = { x: 0, z: 0 }; this.ui.progress(null); this.cancelFishing(); return; }
+    if (action === 'panel-open') { this.state.boat.vx=this.state.boat.vz=0;this.swing=null;this.world.clearWeaponEffect(); this.motion.reset(); this.path = []; this.target = null; this.job = null; this.keys.clear(); this.touchMovement = { x: 0, z: 0 }; this.ui.progress(null); this.cancelFishing(); return; }
     if (action === 'panel-close') { this.keys.clear(); return; }
+    if(this.state.boat.aboard&&['build','craft','orders','station-route','structure-select'].includes(action)){this.ui.toast('Сначала причаль к берегу.');return;}
     if (this.ui.pendingConfirm) return;
     if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders', 'helper', 'storage', 'garden','dryer','station','loadouts','architecture','cook','salvage','salvage-workbench'].includes(action)) {
       if (action === 'storage' && !this.atHome()) { this.ui.toast('Подойди к хранилищу в убежище.'); return; }
@@ -189,6 +193,11 @@ class QuietDistrict {
       const index=Number(data.index),stored=data.stored==='true';if(Math.hypot(this.state.x+21,this.state.z-13)>=4.5){this.ui.toast('Подойди к станции рецептов.');return;}
       const cargo=(stored?this.state.storedCargo:this.state.cargo)[index];if(!cargo)return;this.ui.close();this.world.playCharacterAction('pickup');this.job={type:'process-salvage',cargo,index,stored,elapsed:0,duration:salvageDuration(this.state),label:'Разбираем технику на верстаке…'};return;
     }
+    if(action==='field-repair'){const result=repairField(this.state,data.id);if(result.ok){this.audio.craft();this.ui.toast(data.id==='boat'?'Лодка готова к выходу на воду.':'Стоянка восстановлена. Можно отдохнуть и оставить запасы.','success');this.world.renderDirty=true;this.changed();}else this.ui.toast(result.reason);return;}
+    if(action==='camp-transfer'){const result=transferCamp(this.state,data.id,data.direction,Number(data.count));if(!result.ok)this.ui.toast(result.reason);this.changed();return;}
+    if(action==='camp-cook'){const result=cookCamp(this.state,data.id);if(result.ok){this.audio.craft();this.ui.toast('Еда готова.','success');}else this.ui.toast(result.reason);this.changed();return;}
+    if(action==='camp-rest'){if(!atCamp(this.state))return;this.ui.close();this.job={type:'rest',elapsed:0,duration:3,x:this.state.x,z:this.state.z,max:80,label:'Отдыхаем на стоянке…'};return;}
+    if(action==='boat-land'){this.landBoat();return;}
     if (action === 'hud-change') { this.save(false); return; }
     if (action === 'hotbar-assign') {
       if (assignHotbar(this.state, Number(data.index), data.id || null)) this.changed(); return;
@@ -300,6 +309,7 @@ class QuietDistrict {
       const target = LOCATIONS.find(l => l.id === (action === 'home' ? 'home' : data.id));
       if(!target||!this.state.visited.includes(target.id)) return;
       let destination = target.id === 'depot' ? { x: -17, z: -20 } : target.id === 'market' ? { x: 13, z: 5 } : target.id === 'pond' ? { x: 19, z: -17 } : target.id === 'tower' ? { x: 30, z: -31 } : target.id === 'garden' ? { x: -34, z: -5 } : target.id==='home'?HOME:{x:target.x,z:target.z};
+      if(this.state.boat.aboard){const dock=FLOOD_DOCKS.find(d=>d.id===target.id)||(target.id==='floodshore'?FLOOD_DOCKS[0]:null);if(!dock){this.ui.toast('К этому месту нужно идти с берега.');return;}destination={...dock.boat};}
       const gate=this.world.gates.find(g=>g.id===gateForPoint(target.x,target.z)&&!this.state.openedGates.includes(g.id));if(gate)destination={x:gate.x,z:gate.z+1.2};
       this.ui.close(); this.target = null; this.navigate(destination.x, destination.z); return;
     }
@@ -359,7 +369,8 @@ class QuietDistrict {
   atHome() { return this.state.x >= -27 && this.state.x <= -6 && this.state.z >= 5 && this.state.z <= 27; }
   atStation() { return Math.hypot(this.state.x + 21, this.state.z - 13) < 4.5; }
   navigate(x, z, notify = true) {
-    if (x < -WORLD_LIMIT || x > WORLD_LIMIT || z < -WORLD_LIMIT || z > WORLD_LIMIT) return;
+    if (!inWorld(x,z)) return;
+    if(this.state.boat.aboard){this.path=this.world.boatPathTo(x,z);this.target=null;if(this.path.length){const end=this.path.at(-1);this.world.setDestination(end.x,end.z);}else if(notify)this.ui.toast('Выбери свободную воду или причал.');return;}
     this.path = this.world.pathTo(x, z);
     if (this.path.length) { this.world.setDestination(x, z); if (notify) this.ui.toast('Маршрут построен. WASD или стрелки — взять управление.'); }
     else { this.world.destination.visible = false; if (notify) this.ui.toast('Выбранная точка недоступна.'); }
@@ -429,9 +440,13 @@ class QuietDistrict {
   }
   nearestInteraction() {
     const s = this.state, candidates = [];
+    if(s.boat.aboard){const dock=dockNearBoat(s.boat);return dock?{type:'boat-land',x:dock.boat.x,z:dock.boat.z,label:'Причалить · '+dock.name,hint:'Выйти на настил',entity:dock,distance:0}:{type:'boat-water',x:s.x,z:s.z,label:'На воде',hint:'WASD / стрелки · подойди к причалу для высадки',distance:0};}
     const add = (type, x, z, label, hint, entity, range = 2.4) => { const distance = Math.hypot(s.x - x, s.z - z); if (distance < range) candidates.push({ type, x, z, label, hint, entity, distance }); };
     for(const note of this.world.memories) if((s.x-note.x)**2+(s.z-note.z)**2<1.8**2&&this.world.canSee(s.x,s.z,note.x,note.z,null,true))add('note',note.x,note.z,'Прочитать запись',note.name,note,1.8);
     for (const node of this.world.nodes) if (node.group.visible&&(s.x-node.x)**2+(s.z-node.z)**2<2.4**2&&(!node.accessGate||s.openedGates.includes(node.accessGate))&&this.world.canSee(s.x,s.z,node.x,node.z,node.collider,true)) add('node', node.x, node.z, `${s.brokenNodes.includes(node.id)?'Забрать добычу':['appliance','motor'].includes(node.machine)?'Осмотреть технику':({ tree: 'Рубить дерево', wood: 'Собрать доски', stone:'Добыть камень', ore: 'Добыть металл', herbs: 'Собрать растения', electronics: 'Разобрать электронику', crate: 'Открыть ящик', cloth: 'Собрать ткань', scrap: 'Разобрать лом', drop: 'Забрать добычу' })[node.type] || (node.find?'Забрать находку':'Собрать')} · ${node.name}`, node.requires && !s.owned.includes(node.requires) ? `Нужно: ${RECIPES.find(r => r.id === node.requires)?.name}` : node.find?`Вес находки: ${FINDS[node.find].weight}`:s.brokenNodes.includes(node.id)?'Оставшиеся ресурсы в рюкзак':dismantleInfo(s.owned,node).kind?`${dismantleInfo(s.owned,node).duration.toFixed(1)} сек. · ${dismantleInfo(s.owned,node).fast?'инструмент ускоряет разбор':'ручной разбор'}`:'Добыча в рюкзак', node);
+    const nearBoat=FLOOD_DOCKS.find(d=>Math.hypot(s.boat.x-d.boat.x,s.boat.z-d.boat.z)<3.2&&Math.hypot(s.x-d.foot.x,s.z-d.foot.z)<2.8);
+    if(nearBoat)add(s.boat.repaired?'boat-board':'boat-repair',nearBoat.foot.x,nearBoat.foot.z,s.boat.repaired?'Сесть в лодку':'Восстановить лодку',s.boat.repaired?'Свободное движение по воде':'Доски, ткань и металл из рюкзака',nearBoat,2.8);
+    add('camp',CAMP.x,CAMP.z,s.camp.ready?'Камышовая стоянка':'Обустроить стоянку',s.camp.ready?'Отдых · печь · местный ящик':'Принеси доски, ткань и металл',CAMP,3);
     add('station', -21, 13, 'Станция рецептов', 'Создать снаряжение', null, 2.8);
     add('storage', -13.5, 17, 'Открыть хранилище', 'Склад убежища', null, 2.2);
     add('bed', -22, 17.7, 'Отдохнуть', 'Восстановить здоровье', null, 2);
@@ -463,6 +478,11 @@ class QuietDistrict {
     const target = this.nearestInteraction();
     if (!target) { this.ui.toast('Подойди ближе к находке или рабочей станции.'); return; }
     this.path = []; this.target = null; this.world.destination.visible = false;
+    if(target.type==='boat-water'){this.ui.toast('Подойди к одному из деревянных причалов.');return;}
+    if(target.type==='boat-land'){this.landBoat();return;}
+    if(target.type==='boat-board'){const b=this.state.boat;b.aboard=true;b.vx=b.vz=0;b.lastDock=target.entity.id;this.state.x=b.x;this.state.z=b.z;this.motion.reset();this.keys.clear();this.swing=null;this.world.player.position.set(b.x,.33,b.z);this.world.renderDirty=true;this.audio.water();this.changed();return;}
+    if(target.type==='boat-repair'){this.ui.open('boat-repair');return;}
+    if(target.type==='camp'){this.ui.open('camp');return;}
     if(target.type==='dryer'){this.ui.stationIndex=undefined;this.ui.dryerIndex=this.state.placed.indexOf(target.entity);this.ui.open('dryer');return;}
     if(target.type==='yardgate'){const result=toggleYardGate(this.state,target.entity,this.world.colliders);if(!result.ok)this.ui.toast(result.reason);else {this.world.renderDirty=true;this.world.syncFurniture();this.audio.playSample(target.entity.open?'door_open_1':'door_close_1',.3);this.changed();}return;}
     if(target.type==='cook'){this.ui.open('cook');return;}
@@ -548,7 +568,7 @@ class QuietDistrict {
     if (entries.length) this.world.floatingText(entries.map(([id, n]) => `+${n} ${RESOURCES[id].name.toLowerCase()}`).join(' · '), x, z, '#e6cc98', entries.map(([id]) => id));
   }
   attack(target) {
-    if(this.ui.panel||this.build||this.job||this.swing||this.attackCooldown>0)return;
+    if(this.state.boat.aboard||this.ui.panel||this.build||this.job||this.swing||this.attackCooldown>0)return;
     const s=this.state,w=weapon(s),ranged=['pistol','carbine'].includes(w.id);
     target ||= this.world.enemies.filter(e=>e.health>0&&Math.hypot(e.x-s.x,e.z-s.z)<=w.range&&this.world.canSee(s.x,s.z,e.x,e.z)).sort((a,b)=>Math.hypot(a.x-s.x,a.z-s.z)-Math.hypot(b.x-s.x,b.z-s.z))[0];
     if(target?.health<=0)return;
@@ -639,10 +659,10 @@ class QuietDistrict {
     for(const e of this.world.enemies){e.attack=null;e.windup=0;e.alert=0;e.suspicion=0;}
     this.swing=null;this.world.clearWeaponEffect();
     this.motion.reset(); this.keys.clear(); this.touchMovement = { x: 0, z: 0 };
-    respawn(this.state); this.path = []; this.target = null; this.job = null; this.cancelFishing(); this.cancelBuild();
+    const wasAboard=this.state.boat.aboard;respawn(this.state); this.path = []; this.target = null; this.job = null; this.cancelFishing(); this.cancelBuild();
     this.world.move(this.state.x, this.state.z); this.ui.progress(null); this.world.destination.visible = false;
     for (const enemy of this.world.enemies) { enemy.x = enemy.originX; enemy.z = enemy.originZ; }
-    this.updateGrave(); this.ui.toast('Ты очнулся дома. Рюкзак остался на месте — его можно вернуть.'); this.changed();
+    this.updateGrave(); this.ui.toast(wasAboard?'Ты очнулся дома. Лодка у берегового причала, рюкзак — у последнего места высадки.':'Ты очнулся дома. Рюкзак остался на месте — его можно вернуть.'); this.changed();
   }
   updateGrave() {
     if (this.graveGroup) { this.world.scene.remove(this.graveGroup); this.graveGroup = null; }
@@ -700,6 +720,13 @@ class QuietDistrict {
       if (this.path.length) { dx = this.path[0].x - this.state.x; dz = this.path[0].z - this.state.z; }
       else this.world.destination.visible = false;
     }
+    if(this.state.boat.aboard){
+      if(!manual&&this.path.length){const len=Math.hypot(dx,dz);if(len){dx/=len;dz/=len;}}
+      const b=this.state.boat,oldX=b.x,oldZ=b.z,moved=rowBoat(b,dt,dx,dz);this.state.x=b.x;this.state.z=b.z;this.state.stamina=Math.min(100,this.state.stamina+dt*8);this.world.running=false;this.world.moveSpeed=0;
+      if(!manual&&this.path.length&&Math.hypot(this.path[0].x-b.x,this.path[0].z-b.z)<.25)this.path.shift();
+      if(!moved&&this.path.length){this.path=[];this.world.destination.visible=false;}
+      this.world.player.position.set(b.x,.33,b.z);return Math.hypot(b.x-oldX,b.z-oldZ)>.0001;
+    }
     const distance = Math.hypot(dx, dz);
     if (!manual && distance > 0) { dx /= distance; dz /= distance; }
     if (distance > 0.08 && this.job) { this.job = null; this.ui.progress(null); }
@@ -725,6 +752,10 @@ class QuietDistrict {
       if (this.blockedTime > 0.4) { this.path = []; this.motion.reset(); this.world.destination.visible = false; }
     }
     return moved;
+  }
+  landBoat(){
+    if(!this.state.boat.aboard)return;const d=dockNearBoat(this.state.boat);if(!d||this.world.blocked(d.foot.x,d.foot.z)){this.ui.toast('Подойди ближе к свободному причалу.');return;}
+    const b=this.state.boat;Object.assign(b,{...d.boat,heading:d.heading,aboard:false,lastDock:d.id,vx:0,vz:0});this.state.x=d.foot.x;this.state.z=d.foot.z;this.world.player.position.set(this.state.x,.18,this.state.z);this.motion.reset();this.keys.clear();this.touchMovement={x:0,z:0};this.path=[];this.target=null;this.world.destination.visible=false;this.world.flood.update(true);this.world.renderDirty=true;this.audio.water();this.changed();
   }
   changed() { this.ui.update(); if (this.ui.panel) this.ui.renderPanel(); this.save(false); }
   save(notify = false) {

@@ -1,5 +1,6 @@
 import { itemArt } from './item-art.js';
 const paths = {
+  boat:'<path d="m3 12 3 8h12l3-8zM7 12V8h10v4M12 8V3m-4 3 8 0M2 22c2-2 3-2 5 0 2-2 3-2 5 0 2-2 3-2 5 0 2-2 3-2 5 0"/>',
   home: '<path d="m3 10 9-7 9 7v10H3z"/><path d="M9 20v-7h6v7"/>',
   craft: '<path d="m14 4 6 6M3 21l10-10M12 3l9 9M15 7l-3 3M3 3l5 5-2 2-5-5M10 12l9 9 2-2-9-9"/>',
   bag: '<rect x="5" y="6" width="14" height="15" rx="3"/><path d="M9 6V3h6v3M5 13h14M9 17h6"/>',

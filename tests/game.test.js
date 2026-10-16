@@ -1,3 +1,5 @@
+import {WORLD_BOUNDS,FLOOD_DOCKS,FLOOD_ISLANDS,FLOOD_BUILDINGS,FLOOD_SUPPLIES,CAMP,BOAT_REPAIR,inWorld,inFloodWater,boatWater,cleanBoat,rowBoat} from '../src/floodplain.js';
+import {repairField,transferCamp,campWeight,cookCamp} from '../src/game.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { freshState, validateSave, RECIPES, craft, craftStatus, collect, deposit, bagWeight, capacity, place, takeDamage, respawn, catchFish, useSupply, objective, CONTRACTS, deliverContract, contractStatus, productionInfo, harvestProduction, updateHelper } from '../src/game.js';
@@ -107,7 +109,7 @@ test('Save validation rejects incompatible saves and sanitizes unknown data', ()
   const s = freshState(); s.owned = ['generator', 'bad', 'generator'];
   s.equipment.weapon = 'carbine'; s.x = 9999; s.stash.metal = -5; s.stash.wood = Infinity;
   const clean = validateSave(s); assert.deepEqual(clean.owned, ['generator']);
-  assert.equal(clean.equipment.weapon, 'pipe'); assert.equal(clean.x, WORLD_LIMIT);
+  assert.equal(clean.equipment.weapon, 'pipe'); assert.equal(clean.x, WORLD_BOUNDS.maxX);
   assert.equal(clean.stash.metal, undefined); assert.equal(clean.stash.wood, undefined);
 });
 test('Save round trip preserves development and furniture harvest time', () => {
@@ -341,8 +343,8 @@ test('Haul recap keeps the last positive delivery and expanded-world coordinates
 
 import { mapPoint } from '../src/district.js';
 test('Expanded map coordinates match the drawn bounds and outskirts are not clamped to the old district',()=>{
- assert.deepEqual(mapPoint(.5,.5),{x:0,z:0});
- const p=mapPoint((-49+WORLD_LIMIT+2)/((WORLD_LIMIT+2)*2),(32+WORLD_LIMIT+2)/((WORLD_LIMIT+2)*2));assert.equal(p.x,-49);assert.ok(Math.abs(p.z-32)<1e-9);
+ assert.deepEqual(mapPoint(.5,.5),{x:(WORLD_BOUNDS.minX+WORLD_BOUNDS.maxX)/2,z:0});
+ const p=mapPoint((-49-WORLD_BOUNDS.minX+2)/(WORLD_BOUNDS.maxX-WORLD_BOUNDS.minX+4),(32-WORLD_BOUNDS.minZ+2)/(WORLD_BOUNDS.maxZ-WORLD_BOUNDS.minZ+4));assert.ok(Math.abs(p.x+49)<1e-9);assert.ok(Math.abs(p.z-32)<1e-9);
  assert.equal(validateSave({...freshState(),x:51,z:-44}).x,51);
 });
 
@@ -837,7 +839,7 @@ test('Existing quarter-metre furniture coordinates survive saving without being 
 test('Manual map notes survive old saves, reject corrupt coordinates and cap imported notes', async () => {
  const {cleanMapMarks,addMapMark,MAX_MAP_MARKS}=await import('../src/map-marks.js');
  const s=freshState();assert.equal(addMapMark(s,167,70,'  Запас дерева  '),true);
- assert.equal(addMapMark(s,Infinity,70,'wrong'),false);assert.equal(addMapMark(s,209,0,'wrong'),false);
+ assert.equal(addMapMark(s,Infinity,70,'wrong'),false);assert.equal(addMapMark(s,WORLD_BOUNDS.maxX+1,0,'wrong'),false);
  assert.deepEqual(validateSave(s).mapMarks,[{id:1,x:167,z:70,label:'Запас дерева'}]);
  assert.deepEqual(cleanMapMarks([null,{id:1,x:0,z:0,label:'\u0000  '},{id:1,x:10,z:0},{id:2,x:'10',z:0}]),[{id:1,x:0,z:0,label:'Метка'}]);
  for(let i=1;i<MAX_MAP_MARKS;i++)assert.equal(addMapMark(s,i,0,'x'.repeat(60)),true);
@@ -974,4 +976,54 @@ test('A single static colour cell retains an independent directional shadow prox
  const frustum=new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().makeOrthographic(-10,10,10,-10,-10,10)),batches=staticShadowBatches(scene,[mesh],frustum);
  assert.equal(batches.length,1);assert.equal(mesh.castShadow,false);assert.equal(batches[0].mesh.intersectsFrustum(frustum),true);assert.equal(batches[0].mesh.intersectsFrustum(new THREE.Frustum()),false);
  for(const o of [mesh,batches[0].mesh]){o.geometry.dispose();o.material.dispose();}
+});
+
+
+test('Flood islands, dry piers and navigable water use the same footprint',()=>{
+ for(const d of FLOOD_DOCKS){assert.equal(inWorld(d.foot.x,d.foot.z),true);assert.equal(inFloodWater(d.foot.x,d.foot.z,.3),false,d.id);assert.equal(boatWater(d.boat.x,d.boat.z),true,d.id);assert.ok(Math.hypot(d.foot.x-d.boat.x,d.foot.z-d.boat.z)<3);}
+ for(const island of FLOOD_ISLANDS)assert.equal(inFloodWater(island.x,island.z,.3),false);
+ assert.equal(inFloodWater(248,40),true);assert.equal(boatWater(248,40),true);assert.equal(boatWater(286,64),false);assert.equal(boatWater(262,70),false);assert.equal(inWorld(300,150),false);
+ for(const b of FLOOD_BUILDINGS)for(const [type,name,x,z]of FLOOD_SUPPLIES.filter(n=>n[2]>b.x-b.w/2&&n[2]<b.x+b.w/2&&n[3]>b.z-b.d/2&&n[3]<b.z+b.d/2)){assert.equal(inFloodWater(x,z,.4),false,name);}
+});
+test('Field repairs spend carried materials once and never reach the home stash',()=>{
+ const s=freshState(),d=FLOOD_DOCKS[0];s.x=d.foot.x;s.z=d.foot.z;s.stash={wood:100,cloth:100,metal:100};let before=structuredClone(s);assert.equal(repairField(s,'boat').ok,false);assert.deepEqual(s,before);
+ s.bag={...BOAT_REPAIR};assert.equal(repairField(s,'boat').ok,true);assert.equal(s.boat.repaired,true);assert.deepEqual(s.stash,before.stash);assert.equal(Object.values(s.bag).reduce((a,b)=>a+b),0);before=structuredClone(s);assert.equal(repairField(s,'boat').ok,false);assert.deepEqual(s,before);
+ s.bag={...CAMP.cost};assert.equal(repairField(s,'camp').ok,false);s.x=CAMP.x;s.z=CAMP.z;assert.equal(repairField(s,'camp').ok,true);assert.equal(s.camp.ready,true);assert.equal(repairField(s,'camp').ok,false);
+});
+test('Boat rowing cannot cross banks, piers or the outer water boundary at slow frame rates',()=>{
+ for(const hz of [15,30,60]){const b=cleanBoat({repaired:true,x:248,z:40,aboard:true});for(let i=0;i<hz*10;i++){rowBoat(b,1/hz,1,0);assert.equal(boatWater(b.x,b.z),true);}assert.ok(b.x<318.5);}
+ const b=cleanBoat({repaired:true,...FLOOD_DOCKS[0].boat});for(let i=0;i<500;i++)rowBoat(b,.05,-1,0);assert.ok(b.x>237.49);assert.equal(boatWater(b.x,b.z),true);
+ const c=cleanBoat({repaired:true,x:248,z:-85});for(let i=0;i<1000;i++)rowBoat(c,.1,0,-1);assert.ok(c.z>-90.5);assert.equal(boatWater(c.x,c.z),true);
+});
+test('Boat movement is consistent across frame rates and coasts smoothly to rest',()=>{
+ const positions=[];for(const hz of [30,60,120]){const b=cleanBoat({repaired:true,x:248,z:-5});for(let i=0;i<hz*3;i++)rowBoat(b,1/hz,0,1);positions.push(b.z);const speed=Math.hypot(b.vx,b.vz);rowBoat(b,1/hz,0,0);assert.ok(Math.hypot(b.vx,b.vz)<speed);for(let i=0;i<hz*3;i++)rowBoat(b,1/hz,0,0);assert.ok(Math.hypot(b.vx,b.vz)<.001);}assert.ok(Math.max(...positions)-Math.min(...positions)<.1);
+});
+test('Boat and camp save validation supports old saves and rejects unsafe state',()=>{
+ const old=freshState();delete old.boat;delete old.camp;const base=validateSave(old);assert.equal(base.boat.repaired,false);assert.deepEqual(base.camp,{ready:false,store:{}});
+ const s=freshState();s.boat={repaired:true,aboard:true,x:248,z:40,heading:1,lastDock:'reedcamp'};s.x=-16;s.z=16;s.camp={ready:true,store:{wood:55,cloth:100,wire:-1,unknown:99}};
+ const restored=validateSave(s);assert.equal(restored.x,248);assert.equal(restored.z,40);assert.equal(restored.boat.lastDock,'reedcamp');assert.equal(campWeight(restored),60);assert.equal(restored.camp.store.unknown,undefined);assert.equal(restored.camp.store.wire,undefined);
+ const corrupt=cleanBoat({repaired:true,aboard:true,x:286,z:64,heading:Infinity,lastDock:'bad'});assert.equal(boatWater(corrupt.x,corrupt.z),true);assert.equal(corrupt.lastDock,'shore');assert.equal(Number.isFinite(corrupt.heading),true);
+ s.x=365;s.z=12;s.boat.aboard=false;s.drops=[{id:'drop-flood',x:365,z:12,loot:{metal:1}}];s.grave={x:351,z:26,loot:{wood:2}};const distant=validateSave(s);assert.equal(distant.x,365);assert.deepEqual(distant.drops,s.drops);assert.deepEqual(distant.grave,s.grave);
+});
+test('Camp storage is local, capacity limited and cannot duplicate or remotely move resources',()=>{
+ const s=freshState();s.camp.ready=true;s.bag={wood:26};s.x=CAMP.x;s.z=CAMP.z;const stash=structuredClone(s.stash);
+ assert.equal(transferCamp(s,'wood','deposit',26).count,26);assert.equal(s.bag.wood,0);assert.equal(s.camp.store.wood,26);assert.deepEqual(s.stash,stash);
+ s.camp.store.wood=58;s.bag.wood=10;assert.equal(transferCamp(s,'wood','deposit',10).count,2);assert.equal(campWeight(s),60);assert.equal(s.bag.wood,8);
+ assert.equal(transferCamp(s,'wood','withdraw',60).count,18);assert.equal(bagWeight(s),26);assert.equal(s.camp.store.wood,42);assert.equal(transferCamp(s,'wood','withdraw',1).ok,false);
+ s.x=0;const before=structuredClone(s);assert.equal(transferCamp(s,'wood','deposit',1).ok,false);assert.deepEqual(s,before);s.x=CAMP.x;assert.equal(transferCamp(s,'wood','deposit',-1).ok,false);assert.equal(transferCamp(s,'wood','wrong',1).ok,false);assert.equal(transferCamp(s,'unknown','deposit',1).ok,false);
+});
+test('Camp cooking uses carried ingredients, yields actual food and keeps home production separate',()=>{
+ const s=freshState();s.x=CAMP.x;s.z=CAMP.z;s.camp.ready=true;s.stash={fish:100,herbs:100};s.camp.store={fish:10,herbs:10};assert.equal(cookCamp(s,'meal').ok,false);s.bag={fish:1,herbs:1,wood:1};assert.equal(cookCamp(s,'meal').ok,true);assert.equal(s.meals,1);assert.deepEqual(s.stash,{fish:100,herbs:100});assert.deepEqual(s.camp.store,{fish:10,herbs:10});assert.equal(cookCamp(s,'meal').ok,false);assert.equal(cookCamp(s,'generator').ok,false);s.x=0;assert.equal(cookCamp(s,'tea').ok,false);
+});
+test('Death leaves recoverable supplies on land and returns the boat to the connected shore',()=>{
+ const s=freshState();s.boat={repaired:true,aboard:true,x:300,z:55,heading:0,lastDock:'reedcamp'};s.x=300;s.z=55;s.bag={metal:3};s.camp={ready:true,store:{wood:7}};respawn(s);assert.equal(s.boat.aboard,false);assert.equal(s.boat.repaired,true);assert.equal(s.boat.x,FLOOD_DOCKS[0].boat.x);assert.deepEqual({x:s.grave.x,z:s.grave.z},FLOOD_DOCKS[1].foot);assert.deepEqual(s.grave.loot,{metal:3});assert.deepEqual(s.camp.store,{wood:7});assert.equal(inFloodWater(s.grave.x,s.grave.z),false);
+});
+
+
+test('Map destinations on an island or pier direct a boat to safe docking water',async()=>{
+ const {waterDestination,FLOOD_TREES,FLOOD_OBSTACLES,FLOOD_POSTS}=await import('../src/floodplain.js');
+ for(const island of FLOOD_ISLANDS){const point=waterDestination(island.x,island.z),dock=FLOOD_DOCKS.find(d=>d.id===island.id);assert.deepEqual(point,dock.boat);assert.equal(boatWater(point.x,point.z),true);}
+ for(const dock of FLOOD_DOCKS)assert.deepEqual(waterDestination(dock.foot.x,dock.foot.z),dock.boat);
+ assert.deepEqual(waterDestination(310,59),{x:310,z:59});
+ for(const o of [...FLOOD_TREES.map(t=>({...t,w:.65*t.scale,d:.65*t.scale})),...FLOOD_OBSTACLES,...FLOOD_POSTS])for(const b of FLOOD_BUILDINGS)assert.equal(overlaps(o,b,.2),false,`Obstacle ${o.x},${o.z} clips ${b.id}`);
 });

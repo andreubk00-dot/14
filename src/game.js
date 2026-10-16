@@ -1,3 +1,4 @@
+import {WORLD_BOUNDS,freshBoat,cleanBoat,FLOOD_DOCKS,CAMP,BOAT_REPAIR} from './floodplain.js';
 import {cleanMapMarks} from './map-marks.js';
 import {SUPPLY_FIELDS,FOOD_EFFECTS,activeFood} from './food.js';
 import {CARGO_WEIGHT,cleanCargo,cargoLoot,cargoStorageCapacity} from './salvage.js';
@@ -104,7 +105,7 @@ export const FISH = [
 export const HOME = { x: -16, z: 16 };
 export function freshState() {
   return {
-    mapMarks:[],keepResources:[],cargo:[],storedCargo:[],strippedNodes:[],construction:[],brokenNodes:[],loadouts:[null,null],openedGates:[],packedFurniture:[],fishingBait:'none',visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
+    boat:freshBoat(),camp:{ready:false,store:{}},mapMarks:[],keepResources:[],cargo:[],storedCargo:[],strippedNodes:[],construction:[],brokenNodes:[],loadouts:[null,null],openedGates:[],packedFurniture:[],fishingBait:'none',visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
     version: 1, x: HOME.x + 1, z: HOME.z + 2, health: 100, stamina: 100,
     stash: { wood: 3, metal: 2, cloth: 2 }, bag: {}, owned: [],
     equipment: { weapon: 'pipe', armor: null, bag: null, boots: null },
@@ -129,6 +130,9 @@ function cleanFurniture(p,elapsed) {
 export function validateSave(input) {
   if (!input || input.version !== 1) return null;
   const state = freshState();
+  state.boat=cleanBoat(input.boat);
+  state.camp.ready=input.camp?.ready===true;
+  let storedWeight=0;for(const id of Object.keys(RESOURCES)){const n=input.camp?.store?.[id];if(Number.isSafeInteger(n)&&n>0){const count=Math.min(n,Math.floor((CAMP.capacity-storedWeight)/RESOURCES[id].weight));if(count>0){state.camp.store[id]=count;storedWeight+=count*RESOURCES[id].weight;}}}
   state.mapMarks=cleanMapMarks(input.mapMarks);
   state.keepResources=[...new Set((Array.isArray(input.keepResources)?input.keepResources:[]).filter(id=>Object.hasOwn(RESOURCES,id)))];
   state.cargo=cleanCargo(input.cargo,RESOURCES);state.storedCargo=cleanCargo(input.storedCargo,RESOURCES);state.strippedNodes=[...new Set((Array.isArray(input.strippedNodes)?input.strippedNodes:Object.keys(input.nodeLoot||{})).filter(id=>/^node-\d{1,3}$/.test(id)))];
@@ -168,7 +172,7 @@ export function validateSave(input) {
     else if (id === 'pipe' && slot === 'weapon') state.equipment.weapon = 'pipe';
     else if (state.owned.includes(id) && recipe?.slot === slot) state.equipment[slot] = id;
   }
-  for (const key of ['x', 'z']) if (Number.isFinite(input[key])) state[key] = Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, input[key]));
+  for (const key of ['x', 'z']) if (Number.isFinite(input[key])) state[key] = Math.max(key==='x'?WORLD_BOUNDS.minX:WORLD_BOUNDS.minZ, Math.min(key==='x'?WORLD_BOUNDS.maxX:WORLD_BOUNDS.maxZ, input[key]));
   state.placed=(Array.isArray(input.placed)?input.placed:[]).slice(0,500).map(p=>cleanFurniture(p,state.elapsed)).filter(Boolean).slice(0,70);
   state.packedFurniture=(Array.isArray(input.packedFurniture)?input.packedFurniture:[]).slice(0,70).flatMap(p=>{const item=cleanFurniture(p,state.elapsed);return item?[{...item,packedAt:Number.isFinite(p.packedAt)?Math.max(0,Math.min(state.elapsed,p.packedAt)):state.elapsed}]:[];});
   if (input.depleted && typeof input.depleted === 'object') {
@@ -188,7 +192,7 @@ export function validateSave(input) {
   state.drops = (Array.isArray(input.drops) ? input.drops : []).filter(d => d && typeof d.id === 'string' && Number.isFinite(d.x) && Number.isFinite(d.z) && d.loot && typeof d.loot === 'object').slice(0, 100).map(d => {
     const loot = {};
     for (const resource of Object.keys(RESOURCES)) if (Number.isFinite(d.loot[resource]) && d.loot[resource] > 0) loot[resource] = Math.min(100000, Math.floor(d.loot[resource]));
-    return { id: d.id.slice(0, 80), x: Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, d.x)), z: Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, d.z)), loot };
+    return { id: d.id.slice(0, 80), x: Math.max(WORLD_BOUNDS.minX, Math.min(WORLD_BOUNDS.maxX, d.x)), z: Math.max(WORLD_BOUNDS.minZ, Math.min(WORLD_BOUNDS.maxZ, d.z)), loot };
   }).filter(d => Object.keys(d.loot).length);
   state.loadouts=[0,1].map(i=>{const p=input.loadouts?.[i];if(!p||typeof p!=='object')return null;const e={};for(const slot of Object.keys(state.equipment)){const id=p[slot];e[slot]=id==='pipe'&&slot==='weapon'?'pipe':state.owned.includes(id)&&RECIPES.some(r=>r.id===id&&r.slot===slot)?id:null;}return e;});
   state.fishCollection = (Array.isArray(input.fishCollection) ? input.fishCollection : []).filter(name => FISH.some(f => f.name === name));
@@ -196,7 +200,7 @@ export function validateSave(input) {
     const loot = {};
     for (const id of Object.keys(RESOURCES)) if (Number.isFinite(input.grave.loot?.[id]) && input.grave.loot[id] > 0) loot[id] = Math.min(100000, Math.floor(input.grave.loot[id]));
     const finds={};for(const id of Object.keys(FINDS)) if(Number.isInteger(input.grave.finds?.[id])&&input.grave.finds[id]>0) finds[id]=Math.min(99,input.grave.finds[id]);
-    state.grave = { ...(input.grave.cargo?{cargo:cleanCargo(input.grave.cargo,RESOURCES)}:{}), ...(input.grave.finds?{finds}:{}), x: Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, input.grave.x)), z: Math.max(-WORLD_LIMIT, Math.min(WORLD_LIMIT, input.grave.z)), loot };
+    state.grave = { ...(input.grave.cargo?{cargo:cleanCargo(input.grave.cargo,RESOURCES)}:{}), ...(input.grave.finds?{finds}:{}), x: Math.max(WORLD_BOUNDS.minX, Math.min(WORLD_BOUNDS.maxX, input.grave.x)), z: Math.max(WORLD_BOUNDS.minZ, Math.min(WORLD_BOUNDS.maxZ, input.grave.z)), loot };
   }
   if (['garden', 'seedbed', 'purifier', 'recycler', 'rest'].includes(input.helper?.assignment)) state.helper.assignment = input.helper.assignment;
   if (Number.isFinite(input.helper?.cycles)) state.helper.cycles = Math.floor(Math.max(0, Math.min(100000000, input.helper.cycles)));
@@ -214,6 +218,7 @@ export function validateSave(input) {
   state.settings.sound = input.settings?.sound !== false;
   state.settings.music=input.settings?.music!==false;state.settings.musicVolume=Number.isFinite(input.settings?.musicVolume)?Math.max(0,Math.min(1,input.settings.musicVolume)):.5;
   state.settings.quality = input.settings?.quality === 'low' ? 'low' : 'high';
+  if(state.boat.aboard){state.x=state.boat.x;state.z=state.boat.z;}
   return state;
 }
 export function bagWeight(state) {
@@ -305,6 +310,8 @@ export function takeDamage(state, amount) {
   return state.health <= 0;
 }
 export function respawn(state) {
+  if(state.boat.aboard){const dock=FLOOD_DOCKS.find(d=>d.id===state.boat.lastDock)||FLOOD_DOCKS[0];state.x=dock.foot.x;state.z=dock.foot.z;}
+  state.boat={...state.boat,...FLOOD_DOCKS[0].boat,aboard:false,lastDock:'shore',vx:0,vz:0};
   const previous = state.grave;
   state.grave = {x:state.x,z:state.z,loot:{...state.bag},finds:{...state.finds},...((state.cargo.length||previous?.cargo?.length)?{cargo:[...(previous?.cargo||[]),...state.cargo]}:{})};
   if(previous) for(const [id,n] of Object.entries(previous.finds||{})) state.grave.finds[id]=(state.grave.finds[id]||0)+n;
@@ -537,4 +544,28 @@ export function toggleYardGate(state,item,obstacles=[]){
  if(rects.some(r=>circleHitsRect(state.x,state.z,.32,r)||obstacles.some(o=>!o.disabled&&overlaps(r,o,.02))||state.placed.some((p,i)=>i!==index&&furnitureColliders(p).some(o=>overlaps(r,o,-1e-6)))))return {ok:false,reason:'Отойди от створки или освободи место'};
  if(!yardRouteClear(state,next,obstacles,index))return {ok:false,reason:'Калитка перекроет выход к дому'};
  Object.assign(item,next);return {ok:true};
+}
+
+// Field repairs use carried resources; remote home storage is never spent here.
+export function fieldCost(state,cost){return Object.entries(cost).every(([id,n])=>(state.bag[id]||0)>=n);}
+export function repairField(state,id){
+ const shore=FLOOD_DOCKS[0],boat=id==='boat',cost=boat?BOAT_REPAIR:CAMP.cost;
+ if(!['boat','camp'].includes(id)||state.boat.aboard||Math.hypot(state.x-(boat?shore.foot.x:CAMP.x),state.z-(boat?shore.foot.z:CAMP.z))>3)return {ok:false,reason:'Подойди к месту ремонта'};
+ if(boat?state.boat.repaired:state.camp.ready)return {ok:false,reason:'Уже восстановлено'};
+ if(!fieldCost(state,cost))return {ok:false,reason:'Нужные материалы должны быть в рюкзаке'};
+ for(const [key,n]of Object.entries(cost))state.bag[key]-=n;
+ if(boat)state.boat.repaired=true;else state.camp.ready=true;return {ok:true};
+}
+export function campWeight(state){return Object.entries(state.camp.store).reduce((n,[id,count])=>n+RESOURCES[id].weight*count,0);}
+export function atCamp(state){return state.camp.ready&&!state.boat.aboard&&Math.hypot(state.x-CAMP.x,state.z-CAMP.z)<=3;}
+export function transferCamp(state,id,direction,count=1){
+ if(!atCamp(state)||!Object.hasOwn(RESOURCES,id)||!['deposit','withdraw'].includes(direction)||!Number.isSafeInteger(count)||count<1)return {ok:false,reason:'Подойди к ящику стоянки'};
+ const deposit=direction==='deposit',from=deposit?state.bag:state.camp.store,to=deposit?state.camp.store:state.bag;
+ const room=deposit?CAMP.capacity-campWeight(state):capacity(state)-bagWeight(state),n=Math.min(count,from[id]||0,Math.floor((room+1e-8)/RESOURCES[id].weight));
+ if(n<1)return {ok:false,reason:'Нет места или материала'};from[id]-=n;to[id]=(to[id]||0)+n;return {ok:true,count:n};
+}
+export function cookCamp(state,id){
+ if(!atCamp(state)||!COOKING_RECIPES.includes(id))return {ok:false,reason:'Подойди к печи стоянки'};
+ const recipe=RECIPES.find(r=>r.id===id);if(!fieldCost(state,recipe.cost))return {ok:false,reason:'Ингредиенты должны быть в рюкзаке'};
+ for(const [key,n]of Object.entries(recipe.cost))state.bag[key]-=n;state[SUPPLY_FIELDS[id]]++;return {ok:true};
 }

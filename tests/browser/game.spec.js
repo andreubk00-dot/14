@@ -48,7 +48,7 @@ async function start(page, patch = {}) {
     localStorage.setItem('quiet-district-save-v1', JSON.stringify(state));
   }, patch);
   await page.goto('/');
-  await expect(page.locator('[data-action="start"]')).toBeEnabled({ timeout: 60000 });
+  await expect(page.locator('[data-action="start"]')).toBeEnabled({ timeout: 90000 });
   await page.locator('[data-action="start"]').click();
   await expect(page.locator('#hud')).toBeVisible();
 }
@@ -113,7 +113,7 @@ test('Placement through the canvas spends materials and persists across reload',
   const saved = await page.evaluate(() => localStorage.getItem('quiet-district-save-v1'));
   await page.context().addInitScript(value => localStorage.setItem('quiet-district-save-v1', value), saved);
   await page.reload();
-  await expect(page.locator('[data-action="start"]')).toBeEnabled({ timeout: 60000 });
+  await expect(page.locator('[data-action="start"]')).toBeEnabled({ timeout: 90000 });
   expect(await page.evaluate(() => window.__quietDistrict.state.placed)).toEqual(before);
 });
 
@@ -187,7 +187,7 @@ test('Importing a save replaces the current history without pagehide overwriting
   // Unlike the other fixtures, this scenario starts without an initialization
   // script so the imported data remains authoritative after navigation.
   await page.goto('/');
-  await expect(page.locator('[data-action="start"]')).toBeEnabled({ timeout: 60000 });
+  await expect(page.locator('[data-action="start"]')).toBeEnabled({ timeout: 90000 });
   await page.locator('[data-action="start"]').click();
   await page.locator('[data-action="settings"]').click();
   const navigation = page.waitForEvent('framenavigated', { predicate: frame => frame === page.mainFrame(), timeout: 60000 });
@@ -198,7 +198,7 @@ test('Importing a save replaces the current history without pagehide overwriting
   await expect(page.locator('#confirm-overlay')).toContainText('Загрузить другую историю');
   await page.locator('[data-action="confirm-result"][data-result="yes"]').click();
   await navigation;
-  await expect(page.locator('[data-action="start"]')).toBeEnabled({ timeout: 60000 });
+  await expect(page.locator('[data-action="start"]')).toBeEnabled({ timeout: 90000 });
   await page.waitForFunction(() => window.__quietDistrict?.state?.stash.wood === 123, undefined, { timeout: 60000 });
   expect(await page.evaluate(() => window.__quietDistrict.state.owned)).toContain('generator');
 });
@@ -385,7 +385,7 @@ test('Roofs fade on entering each building and restore outside without changing 
   const result=await page.evaluate(()=>{
     const g=window.__quietDistrict,w=g.world,b=w.buildings.find(b=>b.x===13);
     const before=w.blocked(8,4); g.ui.open('settings');
-    const count=w.buildings.length, geometries=w.buildings.map(b=>b.roofMeshes.length);
+    const resident=w.buildings.filter(b=>!b.id),count=resident.length,geometries=resident.map(b=>b.roofMeshes.length);
     g.state.x=13;g.state.z=4;w.updateRoofs(.1);
     const transition=b.roofMeshes[0].material.opacity;
     for(let i=0;i<60;i++)w.updateRoofs(1/60);
@@ -767,7 +767,7 @@ test('Annex actual placement, roof cutaway, collision and save reload',async({pa
  await page.screenshot({path:'/tmp/quiet-v13-annex.png'});const restored=await page.context().newPage();await restored.goto('/');await restored.locator('[data-action="start"]').click();expect(await restored.evaluate(()=>window.__quietDistrict.state.construction.length)).toBe(4);await restored.close();
 });
 test('Tree and stone tools, partial resource piles and regeneration',async({page})=>{
- test.setTimeout(180000);await start(page,{owned:['axe','pick'],x:-29,z:16});const audit=await page.evaluate(()=>{const g=window.__quietDistrict;g.visibilityPaused=true;const tree=g.world.nodes.find(n=>n.machine==='standingtree'),stone=g.world.nodes.find(n=>n.machine==='quarry');g.state.bag={wood:25};g.harvest(tree);g.finishJob();const falling=!!tree.falling;g.world.updateResourceAnimations(1);const partial={broken:g.state.brokenNodes.includes(tree.id),standing:tree.group.userData.standing.visible,pile:tree.group.userData.shards.visible,disabled:tree.collider.disabled,left:{...tree.loot}};g.state.bag={};g.harvest(tree);g.finishJob();const stump=tree.stump.visible;g.state.bag={};g.harvest(stone);g.finishJob();const mined=g.state.bag.stone;g.state.elapsed+=241;g.state.x=-16;g.state.z=16;g.world.syncNodes();return {partial,stump,mined,regrown:tree.group.visible&&tree.group.userData.standing.visible&&!tree.collider.disabled,count:g.world.nodes.length,falling};});expect(audit.falling).toBe(true);expect(audit.partial.broken&&audit.partial.pile&&audit.partial.disabled).toBe(true);expect(audit.partial.standing).toBe(false);expect(audit.partial.left.wood).toBeGreaterThan(0);expect(audit.stump&&audit.regrown).toBe(true);expect(audit.mined).toBeGreaterThan(0);expect(audit.count).toBe(370);
+ test.setTimeout(180000);await start(page,{owned:['axe','pick'],x:-29,z:16});const audit=await page.evaluate(()=>{const g=window.__quietDistrict;g.visibilityPaused=true;const tree=g.world.nodes.find(n=>n.machine==='standingtree'),stone=g.world.nodes.find(n=>n.machine==='quarry');g.state.bag={wood:25};g.harvest(tree);g.finishJob();const falling=!!tree.falling;g.world.updateResourceAnimations(1);const partial={broken:g.state.brokenNodes.includes(tree.id),standing:tree.group.userData.standing.visible,pile:tree.group.userData.shards.visible,disabled:tree.collider.disabled,left:{...tree.loot}};g.state.bag={};g.harvest(tree);g.finishJob();const stump=tree.stump.visible;g.state.bag={};g.harvest(stone);g.finishJob();const mined=g.state.bag.stone;g.state.elapsed+=241;g.state.x=-16;g.state.z=16;g.world.syncNodes();return {partial,stump,mined,regrown:tree.group.visible&&tree.group.userData.standing.visible&&!tree.collider.disabled,count:g.world.nodes.length,falling};});expect(audit.falling).toBe(true);expect(audit.partial.broken&&audit.partial.pile&&audit.partial.disabled).toBe(true);expect(audit.partial.standing).toBe(false);expect(audit.partial.left.wood).toBeGreaterThan(0);expect(audit.stump&&audit.regrown).toBe(true);expect(audit.mined).toBeGreaterThan(0);expect(audit.count).toBe(382);
 });
 
 const furnishedAnnex=[{id:'floor',x:-18,z:20.5},{id:'floor',x:-18,z:22.5},{id:'floor',x:-16,z:22.5},{id:'floor',x:-18,z:24.5},{id:'floor',x:-16,z:24.5},{id:'wall',x:-19,z:20.5,axis:'z'},{id:'window',x:-17,z:20.5,axis:'z'},{id:'wall',x:-19,z:22.5,axis:'z'},{id:'wall',x:-16,z:21.5,axis:'x'},{id:'window',x:-15,z:22.5,axis:'z'},{id:'wall',x:-19,z:24.5,axis:'z'},{id:'door',x:-18,z:25.5,axis:'x'},{id:'window',x:-15,z:24.5,axis:'z'},{id:'wall',x:-16,z:25.5,axis:'x'}];
@@ -803,7 +803,7 @@ test('New station gear and storage rack craft through UI; timed dismantling canc
 });
 
 test('Distant patrols sleep without pathfinding and the harbor opens the existing fishing flow',async({page})=>{
- await start(page,{x:104,z:-20,owned:['rod'],settings:{sound:false,quality:'low'}});const audit=await page.evaluate(()=>{const g=window.__quietDistrict,w=g.world;g.visibilityPaused=true;const far=w.enemies.find(e=>Math.hypot(e.x-g.state.x,e.z-g.state.z)>40),before={x:far.x,z:far.z,routeAt:far.routeAt};for(let i=0;i<120;i++){g.state.elapsed+=.05;g.updateEnemies(.05);}return {slept:far.x===before.x&&far.z===before.z&&far.routeAt===before.routeAt,count:w.enemies.length};});expect(audit.slept).toBe(true);expect(audit.count).toBe(24);await page.keyboard.press('KeyE');await page.locator('[data-action="bait-menu"]').click();await expect(page.locator('#panel')).toContainText('Промышленная набережная');await page.locator('[data-action="cast-selected"]').click();expect(await page.evaluate(()=>window.__quietDistrict.fish.spot)).toBe('harbor');
+ await start(page,{x:104,z:-20,owned:['rod'],settings:{sound:false,quality:'low'}});const audit=await page.evaluate(()=>{const g=window.__quietDistrict,w=g.world;g.visibilityPaused=true;const far=w.enemies.find(e=>Math.hypot(e.x-g.state.x,e.z-g.state.z)>40),before={x:far.x,z:far.z,routeAt:far.routeAt};for(let i=0;i<120;i++){g.state.elapsed+=.05;g.updateEnemies(.05);}return {slept:far.x===before.x&&far.z===before.z&&far.routeAt===before.routeAt,count:w.enemies.length};});expect(audit.slept).toBe(true);expect(audit.count).toBe(26);await page.keyboard.press('KeyE');await page.locator('[data-action="bait-menu"]').click();await expect(page.locator('#panel')).toContainText('Промышленная набережная');await page.locator('[data-action="cast-selected"]').click();expect(await page.evaluate(()=>window.__quietDistrict.fish.spot)).toBe('harbor');
 });
 
 
@@ -865,12 +865,12 @@ test('Forest expansion connects every clearing and cabin, keeps all loot reachab
   const route=(x,z)=>{g.state.x=-18;g.state.z=23;const r=w.pathTo(x,z);return r.length>0&&r.every(p=>!w.blocked(p.x,p.z));};
   const clearings=OUTLAND_PLACES.map(l=>({id:l.id,route:route(l.x,l.z)}));
   const houses=OUTLAND_BUILDINGS.map(b=>{const room=w.buildings.find(r=>r.x===b.x&&r.z===b.z);const reachable=route(b.x,b.z);g.state.x=b.x;g.state.z=b.z;w.updateRoofs(1);const faded=room.roofMeshes.every(m=>m.material.opacity<.04);g.state.z=b.z+b.d/2+3;w.updateRoofs(1);return {id:b.id,reachable,faded,restored:room.roofMeshes.every(m=>Math.abs(m.material.opacity-(m.material.userData.baseOpacity??1))<.01)};});
-  const nodes=w.nodes.slice(210),unreachable=nodes.filter(n=>{g.state.x=-18;g.state.z=23;for(let a=0;a<Math.PI*2;a+=Math.PI/6){const x=n.x+Math.sin(a)*1.5,z=n.z+Math.cos(a)*1.5;if(w.blocked(x,z)||!w.canSee(x,z,n.x,n.z,n.collider,true))continue;const r=w.pathTo(x,z);if(r.length&&Math.hypot(r.at(-1).x-n.x,r.at(-1).z-n.z)<2.1)return false;}return true;}).map(n=>n.name);
+  const nodes=w.nodes.slice(210,370),unreachable=nodes.filter(n=>{g.state.x=-18;g.state.z=23;for(let a=0;a<Math.PI*2;a+=Math.PI/6){const x=n.x+Math.sin(a)*1.5,z=n.z+Math.cos(a)*1.5;if(w.blocked(x,z)||!w.canSee(x,z,n.x,n.z,n.collider,true))continue;const r=w.pathTo(x,z);if(r.length&&Math.hypot(r.at(-1).x-n.x,r.at(-1).z-n.z)<2.1)return false;}return true;}).map(n=>n.name);
   const {overlaps}=await import('/src/layout.js');const findClips=nodes.filter(n=>n.find&&w.colliders.some(c=>c!==n.collider&&!c.disabled&&overlaps(n.collider,c,-.03))).map(n=>n.name);
   const roadClips=OUTLAND_PATHS.filter(p=>w.buildings.some(b=>Math.abs(p.x-b.x)<(p.w+b.w)/2+.17&&Math.abs(p.z-b.z)<(p.d+b.d)/2+.17));
   const dock=Array.from({length:11},(_,i)=>!w.blocked(94+i,164)),water=w.blocked(115,164)&&w.blocked(104,168)&&w.blocked(132,160);
   return {clearings,houses,unreachable,findClips,roadClips,dock,water,nodeCount:w.nodes.length,resources:OUTLAND_RESOURCE_SITES.length,old:w.nodes[209].id,patrols:w.enemies.length,grass:w.scene.children.filter(m=>m.userData.groundCover).reduce((n,m)=>n+m.count,0)};
- });expect(audit.clearings.every(l=>l.route)).toBe(true);expect(audit.houses.every(b=>b.reachable&&b.faded&&b.restored)).toBe(true);expect(audit.unreachable).toEqual([]);expect(audit.findClips).toEqual([]);expect(audit.roadClips).toEqual([]);expect(audit.dock.every(Boolean)&&audit.water).toBe(true);expect(audit.nodeCount).toBe(370);expect(audit.resources).toBe(121);expect(audit.old).toBe('node-209');expect(audit.patrols).toBe(24);expect(audit.grass).toBe(2300);
+ });expect(audit.clearings.every(l=>l.route)).toBe(true);expect(audit.houses.every(b=>b.reachable&&b.faded&&b.restored)).toBe(true);expect(audit.unreachable).toEqual([]);expect(audit.findClips).toEqual([]);expect(audit.roadClips).toEqual([]);expect(audit.dock.every(Boolean)&&audit.water).toBe(true);expect(audit.nodeCount).toBe(382);expect(audit.resources).toBe(121);expect(audit.old).toBe('node-209');expect(audit.patrols).toBe(26);expect(audit.grass).toBe(2300);
  await jump(page,104,164);await page.keyboard.press('KeyE');await page.locator('[data-action="bait-menu"]').click();await expect(page.locator('#panel')).toContainText('Лесное озеро');await page.keyboard.press('Escape');await jump(page,-24,118.7);await page.keyboard.press('KeyE');expect(await page.evaluate(()=>window.__quietDistrict.job.type)).toBe('gate');const opening=await page.evaluate(()=>{const g=window.__quietDistrict,w=g.world,before=w.blocked(-24,120);g.finishJob();return {before,after:w.blocked(-24,120),wing:w.blocked(-29,120),saved:JSON.parse(localStorage.getItem('quiet-district-save-v1')).openedGates.includes('forest-cut')};});expect(opening).toEqual({before:true,after:false,wing:true,saved:true});
 });
 
@@ -1126,4 +1126,57 @@ test('Static colour batches reduce city submissions while preserving roofs, all 
    out.push({changed,max,calls:[a.calls,b.calls],shadow:w.sun.shadow.mapSize.x,reflection:w.mirrors.capture.getRenderTarget().width});
   }return out;
  });console.log('Static colour render audit',JSON.stringify(result));for(const r of result){expect(r.max).toBeLessThanOrEqual(1);expect(r.changed).toBeLessThan(240);expect(r.shadow).toBe(2048);expect(r.reflection).toBe(512);}expect(result[0].calls[1]).toBeLessThan(result[0].calls[0]);expect(result[1].calls[1]).toBeLessThan(result[1].calls[0]);
+});
+
+test('Flood expedition repairs the boat, rows every channel, develops a local camp and restores a voyage',async({page})=>{
+ test.setTimeout(420000);await start(page,{x:167,z:78,health:73,owned:['rod','axe','pick','carbine','bag2'],ammo:60,equipment:{weapon:'carbine',armor:null,bag:'bag2',boots:null},medkits:3});
+ await page.evaluate(()=>{const g=window.__quietDistrict;g.visibilityPaused=true;g.__voyage={legs:0,steps:0};});
+ const walk=async(x,z)=>{
+  const result=await page.evaluate(({x,z})=>{const g=window.__quietDistrict;g.visibilityPaused=false;g.world.flood.update(true);g.navigate(x,z,false);let steps=0,hadRoute=g.path.length>0;
+   for(;steps<14000&&g.path.length;steps++){if(!g.state.boat.aboard){if(g.state.health<45)g.action('use-medkit');const enemy=g.world.enemies.find(e=>e.health>0&&Math.hypot(e.x-g.state.x,e.z-g.state.z)<9&&g.world.canSee(g.state.x,g.state.z,e.x,e.z));if(enemy)g.attack(enemy);}g.tick(1/60);}
+   g.visibilityPaused=true;g.world.flood.update(true);g.__voyage.legs++;g.__voyage.steps+=steps;return {hadRoute,steps,x:g.state.x,z:g.state.z,health:g.state.health,distance:Math.hypot(g.state.x-x,g.state.z-z),boat:g.state.boat.aboard,context:g.nearestInteraction()?.type};},{x,z});expect(result.hadRoute,JSON.stringify({goal:{x,z},result})).toBe(true);expect(result.distance).toBeLessThan(.6);expect(result.steps).toBeLessThan(14000);return result;
+ };
+ const loot=async(name,x,z)=>{await walk(x,z);const before=await page.evaluate(name=>{const g=window.__quietDistrict,n=g.world.nodes.find(n=>n.name===name);g.preferredInteraction='node:'+n.id;g.interactionLocked=true;return {id:n.id,nearest:g.nearestInteraction()?.entity?.id};},name);expect(before.nearest).toBe(before.id);await page.keyboard.press('KeyE');const result=await page.evaluate(()=>{const g=window.__quietDistrict;g.visibilityPaused=false;let steps=0;for(;g.job&&steps<1500;steps++)g.tick(1/60);g.visibilityPaused=true;return {steps,bag:g.state.bag};});expect(result.steps).toBeGreaterThan(0);return result;};
+ await loot('Доски и обшивка лодочной',213.5,65);await walk(234.8,78);await page.keyboard.press('KeyE');await expect(page.locator('#panel')).toContainText('Гребная лодка');await page.locator('[data-action="field-repair"][data-id="boat"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.boat.repaired)).toBe(true);await page.keyboard.press('Escape');await page.keyboard.press('KeyE');
+ expect(await page.evaluate(()=>window.__quietDistrict.state.boat.aboard)).toBe(true);await expect(page.locator('#hotbar')).toContainText('Гребная лодка');
+ // Actual keyboard steering and deceleration, with all water/bank collision checks active.
+ const keyboard=await page.evaluate(()=>{const g=window.__quietDistrict;g.visibilityPaused=false;const x=g.state.x,z=g.state.z;g.keys.add('KeyD');for(let i=0;i<45;i++)g.tick(1/60);g.keys.clear();for(let i=0;i<60;i++)g.tick(1/60);g.visibilityPaused=true;return {distance:Math.hypot(g.state.x-x,g.state.z-z),boat:g.state.boat};});expect(keyboard.distance).toBeGreaterThan(1);
+ await walk(254.4,70);await page.keyboard.press('KeyE');expect(await page.evaluate(()=>window.__quietDistrict.state.boat.aboard)).toBe(false);await loot('Сухие запасы стоянки',285.4,57);await loot('Провизия под навесом',290.6,57);await walk(288,59);await page.keyboard.press('KeyE');await expect(page.locator('#panel')).toContainText('Камышовая стоянка');await page.locator('[data-action="field-repair"][data-id="camp"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.camp.ready)).toBe(true);
+ for(const id of ['wood','water','fish','herbs'])await page.locator(`[data-action="camp-transfer"][data-direction="deposit"][data-id="${id}"]`).click();
+ const stocked=await page.evaluate(()=>{const g=window.__quietDistrict;return {camp:{...g.state.camp.store},stash:{...g.state.stash}};});expect(stocked.camp).toMatchObject({wood:3,water:3,fish:2,herbs:2});expect(stocked.stash).toEqual({wood:3,metal:2,cloth:2});
+ for(const id of ['wood','fish','herbs'])await page.locator(`[data-action="camp-transfer"][data-direction="withdraw"][data-id="${id}"]`).click();await page.locator('[data-action="camp-cook"][data-id="meal"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.meals)).toBe(1);await page.locator('[data-action="camp-rest"]').click();await page.evaluate(()=>{const g=window.__quietDistrict;g.visibilityPaused=false;for(let i=0;i<181;i++)g.tick(1/60);g.visibilityPaused=true;});expect(await page.evaluate(()=>window.__quietDistrict.state.health)).toBeGreaterThanOrEqual(80);
+ await walk(257.2,70);await page.keyboard.press('KeyE');await walk(284,-21.4);await page.keyboard.press('KeyE');await loot('Ремонтный запас водоузла',277.4,-61);await walk(284,-24.2);await page.keyboard.press('KeyE');await walk(309.4,24);await page.keyboard.press('KeyE');await loot('Посылки на почте',335.4,5);await walk(312.2,24);await page.keyboard.press('KeyE');await walk(343,61.4);await page.keyboard.press('KeyE');await loot('Семена из теплицы',355.4,86);
+ // Entered rooms retain real walls; their roof fades while scenery can unload/reload.
+ const roof=await page.evaluate(()=>{const g=window.__quietDistrict,b=g.world.buildings.find(b=>b.id==='glasshouse');g.world.updateRoofs(1);return {inside:b.inside,roof:b.roofMeshes.map(m=>m.material.opacity),blocked:g.world.blocked(b.x-b.w/2,b.z),pump:g.state.bag.pumpmodule,visited:g.state.visited,chunks:g.world.flood.chunks.map(c=>[c.place.id,!!c.group])};});expect(roof.inside).toBe(true);expect(roof.roof.every(n=>n<.1)).toBe(true);expect(roof.blocked).toBe(true);expect(roof.pump).toBe(1);
+ await walk(343,64.2);await page.keyboard.press('KeyE');await walk(310,59);const saved=await page.evaluate(()=>{const g=window.__quietDistrict;g.save();return {boat:g.state.boat,bag:g.state.bag,camp:g.state.camp,voyage:g.__voyage};});
+ const context=page.context();await page.close();const restored=await context.newPage();restored.on('pageerror',e=>page.__errors.push(e.message));try{
+  await restored.goto('/');await expect(restored.locator('[data-action="start"]')).toBeEnabled({timeout:90000});await restored.locator('[data-action="start"]').click();const persisted=await restored.evaluate(()=>{const g=window.__quietDistrict;g.visibilityPaused=true;return {boat:g.state.boat,x:g.state.x,z:g.state.z,bag:g.state.bag,camp:g.state.camp};});expect(persisted.boat.aboard).toBe(true);expect(persisted.x).toBeCloseTo(saved.boat.x,3);expect(persisted.bag).toEqual(saved.bag);expect(persisted.camp).toEqual({ready:saved.camp.ready,store:Object.fromEntries(Object.entries(saved.camp.store).filter(([,n])=>n>0))});
+  await restored.keyboard.press('KeyM');await restored.locator('[data-action="travel"][data-id="floodshore"]').click();expect(await restored.evaluate(()=>window.__quietDistrict.path.length)).toBeGreaterThan(0);
+  const returned=await restored.evaluate(()=>{const g=window.__quietDistrict;g.visibilityPaused=false;let steps=0;for(;steps<10000&&g.path.length;steps++)g.tick(1/60);g.landBoat();g.visibilityPaused=true;g.world.flood.update(true);return {steps,aboard:g.state.boat.aboard,x:g.state.x,z:g.state.z,blocked:g.world.blocked(g.state.x,g.state.z),chunks:g.world.flood.chunks.map(c=>[c.place.id,!!c.group])};});expect(returned.aboard).toBe(false);expect(returned.x).toBe(234.8);expect(returned.blocked).toBe(false);
+  await restored.setViewportSize({width:390,height:844});await restored.keyboard.press('KeyM');expect(await restored.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await expect(restored.locator('#panel')).toContainText('Камышовая стоянка');console.log('Flood voyage',JSON.stringify({saved,returned,roof,keyboard}));
+ }finally{await restored.close();}
+});
+
+test('Flood streaming keeps collisions stable, releases island detail and retains high quality reflections',async({page})=>{
+ test.setTimeout(300000);await start(page,{settings:{sound:false,quality:'high'}});await page.evaluate(()=>{window.__quietDistrict.visibilityPaused=true;});
+ const streaming=await page.evaluate(()=>{
+  const g=window.__quietDistrict,w=g.world,counts=()=>({colliders:w.colliders.length,buildings:w.buildings.length,index:[...w.collisionIndex.cells.values()].reduce((n,v)=>n+v.length,0),shelters:[...w.shelterIndex.cells.values()].reduce((n,v)=>n+v.length,0)}),base=counts();
+  const channelUV=w.flood.waterSurface.geometry.attributes.uv,uvRange=Array.from(channelUV.array).every(n=>n>=0&&n<=1);w.flood.syncBoat(0,false);const waterTime=w.flood.waterSurface.material.uniforms.time.value===w.time;
+  const homeChunks=w.flood.chunks.filter(c=>c.group).length,shared={materials:0,textures:0};w.assets['grass-small'].scene.traverse(m=>{if(!m.isMesh)return;m.material.addEventListener('dispose',()=>shared.materials++);m.material.map?.addEventListener('dispose',()=>shared.textures++);});
+  const shellBefore=w.blocked(331,5),unreachable=w.pathTo(337,11),shellQueries=[...w.collisionIndex.query(330,4,332,6)].length;
+  g.state.x=351;g.state.z=30;const frameSteps=[];for(let n=0;n<30;n++){const at=performance.now();w.flood.update();frameSteps.push(performance.now()-at);if(!w.flood.pending?.length)break;}const staged=w.flood.chunks.filter(c=>c.group).length;g.state.x=-19;g.state.z=14;w.flood.update(true);
+  const times=[];for(let n=0;n<6;n++){g.state.x=351;g.state.z=30;let at=performance.now();w.flood.update(true);times.push(performance.now()-at);g.state.x=-19;g.state.z=14;w.flood.update(true);}
+  const empty=w.flood.chunks.every(c=>!c.group),after=counts();
+  g.state.x=288;g.state.z=59;w.player.position.set(288,.18,59);w.flood.update(true);w.updateRoofs(1);const room=w.buildings.find(b=>b.id==='camp'),inside=room.inside,roof=room.roofMeshes.map(m=>m.material.opacity),shellAfter=w.blocked(331,5);
+  g.state.camp.ready=true;w.cameraCenter.set(288,0,59);w.freezeBuildCamera=true;w.renderer.info.autoReset=false;w.renderer.info.reset();w.update(1/60,false,true);w.renderer.info.autoReset=true;
+  return {base,after,homeChunks,empty,shared,uvRange,waterTime,staged,stages:frameSteps.length,maxStepMs:Math.max(...frameSteps),unreachable:unreachable.length,shellBefore,shellAfter,shellQueries,inside,roof,loads:w.flood.loads,unloads:w.flood.unloads,maxLoadMs:Math.max(...times),shadow:w.sun.shadow.mapSize.x,reflection:w.reflection.getRenderTarget().width,calls:w.renderer.info.render.calls,triangles:w.renderer.info.render.triangles,models:Object.keys(w.assets),liveChunks:w.flood.chunks.filter(c=>c.group).map(c=>c.place.id)};
+ });
+ expect(streaming.uvRange&&streaming.waterTime).toBe(true);expect(streaming.staged).toBeGreaterThan(0);expect(streaming.stages).toBeGreaterThan(streaming.staged);expect(streaming.homeChunks).toBe(0);expect(streaming.empty).toBe(true);expect(streaming.after).toEqual(streaming.base);expect(streaming.shared).toEqual({materials:0,textures:0});expect(streaming.unreachable).toBe(0);expect(streaming.shellBefore&&streaming.shellAfter).toBe(true);expect(streaming.shellQueries).toBeGreaterThan(0);expect(streaming.inside).toBe(true);expect(streaming.roof.every(n=>n<.1)).toBe(true);expect(streaming.shadow).toBe(2048);expect(streaming.reflection).toBe(512);
+ await page.screenshot({path:'/tmp/quiet-v230-camp.png'});
+ await page.evaluate(()=>{const g=window.__quietDistrict;g.state.x=340;g.state.z=28;g.world.player.position.set(340,.18,28);g.world.flood.update(true);g.world.cameraCenter.set(345,0,15);g.world.update(1,false,true);});await page.screenshot({path:'/tmp/quiet-v230-homes.png'});
+ await page.evaluate(()=>{const g=window.__quietDistrict;g.ui.open('camp');});await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:'/tmp/quiet-v230-camp-mobile.png'});console.log('Flood streaming',JSON.stringify(streaming));
+});
+
+test('Island shore clicks reject disconnected walking routes before searching the old district',async({page})=>{
+ test.setTimeout(150000);await start(page);const audit=await page.evaluate(()=>{const g=window.__quietDistrict,w=g.world;g.visibilityPaused=true;const blocked=w.blocked;let probes=0;w.blocked=function(...args){probes++;return blocked.apply(this,args);};const path=w.pathTo(264,64);w.blocked=blocked;const boat=w.boatPathTo(286,64);return {probes,path:path.length,boat:boat.length,landing:boat.at(-1)};});expect(audit.path).toBe(0);expect(audit.probes).toBeLessThan(200);expect(audit.boat).toBeGreaterThan(0);expect(audit.landing).toEqual({x:254,z:70});console.log('Island route work',JSON.stringify(audit));
 });

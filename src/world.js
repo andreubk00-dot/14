@@ -1,3 +1,5 @@
+import {FloodWorld} from './flood-world.js';
+import {WORLD_BOUNDS,FLOOD_BUILDINGS,FLOOD_SUPPLIES,FLOOD_PATROLS,inWorld,inFloodWater,boatWater,walkRegion,waterDestination} from './floodplain.js';
 import {staticColourKey,colourGeometry} from './static-colours.js';
 import {fitEnemyModel} from './enemy-models.js';
 import {MODEL_FILES} from './model-assets.js';
@@ -77,7 +79,7 @@ export class World {
     this.pickables = []; this.fogs = []; this.mixers = []; this.placedGroups = [];
     this.raycaster = new THREE.Raycaster(); this.mouse = new THREE.Vector2();
     this.plane = new THREE.Plane(Y, 0); this.time = 0;
-    this.buildWorld(); this.batchStaticGeometry(); this.buildPlayer(); this.resize();
+    this.buildWorld(); this.batchStaticGeometry(); this.buildPlayer(); this.flood=new FloodWorld(this); this.resize();
     this.resizeObserver = new ResizeObserver(() => this.resize()); this.resizeObserver.observe(container);
     this.applyProgress();this.rebuildConstruction();
     for (const drop of state.drops) this.addDrop(drop);
@@ -221,8 +223,8 @@ export class World {
     const sun = new THREE.DirectionalLight('#ffcf93', 3.0); sun.position.set(-140, 140, -48); sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048); sun.shadow.camera.left = sun.shadow.camera.bottom = -65; sun.shadow.camera.right = sun.shadow.camera.top = 65;
     sun.shadow.camera.near = 1; sun.shadow.camera.far = 400; sun.shadow.bias = -0.0004*119/399; sun.shadow.normalBias = 0.04; this.scene.add(sun); this.sun = sun;
-    const ground = this.box(0, -0.22, 0, (WORLD_LIMIT+6)*2, 0.4, (WORLD_LIMIT+6)*2, color.ground);
-    ground.material = new THREE.MeshStandardMaterial({ map: this.texture('ground'), roughness: 0.96 });ground.material.map.repeat.setScalar(14*(WORLD_LIMIT+6)*2/140);
+    const ground = this.box((WORLD_BOUNDS.minX+WORLD_BOUNDS.maxX)/2, -0.22, 0, WORLD_BOUNDS.maxX-WORLD_BOUNDS.minX+12, 0.4, WORLD_BOUNDS.maxZ-WORLD_BOUNDS.minZ+12, color.ground);
+    ground.material = new THREE.MeshStandardMaterial({ map: this.texture('ground'), roughness: 0.96 });ground.material.map.repeat.set((WORLD_BOUNDS.maxX-WORLD_BOUNDS.minX+12)/10,(WORLD_BOUNDS.maxZ-WORLD_BOUNDS.minZ+12)/10);
     const roadMaterial=new THREE.MeshStandardMaterial({map:this.texture('road'),roughness:.6,metalness:.12});
     for(const r of ROADS){const mesh=this.box(r.x,.015,r.z,r.w,.04,r.d,r.garden?'#898768':color.road);if(!r.garden)mesh.material=roadMaterial;}
     for (let z = -39; z < 41; z += 7) this.box(0, 0.048, z, 0.09, 0.008, 2.1, '#a19b7c');
@@ -242,7 +244,7 @@ export class World {
     }
     for (let i = 0; i < 100; i++) {
       const x = rng() * 124 - 62, z = rng() * 124 - 62;
-      if (this.onRoad(x,z,1) || this.blocked(x, z, 1) || this.buildings.some(b=>isInsideBuilding(b,x,z))) continue;
+      if (this.onRoad(x,z,1) || this.blocked(x, z, 1) || this.buildings.some(b=>!b.roofOnly&&isInsideBuilding(b,x,z))) continue;
       this.bush(x, z, 0.3 + rng() * 0.5);
     }
     this.buildGarden();
@@ -583,7 +585,7 @@ export class World {
     const b=this.buildings.reduce((best,b)=>Math.hypot(b.x-x,b.z-z)<Math.hypot(best.x-x,best.z-z)?b:best);roof.userData.canopyBounds={x,z,w,d};this.canopies.push(roof.userData.canopyBounds);this.shelterIndex.add(roof.userData.canopyBounds,.25);b.roofMeshes.push(roof);
     for(const xx of [x-w/2+.12,x+w/2-.12]) {this.box(xx,h/2,z+d/2-.12,.14,h,.14,color);this.collider(xx,z+d/2-.12,.14,.14);}
   }
-  sheltered(x,z) {return [...this.shelterIndex.query(x,z)].some(b=>isInsideBuilding(b,x,z));}
+  sheltered(x,z) {return [...this.shelterIndex.query(x,z)].some(b=>!b.roofOnly&&isInsideBuilding(b,x,z));}
   syncGates() {for(const g of this.gates){const opened=this.state.openedGates.includes(g.id);g.group.visible=!opened;g.collider.disabled=opened;}this.renderDirty=true;}
   createReeds(){
     this.reedBases=[];
@@ -654,7 +656,7 @@ export class World {
     for(const [x,z,w,d]of [[44,-18,1.5,.8],[-12,-39,2,1],[13,56,1.6,.7]])this.mirrors.surface(x,z,w,d);
     for(const [x,z]of [[46,-20.7],[-10,-42.6],[6.3,49]]){this.box(x,.215,z,.7,.012,.5,'#6c705d');this.box(x+.2,.22,z+.15,.15,.018,.18,'#a39774');}
   }
-  ambience() {const b=this.buildings.find(b=>isInsideBuilding(b,this.state.x,this.state.z));if(!b)return 'outside';return b.ambience||'room';}
+  ambience() {const b=this.buildings.find(b=>!b.roofOnly&&isInsideBuilding(b,this.state.x,this.state.z));if(!b)return 'outside';return b.ambience||'room';}
   buildNewQuarter() {
     this.building(26,36,12,8,3.8,'#a09579','КАФЕ У САДА',{roofStyle:'hip',pitch:.34,signOffset:.3});
     const cafe=this.buildings.at(-1);this.canopy(26,41.1,13,2.2,2.9,'#a59170');this.box(26,.025,41.1,13,.05,2.2,'#928667');
@@ -988,7 +990,7 @@ export class World {
       ['crate','Ящик под служебным навесом',56.8,-31.5,{parts:3,wire:2}],
       ['crate','Сухие травы кухонной кладовой',31,36.8,{herbs:4,seeds:2,cloth:1}],
       ['crate','Запас ремонтной смены',54,9.5,{parts:3,metal:2}],
-      ...FRONTIER_NODES,...FRONTIER_RESOURCES,...ORCHARD_FINDS,...OUTLAND_SUPPLIES,...OUTLAND_RESOURCES,...OUTLAND_FINDS,
+      ...FRONTIER_NODES,...FRONTIER_RESOURCES,...ORCHARD_FINDS,...OUTLAND_SUPPLIES,...OUTLAND_RESOURCES,...OUTLAND_FINDS,...FLOOD_SUPPLIES,
     ];
     definitions.forEach(([type, name, x, z, loot, requires, find, machine,regionProfile,seedCrop], i) => {
       const group = new THREE.Group(); group.position.set(x,this.furnitureElevation(x,z),z); this.scene.add(group);
@@ -1022,7 +1024,7 @@ export class World {
     });
   }
   createEnemies() {
-    for (const [i, initial] of [[8, -4], [26, 11], [-11, -18], [-22, -24], [50,20], [56,12],[-47,-21],[-56,-13],[53.5,-35],...QUARTERS.filter(q=>['rail','port'].includes(q.style)).flatMap(q=>q.style==='port'?[[q.x-19,q.z],[q.x+8,q.z-5]]:[[q.x-19,q.z],[q.x+19,q.z]]),[ORCHARD_PATROL.x,ORCHARD_PATROL.z],...OUTLAND_PATROLS.map(p=>[p.x,p.z])].entries()) {
+    for (const [i, initial] of [[8, -4], [26, 11], [-11, -18], [-22, -24], [50,20], [56,12],[-47,-21],[-56,-13],[53.5,-35],...QUARTERS.filter(q=>['rail','port'].includes(q.style)).flatMap(q=>q.style==='port'?[[q.x-19,q.z],[q.x+8,q.z-5]]:[[q.x-19,q.z],[q.x+19,q.z]]),[ORCHARD_PATROL.x,ORCHARD_PATROL.z],...[...OUTLAND_PATROLS,...FLOOD_PATROLS].map(p=>[p.x,p.z])].entries()) {
       let [x,z]=initial;
       if(this.blocked(x,z,.35)){
         const free=[];for(let dx=-3;dx<=3;dx+=.5)for(let dz=-3;dz<=3;dz+=.5)if(!this.blocked(x+dx,z+dz,.35))free.push({x:x+dx,z:z+dz,d:dx*dx+dz*dz});free.sort((a,b)=>a.d-b.d);
@@ -1032,7 +1034,7 @@ export class World {
       const core = this.box(0, 0, 0, 0.65, 0.35, 0.65, '#646f67', group);
       this.box(0, 0, 0.34, 0.35, 0.07, 0.05, '#e39b6b', group, new THREE.MeshStandardMaterial({ color: '#e39b6b', emissive: '#db7847', emissiveIntensity: 2 }));
       const deadAt = this.state.droneDeaths[`drone-${i}`] ?? -1;
-      const kind=i>=16?OUTLAND_PATROLS[i-14].kind:([0,5,7].includes(i)?'scout':'guardian');
+      const kind=i>=14?([...OUTLAND_PATROLS,...FLOOD_PATROLS][i-14].kind||'guardian'):([0,5,7].includes(i)?'scout':'guardian');
       const health=DRONE_TYPES[kind].health||52;
       const enemy = {kind,facing:0,alert:0,windup:0,patrolIndex:0, id: `drone-${i}`, x, z, originX: x, originZ: z, health: deadAt >= 0 && this.state.elapsed - deadAt < 180 ? 0 : health, maxHealth: health, group, core, cooldown: 0, deadAt, seed: rng() * 10 };
       group.traverse(mesh => { mesh.userData.enemy = enemy; if (mesh.isMesh) this.pickables.push(mesh); }); const type=DRONE_TYPES[kind],vertices=[0,0,0];for(let a=-type.angle/2;a<=type.angle/2+.001;a+=type.angle/24)vertices.push(Math.sin(a)*type.vision,0,Math.cos(a)*type.vision);
@@ -1144,14 +1146,14 @@ export class World {
         let used = 0;
         for (let i = 0; i < 7000 && used < 1150; i++) {
           const radius=used<450?63:used<750?110:WORLD_LIMIT-6;const x = rng() * radius*2 - radius, z = rng() * radius*2 - radius;if(used>=450&&used<750&&Math.abs(x)<64&&Math.abs(z)<64||used>=750&&Math.abs(x)<116&&Math.abs(z)<116)continue;
-          if (this.onRoad(x,z,.5) || this.blocked(x, z, 1) || this.buildings.some(b=>isInsideBuilding(b,x,z))) continue;
+          if (this.onRoad(x,z,.5) || this.blocked(x, z, 1) || this.buildings.some(b=>!b.roofOnly&&isInsideBuilding(b,x,z))) continue;
           p.set(x, 0.02, z); quaternion.setFromAxisAngle(Y, rng() * 6.28); s.setScalar(0.7 + rng() * 0.6); matrix.compose(p, quaternion, s);
           const key=`${Math.floor(x/24)}:${Math.floor(z/24)}`;if(!cells.has(key))cells.set(key,[]);cells.get(key).push(matrix.clone());used++;
         }
         for(const transforms of cells.values()){const instances=new THREE.InstancedMesh(geometry,child.material,transforms.length);transforms.forEach((m,i)=>instances.setMatrixAt(i,m));instances.computeBoundingSphere();instances.receiveShadow=true;instances.userData.groundCover=true;this.scene.add(instances);}
       });
     }
-    this.updateEquipment();
+    this.flood.addGroundCover();this.updateEquipment();
   }
   setHarvestTool(id) {if(this.harvestTool===id)return;this.harvestTool=id;this.updateEquipment();}
   updateEquipment() {
@@ -1204,16 +1206,16 @@ export class World {
   onRoad(x,z,margin=0) {return [...ROADS,...SCENES,...this.canopies].some(r=>Math.abs(x-r.x)<r.w/2+margin&&Math.abs(z-r.z)<r.d/2+margin);}
   canSee(ax,az,bx,bz,ignore=null,wallsOnly=false){return ![...this.collisionIndex.query(Math.min(ax,bx),Math.min(az,bz),Math.max(ax,bx),Math.max(az,bz))].some(r=>r!==ignore&&!r.disabled&&(!wallsOnly||r.cover||r.construction)&&(r.w>.45||r.d>.45)&&segmentHitsRect(ax,az,bx,bz,r))&&!this.state.placed.some(p=>(!wallsOnly||['yardgate','yardfence'].includes(p.id))&&furnitureColliders(p).some(r=>segmentHitsRect(ax,az,bx,bz,r)));}
   blocked(x, z, radius = 0.3) {
-    if(inForestWater(x,z,radius))return true;
+    if(!inWorld(x,z)||inFloodWater(x,z,radius)||inForestWater(x,z,radius))return true;
     if(Math.pow((x-115)/9,2)+Math.pow((z+20)/30,2)<1)return true;
-    if (x < -WORLD_LIMIT || x > WORLD_LIMIT || z < -WORLD_LIMIT || z > WORLD_LIMIT) return true;
+
     if(Math.pow((x-30)/6.8,2)+Math.pow((z-59)/3.7,2)<1&&!(x>=25.2&&x<=29.5&&z<56.2))return true;
     // Pond shoreline; dock remains navigable.
     if (Math.pow((x - 23) / 9, 2) + Math.pow((z + 24) / 7.4, 2) < 1 && !(x < 21.5 && z > -18.1)) return true;
     return [...this.collisionIndex.query(x-radius,z-radius,x+radius,z+radius)].some(c => !c.disabled && circleHitsRect(x,z,radius,c)) || this.state.placed.some(p=>furnitureColliders(p).some(r=>circleHitsRect(x,z,radius,r)));
   }
   repairFurniture() { return repairFurniture(this.colliders,this.state.placed,this.state.construction); }
-  furnitureElevation(x,z) { return this.buildings.some(b=>isInsideBuilding(b,x,z))||this.state.construction.some(p=>p.id==='floor'&&Math.abs(x-p.x)<=1&&Math.abs(z-p.z)<=1)?.205:.025; }
+  furnitureElevation(x,z) { return [...this.buildings,...FLOOD_BUILDINGS].some(b=>!b.roofOnly&&isInsideBuilding(b,x,z))||this.state.construction.some(p=>p.id==='floor'&&Math.abs(x-p.x)<=1&&Math.abs(z-p.z)<=1)?.205:.025; }
   placementStatus(item,ignore=-1) {
     const status=placementStatus(item,this.colliders,this.state.placed,ignore,this.state.construction);if(!status.ok)return status;
     if(item.id==='raincatcher'&&this.sheltered(item.x,item.z))return {ok:false,reason:'Накопителю нужен открытый участок двора'};
@@ -1228,6 +1230,7 @@ export class World {
     this.player.position.set(this.state.x, 0.18, this.state.z);
   }
   pathTo(x, z) {
+    if(walkRegion(this.state.x,this.state.z)!==walkRegion(x,z))return [];
     // Grid A* routes around cars, walls and the water rather than walking into them.
     const sx = Math.round(this.state.x), sz = Math.round(this.state.z);
     const key = (x, z) => `${x},${z}`;
@@ -1240,12 +1243,19 @@ export class World {
       }
       if (!best) return []; gx = best.x; gz = best.z;
     }
+    if(walkRegion(this.state.x,this.state.z)!==walkRegion(gx,gz))return [];
     const furniture=this.state.placed.flatMap(p=>furnitureColliders(p));
     const edgeBlocked=(ax,az,bx,bz)=>{
       const obstacles=[...this.collisionIndex.query(Math.min(ax,bx)-.3,Math.min(az,bz)-.3,Math.max(ax,bx)+.3,Math.max(az,bz)+.3),...furniture];
       return obstacles.some(r=>!r.disabled&&segmentHitsRect(ax,az,bx,bz,{...r,w:r.w+.6,d:r.d+.6}));
     };
-    return gridPath({x:sx,z:sz},{x:gx,z:gz},(x,z)=>this.blocked(x,z),(WORLD_LIMIT*2+3)**2,edgeBlocked);
+    return gridPath({x:sx,z:sz},{x:gx,z:gz},(x,z)=>this.blocked(x,z),(WORLD_BOUNDS.maxX-WORLD_BOUNDS.minX+3)*(WORLD_BOUNDS.maxZ-WORLD_BOUNDS.minZ+3),edgeBlocked);
+  }
+  boatPathTo(x,z){
+    const destination=waterDestination(x,z);let goal={x:Math.round(destination.x),z:Math.round(destination.z)};const start={x:Math.round(this.state.boat.x),z:Math.round(this.state.boat.z)};
+    if(!boatWater(goal.x,goal.z)){const free=[];for(let dx=-3;dx<=3;dx++)for(let dz=-3;dz<=3;dz++)if(boatWater(goal.x+dx,goal.z+dz))free.push({x:goal.x+dx,z:goal.z+dz,d:dx*dx+dz*dz});free.sort((a,b)=>a.d-b.d);if(!free.length)return [];goal=free[0];}
+    const edge=(ax,az,bx,bz)=>!boatWater((ax+bx)/2,(az+bz)/2);
+    return gridPath(start,goal,(x,z)=>!boatWater(x,z),40000,edge);
   }
   enemyWaypoint(enemy,target,time){
     const clear=(ax,az,bx,bz)=>![...this.collisionIndex.query(Math.min(ax,bx)-.5,Math.min(az,bz)-.5,Math.max(ax,bx)+.5,Math.max(az,bz)+.5)].some(r=>!r.disabled&&segmentHitsRect(ax,az,bx,bz,{...r,w:r.w+.7,d:r.d+.7}))&&!this.state.placed.some(p=>furnitureColliders(p).some(r=>segmentHitsRect(ax,az,bx,bz,{...r,w:r.w+.7,d:r.d+.7})));
@@ -1538,7 +1548,7 @@ export class World {
     this.scene.add(line); this.effects ||= []; this.effects.push({ mesh: line, life: 0.15, max: 0.15 }); this.impact(tx, 1.1, tz);
   }
   update(dt, moving, focus = true) {
-    this.time += dt;this.updateHitEffects(dt); this.updateRoofs(dt);this.updateConstructionRoofs(dt);this.syncFurniture();const weather=weatherAt(this.state.elapsed);this.updateRain(dt,weather);
+    this.time += dt;this.flood.update();this.flood.syncBoat(dt,moving);this.updateHitEffects(dt); this.updateRoofs(dt);this.updateConstructionRoofs(dt);this.syncFurniture();const weather=weatherAt(this.state.elapsed);this.updateRain(dt,weather);
     const player = this.player;
     if (focus&&!this.freezeBuildCamera) {
       const desired = new THREE.Vector3(this.state.x + 1, 0, this.state.z - 1);
@@ -1551,6 +1561,7 @@ export class World {
     if (this.oneShot) { this.oneShot.remaining -= dt; if (this.oneShot.remaining <= 0) { this.oneShot.action.stop(); this.oneShot = null; } }
     if (this.walkAction) {
       const busy = !!this.oneShot, running = moving && this.running;
+      if(this.state.boat.aboard)moving=false;
       const blend = 1 - Math.exp(-dt * 14);
       const weight = (action, target) => action?.setEffectiveWeight(THREE.MathUtils.lerp(action.getEffectiveWeight(), target, blend));
       weight(this.walkAction, moving && !running ? 1 : 0); weight(this.runAction, running ? 1 : 0);
@@ -1626,6 +1637,6 @@ export class World {
   }
   zoom(delta) { this.viewSize = THREE.MathUtils.clamp(this.viewSize + delta * 0.025, 23, 52); this.resize(); }
   setQuality(quality) { this.state.settings.quality = quality; this.renderer.setPixelRatio(quality === 'low' ? 1 : Math.min(devicePixelRatio, 1.7)); this.renderer.shadowMap.enabled = quality !== 'low'; if(this.reflection)this.reflection.visible=false;this.renderDirty=true; this.resize(); }
-  surfaceAt(x,z){if(this.buildings.some(b=>isInsideBuilding(b,x,z))||this.state.construction.some(p=>p.id==='floor'&&Math.abs(p.x-x)<=1&&Math.abs(p.z-z)<=1))return 'wood';if(this.state.placed.some(p=>p.id==='yardpath'&&circleHitsRect(x,z,.01,footprint(p))))return 'concrete';return ROADS.some(r=>!r.garden&&Math.abs(x-r.x)<=r.w/2&&Math.abs(z-r.z)<=r.d/2)?'concrete':'grass';}
+  surfaceAt(x,z){if(this.buildings.some(b=>!b.roofOnly&&isInsideBuilding(b,x,z))||this.state.construction.some(p=>p.id==='floor'&&Math.abs(p.x-x)<=1&&Math.abs(p.z-z)<=1))return 'wood';if(this.state.placed.some(p=>p.id==='yardpath'&&circleHitsRect(x,z,.01,footprint(p))))return 'concrete';return ROADS.some(r=>!r.garden&&Math.abs(x-r.x)<=r.w/2&&Math.abs(z-r.z)<=r.d/2)?'concrete':'grass';}
   location() { return LOCATIONS.reduce((best, location) => Math.hypot(this.state.x - location.x, this.state.z - location.z) < Math.hypot(this.state.x - best.x, this.state.z - best.z) ? location : best); }
 }

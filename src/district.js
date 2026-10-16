@@ -1,9 +1,11 @@
+import {WORLD_BOUNDS,FLOOD_PLACES,FLOOD_PATHS} from './floodplain.js';
+export {WORLD_BOUNDS} from './floodplain.js';
 import {OUTLAND_LIMIT,OUTLAND_PLACES,OUTLAND_PATHS} from './outlands.js';
 import {ORCHARD_PATHS} from './orchard.js';
 import {FRONTIER_LOCATIONS,FRONTIER_ROADS,QUARTERS} from './frontier.js';
 export const WORLD_LIMIT=OUTLAND_LIMIT;
 export const LOCATIONS=[
- ...OUTLAND_PLACES,
+ ...OUTLAND_PLACES,...FLOOD_PLACES,
  ...FRONTIER_LOCATIONS,
  {id:'laundry',name:'Прачечная клиники',label:'Прачечная',subtitle:'Чистое бельё · медицинские запасы',x:-58,z:35,color:'#b5c5bf',radius:5,note:'Маленький двор за клиникой. Бельё сложено отдельно от разобранной машины; пустые корзины остались у двери.'},
  {id:'dispatch',name:'Старая диспетчерская',label:'Диспетчерская',subtitle:'Ремонтные запасы · резервное питание',x:58,z:-36,color:'#9eb9c0',radius:6,note:'Пульт смены и шкаф ремонтных запасов. Антенна ещё стоит; питание давно отключено.'},
@@ -29,7 +31,7 @@ export const LOCATIONS=[
 ];
 // Paths avoid foundations; the map and vegetation use the same rectangles.
 export const ROADS=[
- ...FRONTIER_ROADS,...ORCHARD_PATHS,...OUTLAND_PATHS,
+ ...FRONTIER_ROADS,...ORCHARD_PATHS,...OUTLAND_PATHS,...FLOOD_PATHS,
  {x:49,z:-18,w:3,d:10},{x:-15,z:-39,w:3,d:8},{x:10,z:56,w:3,d:16},{x:6,z:56,w:12,d:3},
  {x:26,z:29,w:3,d:22},{x:-44,z:-14,w:24,d:3},
  {x:27,z:40,w:3,d:30},{x:-44,z:50,w:3,d:22},{x:51,z:-32,w:3,d:32},
@@ -50,8 +52,7 @@ export function cycleLoot(id,base,cycle) {
  return Object.fromEntries(Object.entries(base).map(([key,n],i)=>[key,Math.max(1,n+((hash>>>(i*4%24))%3)-1)]));
 }
 export function mapPoint(nx,nz) {
- const span=(WORLD_LIMIT+2)*2;
- return {x:nx*span-WORLD_LIMIT-2,z:nz*span-WORLD_LIMIT-2};
+ return {x:WORLD_BOUNDS.minX-2+nx*(WORLD_BOUNDS.maxX-WORLD_BOUNDS.minX+4),z:WORLD_BOUNDS.minZ-2+nz*(WORLD_BOUNDS.maxZ-WORLD_BOUNDS.minZ+4)};
 }
 
 const EXPEDITION_PROFILES={...Object.fromEntries(QUARTERS.map(q=>[q.id,q.profile])),clinic:['cloth','herbs'],laundry:['cloth','herbs'],tailor:['cloth','wire'],lane:['vegetables','cloth','water'],courtyard:['cloth','vegetables'],cafe:['vegetables','herbs','water'],backwater:['fish','wood'],pond:['fish','wood'],garden:['seeds','herbs'],greenhouse:['seeds','flowers'],garage:['metal','parts','wire'],depot:['metal','parts'],workshop:['parts','wire','metal'],salvage:['parts','metal','wire'],pumpstation:['cloth','wire','parts'],dispatch:['wire','parts'],market:['wood','cloth','water'],housing:['cloth','wood'],substation:['wire','parts']};

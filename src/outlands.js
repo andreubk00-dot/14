@@ -1,3 +1,4 @@
+import {FLOOD_PATHS} from './floodplain.js';
 import * as THREE from 'three';
 // The old district remains in place. New places, supplies and harvest sites append to it.
 export const OUTLAND_LIMIT=208;
@@ -62,7 +63,7 @@ export const OUTLAND_PATHS=[
 ];
 const inside=(p,r,pad=0)=>Math.abs(p.x-r.x)<r.w/2+pad&&Math.abs(p.z-r.z)<r.d/2+pad;
 export function outlandReserved(x,z,pad=1){
- const p={x,z};return Math.hypot(x+160,z-120)<12+pad||inside(p,FOREST_LAKE.dock,pad+1)||OUTLAND_PATHS.some(r=>inside(p,r,pad))||OUTLAND_BUILDINGS.some(r=>inside(p,r,pad+1.5))||inForestWater(x,z,pad)||Math.abs(x)<116&&Math.abs(z)<116;
+ const p={x,z};return Math.hypot(x+160,z-120)<12+pad||inside(p,FOREST_LAKE.dock,pad+1)||[...OUTLAND_PATHS,...FLOOD_PATHS].some(r=>inside(p,r,pad))||OUTLAND_BUILDINGS.some(r=>inside(p,r,pad+1.5))||inForestWater(x,z,pad)||Math.abs(x)<116&&Math.abs(z)<116;
 }
 const loot={cabin:[{cloth:4,wood:3},{water:3,herbs:2}],workshop:[{metal:4,parts:2},{wood:5,wire:2}],ranger:[{cloth:3,wood:4},{parts:2,wire:2}],garden:[{seeds:4,herbs:3},{vegetables:4,water:2}],fish:[{fish:3,herbs:2},{wood:4,water:3}],kitchen:[{vegetables:4,herbs:2},{water:3,wood:3}]};
 // Keep the two established slots per building so old node IDs and claims survive.
