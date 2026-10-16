@@ -223,7 +223,7 @@ test('HUD preserves controls; recipe search and filters explain available crafti
 test('Neighbour orders, water restoration and production are playable', async ({ page }) => {
   // This scenario includes three separate UI workflows under software WebGL.
   test.setTimeout(150000);
-  await start(page, { x: -19, z: 15, owned: ['generator', 'bridge', 'radio'], stash: { wood: 60, metal: 80, cloth: 20, parts: 40, wire: 30 }, elapsed: 130,
+  await start(page, { x: -19, z: 15, owned: ['generator', 'bridge', 'radio'], stash: { wood: 60, metal: 80, cloth: 20, parts: 40, wire: 30, pumpmodule:1,battery:1 }, elapsed: 130,
     placed: [{ id: 'recycler', x: -18, z: 14, rotation: 0, harvested: 0 }] });
   await page.keyboard.press('KeyK');
   await expect(page.locator('#panel')).toContainText('Заказы соседей');
@@ -909,7 +909,8 @@ test('Static scenery skips world matrix products with identical transforms and m
   const baseline={products:baselineProducts,median:measure(true)},frozen={products:frozenProducts,median:measure(false)};
   const enemy=w.enemies[0],before=enemy.group.matrixWorld.elements[12];enemy.x+=1;w.update(.016,false,true);w.scene.updateMatrixWorld(true);
   return {meshes:meshes.length,baseline,frozen,same,actorMoves:enemy.group.matrixWorld.elements[12]!==before,shadow:w.sun.shadow.mapSize.x,reflection:w.mirrors.capture.getRenderTarget().width};
- });console.log('Static transform comparison',JSON.stringify(audit));expect(audit.meshes).toBeGreaterThan(1000);expect(audit.baseline.products).toBe(audit.meshes);expect(audit.frozen.products).toBe(0);expect(audit.same&&audit.actorMoves).toBe(true);
+ });console.log('Static transform comparison',JSON.stringify(audit));expect(audit.meshes).toBeGreaterThan(0); // Nonempty coverage; batching intentionally reduces the object count.
+ expect(audit.baseline.products).toBe(audit.meshes);expect(audit.frozen.products).toBe(0);expect(audit.same&&audit.actorMoves).toBe(true);
 });
 
 test('Placement explains a blocked doorway and furniture moves at ten centimetres with rotation',async({page})=>{
@@ -1087,4 +1088,42 @@ test('Rain shelter cache preserves drop positions and refreshes after movement o
   const cached=Array.from(p.array);w.rainShelterX=NaN;update();const equivalent=cached.every((n,i)=>n===p.array[i]);w.sheltered=shelter;
   return {first,stationary,same,moved,rebuilt,hidden,equivalent};
  });expect(result).toEqual({first:240,stationary:true,same:true,moved:true,rebuilt:true,hidden:true,equivalent:true});
+});
+
+test('Workshop expedition supplies post-radio utilities and a faster dryer through walking, real loot and station UI',async({page})=>{
+ test.setTimeout(240000);await start(page,{x:-19,z:14,owned:['generator','bridge','radio','axe','pick','wrench','spear','bag','bag2'],equipment:{weapon:'spear',bag:'bag2'},medkits:3,stash:{wood:30,metal:60,parts:30,wire:30,cloth:20,fish:4,herbs:2},placed:[{id:'garden',x:-12,z:23,harvested:0},{id:'dryrack',x:-20,z:23,harvested:0}]});
+ const trip=await page.evaluate(async()=>{
+  const {productionInfo}=await import('/src/game.js');
+  const g=window.__quietDistrict,w=g.world;g.visibilityPaused=false;let ticks=0,legs=0;const gathered=[];
+  const step=()=>{if(g.state.health<55&&g.state.medkits)g.action('use-medkit');const e=w.enemies.find(e=>e.health>0&&e.alert>0&&Math.hypot(e.x-g.state.x,e.z-g.state.z)<2.8&&w.canSee(g.state.x,g.state.z,e.x,e.z));if(e&&!g.job)g.attack(e);g.tick(1/60);ticks++;if(g.state.grave)throw Error('Expedition died');};
+  const go=(x,z)=>{g.target=null;g.navigate(x,z,false);if(!g.path.length&&Math.hypot(g.state.x-x,g.state.z-z)>1.5)throw Error('No route '+x+','+z);let n=0;while(g.path.length&&n++<50000)step();if(g.path.length||Math.hypot(g.state.x-x,g.state.z-z)>1.5)throw Error('Blocked leg '+x+','+z);g.motion.reset();legs++;};
+  const take=(x,z,special)=>{const node=w.nodes.find(n=>Math.abs(n.x-x)<5&&Math.abs(n.z-z)<3&&n.originalLoot[special]);if(!node)throw Error('Missing component');let point;
+   for(let a=0;a<Math.PI*2;a+=Math.PI/8){const px=Math.round(node.x+Math.sin(a)*1.5),pz=Math.round(node.z+Math.cos(a)*1.5);if(!w.blocked(px,pz)&&w.canSee(px,pz,node.x,node.z,node.collider,true)&&w.pathTo(px,pz).length){point={x:px,z:pz};break;}}
+   if(!point)throw Error('No access to '+node.name);go(point.x,point.z);g.beginNode(node);if(g.ui.panel==='salvage')g.action('salvage-quick');if(!g.job)throw Error('No harvest '+node.name);let n=0;while(g.job&&n++<3000)step();if(g.job)throw Error('Job did not finish');gathered.push(node.name);
+  };
+  for(const [x,z]of [[-24,-120],[-16,-168],[12,-168]])go(x,z);take(12,-177,'battery');
+  for(const [x,z]of [[12,-168],[80,-168],[167,-168],[167,-56],[167,58],[160,58]])go(x,z);take(153,48,'pumpmodule');
+  for(const [x,z]of [[160,58],[167,-56],[86,-62],[75,-24]])go(x,z);take(75,-32,'battery');
+  for(const [x,z]of [[75,-24],[62,-14],[62,49],[0,59],[-24,59],[-19,14]])go(x,z);
+  g.action('deposit');g.make('pump');g.make('solar');const dryer=g.state.placed[1];let approach;
+  for(let a=0;a<Math.PI*2;a+=Math.PI/8){const x=Math.round(dryer.x+Math.sin(a)*1.8),z=Math.round(dryer.z+Math.cos(a)*1.8);if(!w.blocked(x,z)&&Math.hypot(x-dryer.x,z-dryer.z)<2.8&&w.pathTo(x,z).length){approach={x,z};break;}}
+  if(!approach)throw Error('No approach to installed dryer');go(approach.x,approach.z);g.visibilityPaused=true;
+  return {legs,ticks,gathered,health:g.state.health,grave:!!g.state.grave,pump:g.state.owned.includes('pump'),solar:g.state.owned.includes('solar'),battery:g.state.stash.battery,pumpmodule:g.state.stash.pumpmodule,stationDistance:Math.hypot(g.state.x-dryer.x,g.state.z-dryer.z),gardenInterval:productionInfo(g.state,g.state.placed[0]).interval,lights:w.towerLight.intensity,roof:w.solarRoof.visible};
+ });console.log('Post-radio expedition',JSON.stringify(trip));expect(trip.pump&&trip.solar&&trip.roof).toBe(true);expect(trip.grave).toBe(false);expect(trip.gathered).toHaveLength(3);expect(trip.battery).toBe(1);expect(trip.pumpmodule).toBe(0);expect(trip.lights).toBeGreaterThan(0);expect(trip.gardenInterval).toBe(50.625);expect(trip.stationDistance).toBeLessThan(3);
+ await page.evaluate(()=>window.__quietDistrict.action('station-details',{index:1}));await page.locator('[data-action="upgrade-station"]').click();await expect(page.locator('#panel')).toContainText('75 секунд');await expect(page.locator('[data-action="load-dryer"]')).toBeEnabled();await page.locator('[data-action="load-dryer"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.placed[1].dryingDuration)).toBe(75);await page.keyboard.press('Escape');
+ await page.evaluate(()=>{const g=window.__quietDistrict;g.visibilityPaused=false;for(let i=0;i<4501;i++)g.tick(1/60);g.visibilityPaused=true;g.action('station-details',{index:1});});await page.locator('[data-action="harvest-dryer"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.meals)).toBe(4);await page.keyboard.press('Escape');await page.evaluate(()=>window.__quietDistrict.save(false));
+ const context=page.context();await page.close();const restored=await context.newPage();restored.on('pageerror',e=>page.__errors.push(e.message));try{await restored.goto('/');await expect(restored.locator('[data-action="start"]')).toBeEnabled({timeout:180000});const saved=await restored.evaluate(()=>window.__quietDistrict.state);expect(saved.owned).toEqual(expect.arrayContaining(['pump','solar']));expect(saved.placed[1].upgrade).toBe(1);expect(saved.meals).toBe(4);}finally{await restored.close();}
+});
+
+test('Static colour batches reduce city submissions while preserving roofs, all surfaces and reflections',async({page})=>{
+ test.setTimeout(180000);await page.setViewportSize({width:960,height:600});await start(page,{x:0,z:17,elapsed:210,owned:['generator']});
+ const result=await page.evaluate(()=>{
+  const g=window.__quietDistrict,w=g.world;g.visibilityPaused=true;w.freezeBuildCamera=true;w.setQuality('high');w.renderer.info.autoReset=false;const gl=w.renderer.getContext(),out=[];
+  for(const [x,z]of [[0,17],[-19,17],[-160,120],[-170,8]]){
+   g.state.x=x;g.state.z=z;w.cameraCenter.set(x,0,z);w.viewSize=28;w.resize();w.updateRoofs(3);
+   const render=legacy=>{w.setLegacyStaticColours(legacy);w.mirrors.last=-Infinity;w.renderer.info.reset();w.update(0,false,true);const pixels=new Uint8Array(960*600*4);gl.readPixels(0,0,960,600,gl.RGBA,gl.UNSIGNED_BYTE,pixels);return {pixels,calls:w.renderer.info.render.calls};};
+   render(true);const a=render(true);render(false);const b=render(false);let changed=0,max=0;for(let i=0;i<a.pixels.length;i++){const d=Math.abs(a.pixels[i]-b.pixels[i]);if(d)changed++;max=Math.max(max,d);}
+   out.push({changed,max,calls:[a.calls,b.calls],shadow:w.sun.shadow.mapSize.x,reflection:w.mirrors.capture.getRenderTarget().width});
+  }return out;
+ });console.log('Static colour render audit',JSON.stringify(result));for(const r of result){expect(r.max).toBeLessThanOrEqual(1);expect(r.changed).toBeLessThan(240);expect(r.shadow).toBe(2048);expect(r.reflection).toBe(512);}expect(result[0].calls[1]).toBeLessThan(result[0].calls[0]);expect(result[1].calls[1]).toBeLessThan(result[1].calls[0]);
 });

@@ -1,3 +1,4 @@
+import {staticColourKey,colourGeometry} from './static-colours.js';
 import {fitEnemyModel} from './enemy-models.js';
 import {MODEL_FILES} from './model-assets.js';
 import {staticShadowBatches} from './shadow-batches.js';
@@ -83,29 +84,46 @@ export class World {
   }
   batchStaticGeometry() {
     this.scene.updateMatrixWorld(true);
-    const batches = new Map();
+    const batches = new Map(),colourMaterials=new Map();this.colourBatches=[];this.legacyColourBatches=[];
     const excluded = new Set([this.genIndicator, this.towerIndicator, this.water, this.destination, this.selectionRing,
       this.homeLamp.glow, this.homeLamp.spill, ...this.lights.flatMap(l => [l.glow, l.spill].filter(Boolean))]);
     this.scene.traverse(mesh => {
-      if (mesh.userData.cutaway || mesh.userData.resourceStump || mesh.isInstancedMesh || !mesh.isMesh || excluded.has(mesh) || this.pickables.includes(mesh) || mesh.material.isShaderMaterial || mesh.material.transparent) return;
+      if (mesh.userData.cutaway || mesh.userData.resourceStump || mesh.isInstancedMesh || !mesh.isMesh || excluded.has(mesh) || this.pickables.includes(mesh) || Array.isArray(mesh.material) || mesh.material.isShaderMaterial || mesh.material.transparent) return;
       let parent = mesh;
       while (parent) { if (this.gates.some(g=>g.group===parent) || parent === this.bridgeGroup || parent === this.solarRoof || parent === this.precisionTool || parent === this.receiverModel) return; parent = parent.parent; }
       const center=new THREE.Vector3();mesh.getWorldPosition(center);
-      const key = `${mesh.material.uuid}:${Math.floor(center.x/24)}:${Math.floor(center.z/24)}`;
-      if (!batches.has(key)) batches.set(key, { material: mesh.material, meshes: [] });
+      const colour=staticColourKey(mesh.material);
+      const key = `${colour??mesh.material.uuid}:${mesh.castShadow}:${mesh.receiveShadow}:${mesh.renderOrder}:${Math.floor(center.x/24)}:${Math.floor(center.z/24)}`;
+      if (!batches.has(key)) batches.set(key, { material: mesh.material, colour, meshes: [] });
       batches.get(key).meshes.push(mesh);
     });
-    for (const batch of batches.values()) {
+    const groups=[];
+    for(const batch of batches.values()){
+      const originals=new Map();for(const mesh of batch.meshes){if(!originals.has(mesh.material))originals.set(mesh.material,[]);originals.get(mesh.material).push(mesh);}
+      // Extra colour attributes are worthwhile only when several draw calls collapse.
+      if(batch.colour&&originals.size<3)for(const [material,meshes]of originals)groups.push({material,meshes,colour:null});
+      else groups.push(batch);
+    }
+    for (const batch of groups) {
       if (batch.meshes.length < 2) continue;
+      if(batch.colour)batch.meshes.sort((a,b)=>a.material.id-b.material.id);
       const parts = batch.meshes.map(mesh => {
         let geometry = mesh.geometry.clone();
         if (geometry.index) { const old = geometry; geometry = old.toNonIndexed(); old.dispose(); }
+        if(batch.colour)colourGeometry(geometry,mesh.material.color);
         return geometry.applyMatrix4(mesh.matrixWorld);
       });
       const geometry = mergeGeometries(parts);
-      parts.forEach(p => p.dispose());
-      if (!geometry) continue;
-      const merged = new THREE.Mesh(geometry, batch.material); merged.castShadow = true; merged.receiveShadow = true;merged.matrixAutoUpdate=false;
+      if(!geometry){parts.forEach(p=>p.dispose());continue;}
+      if(import.meta.env.DEV&&batch.colour){
+        const originals=new Map();batch.meshes.forEach((mesh,i)=>{if(!originals.has(mesh.material))originals.set(mesh.material,[]);originals.get(mesh.material).push(parts[i]);});
+        for(const [material,pieces]of originals){const backup=new THREE.Mesh(mergeGeometries(pieces),material);backup.castShadow=false;backup.receiveShadow=batch.meshes[0].receiveShadow;backup.renderOrder=batch.meshes[0].renderOrder;backup.visible=false;backup.matrixAutoUpdate=false;backup.matrixWorldAutoUpdate=false;this.scene.add(backup);this.legacyColourBatches.push(backup);}
+      }
+      parts.forEach(p=>p.dispose());
+      let material=batch.material;
+      if(batch.colour){if(!colourMaterials.has(batch.colour)){const white=material.clone();white.color.set(0xffffff);white.vertexColors=true;colourMaterials.set(batch.colour,white);}material=colourMaterials.get(batch.colour);}
+      const merged = new THREE.Mesh(geometry, material);merged.castShadow=batch.meshes[0].castShadow;merged.receiveShadow=batch.meshes[0].receiveShadow;merged.renderOrder=batch.meshes[0].renderOrder;merged.matrixAutoUpdate=false;
+      if(batch.colour)this.colourBatches.push(merged);
       for (const mesh of batch.meshes) { mesh.parent.remove(mesh); mesh.geometry.dispose(); }
       this.scene.add(merged);
       // These vertices are already in world space; camera and light motion never move them.
@@ -114,6 +132,11 @@ export class World {
     // Merged forest meshes no longer need thousands of empty transform parents.
     for(const group of [...this.scene.children])if(group.userData.staticTree){for(const child of [...group.children]){this.scene.attach(child);child.updateMatrix();child.updateMatrixWorld(true);child.matrixAutoUpdate=false;child.matrixWorldAutoUpdate=false;child.userData.staticBatch=true;}this.scene.remove(group);}
     this.staticShadows=staticShadowBatches(this.scene,this.scene.children.filter(m=>m.userData.staticBatch),this.sun.shadow.getFrustum());
+  }
+  setLegacyStaticColours(enabled){
+    if(!import.meta.env.DEV)return;
+    for(const mesh of this.colourBatches)mesh.visible=!enabled;
+    for(const mesh of this.legacyColourBatches)mesh.visible=enabled;
   }
   box(x, y, z, w, h, d, c, parent = this.scene, extra) {
     const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), extra || mat(c));

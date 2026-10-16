@@ -35,9 +35,19 @@ function supplies(b){
   [{wood:5,parts:2,seeds:1},{metal:4,wire:2},{herbs:4,seeds:2}],
  ][b.index];
  if(b.style==='school')return b.index===3?[{cloth:5,herbs:3},{medicine:2,cloth:3},{water:2,herbs:3}]:b.index===2?[{vegetables:5,water:2},{herbs:3,wood:3},{cloth:3,seeds:2}]:[{cloth:5,wood:3},{wire:2,parts:2},{cloth:3,water:2}];
+ if(b.style==='retail'&&b.index===2)return [{medicine:2,cloth:4},{herbs:4,cloth:3},{water:3,herbs:2}];
+ if(b.style==='school'&&b.index===1)return [{cloth:4,wood:4},{cloth:3,wood:3},{water:2,cloth:2}];
+ if(b.style==='rail'&&b.index===3)return [{cloth:4,wood:4},{wood:3,herbs:2},{water:3,cloth:2}];
  if(b.style==='retail'&&b.index!==2)return b.index===1?[{metal:4,parts:2},{cloth:5,wire:2},{wood:5,water:2}]:[{vegetables:5,water:2},{herbs:3,cloth:2},{wood:4,vegetables:3}];
  if(b.style==='rail'&&b.index!==1)return [{cloth:4,wood:3},{wire:3,parts:2},{water:3,cloth:2}];
  if(b.style==='village'&&b.index===1)return [{cloth:6,wire:2},{cloth:4,parts:2},{wood:4,cloth:3}];
+ if(b.style==='port')return [
+  [{metal:6,cloth:3},{wire:4,parts:2},{wood:5,cloth:2}],
+  [{wire:5,parts:3},{metal:4,battery:1},{wire:3,cloth:2}],
+  [{cloth:4,wood:3},{parts:3,wire:2},{water:2,cloth:3}],
+  [{parts:4,pumpmodule:1},{metal:4,wire:3},{filterunit:2,cloth:2}],
+ ][b.index];
+ if(b.style==='village')return b.index===2?[{vegetables:5,herbs:3},{water:3,wood:3},{vegetables:3,cloth:2}]:b.index===3?[{wood:7,metal:3},{wire:3,parts:2},{wood:4,cloth:2}]:[{cloth:5,wood:3},{cloth:3,water:2},{wood:4,herbs:2}];
  return profiles[b.style];
 }
 export const FRONTIER_NODES=FRONTIER_BUILDINGS.flatMap(b=>supplies(b).map((loot,i)=>[i===1&&(b.style==='port'||b.style==='rail'&&b.index===1)?'scrap':'crate',`${b.sign.toLocaleLowerCase('ru')} · ${['кладовая','рабочие запасы','сухой ящик'][i]}`,b.x+(i===0?-b.w/4:i===1?b.w/4:0),b.z+(i===2?1.8:-1),loot,i===1&&b.style==='port'?'wrench':null,null,i===1&&(b.style==='port'||b.style==='rail'&&b.index===1)?'motor':null,Object.keys(loot).filter(id=>!['medicine','battery','pumpmodule','filterunit'].includes(id)),b.style==='orchard'&&i===0?(b.index===1?'flowers':'vegetables'):null]));

@@ -13,7 +13,7 @@ export function staticShadowBatches(scene,meshes,shadowFrustum){
  }
  const batches=[],material=new THREE.MeshBasicMaterial({colorWrite:false,depthWrite:false});
  for(const sources of cells.values()){
-  if(sources.length<2)continue;
+  if(sources.length<2&&!sources[0].material.vertexColors)continue;
   const parts=sources.map(mesh=>{const g=mesh.geometry.index?mesh.geometry.toNonIndexed():mesh.geometry;const part=new THREE.BufferGeometry().setAttribute('position',g.attributes.position.clone()).applyMatrix4(mesh.matrixWorld);if(g!==mesh.geometry)g.dispose();return part;});
   const geometry=mergeGeometries(parts);parts.forEach(g=>g.dispose());if(!geometry)continue;
   geometry.computeBoundingSphere();

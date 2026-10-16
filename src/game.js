@@ -11,8 +11,8 @@ export const SAVE_KEY = 'quiet-district-save-v1';
 export const RESOURCES = {
  stone:{name:'Камень',desc:'Для оснований и деревянных стен. Добывается киркой из валунов.',color:'#a9b7b6',weight:1},
   filterunit:{name:'Сменный фильтр',desc:'Для двойного дождевого накопителя. Встречается в насосной и хозяйственных запасах.',color:'#b9cec0',weight:1},
-  pumpmodule:{name:'Насосный узел',desc:'Для накопителя и сортировки лома. Ищи в насосной и ремонтных помещениях.',color:'#92b8bf',weight:2},
-  battery:{name:'Аккумулятор',desc:'Питает улучшенную сушилку и сортировочный модуль. Ищи в гаражной технике и ремонтной мастерской у каменного разреза.',color:'#d3b774',weight:1.5},
+  pumpmodule:{name:'Насосный узел',desc:'Для водоснабжения, накопителя и сортировки лома. Ищи в насосной, на складе насосов набережной и в мастерской на восточной просеке.',color:'#92b8bf',weight:2},
+  battery:{name:'Аккумулятор',desc:'Для солнечных панелей, улучшенной сушилки и сортировочного модуля. Ищи в гаражной технике, ремонтной мастерской у разреза и северном лесном складе.',color:'#d3b774',weight:1.5},
   medicine:{name:'Медицинские материалы',color:'#d9c9b3',weight:.25},
   vegetables:{name:'Овощи',color:'#dda06b',weight:.5},
   flowers:{name:'Цветы',color:'#dca4b8',weight:.1},
@@ -80,10 +80,10 @@ export const RECIPES = [
   { id: 'planter', name: 'Кашпо с папоротником', category: 'shelter', desc: 'Немного живой зелени в восстановленном доме.', cost: { wood: 3, herbs: 2 }, placeable: true, icon: '❧' },
   { id: 'rug', name: 'Тканый ковёр', category: 'shelter', desc: 'Тёплый акцент для жилой комнаты.', cost: { cloth: 4 }, placeable: true, icon: '▧' },
   { id: 'radio', name: 'Восстановить радиостанцию', category: 'shelter', desc: 'Поймай сигнал из соседнего района. Завершает первую главу.', cost: { metal: 8, wire: 6, parts: 6 }, requires: 'generator', fixed: true, icon: '◉' },
-  { id: 'pump', name: 'Наладить водоснабжение', category: 'shelter', desc: 'Запускает насос у водонапорной башни. Время роста грядок сокращается на 25%.', cost: { metal: 16, wire: 5, parts: 5 }, requires: 'radio', fixed: true },
+  { id: 'pump', name: 'Наладить водоснабжение', category: 'shelter', desc: 'Запускает насос у водонапорной башни. Нужен насосный узел из насосной или ремонтной мастерской. Время роста грядок −25%.', cost: { metal: 12, wire: 4, parts: 3, pumpmodule: 1 }, requires: 'radio', fixed: true },
   { id: 'purifier', name: 'Станция очистки воды', category: 'shelter', desc: 'Производит 3 воды за 90 секунд. Урожай забирается дома.', cost: { metal: 8, wood: 4, cloth: 3 }, requires: 'pump', placeable: true },
   { id: 'recycler', name: 'Переработчик лома', category: 'shelter', desc: 'Перерабатывает 3 металла в 2 детали и 1 провод за цикл.', cost: { metal: 12, parts: 4, wire: 3 }, requires: 'generator', placeable: true },
-  { id: 'solar', name: 'Солнечные панели', category: 'shelter', desc: 'Сокращает длительность производственных циклов на 25%.', cost: { metal: 18, wire: 8, parts: 8 }, requires: 'pump', fixed: true },
+  { id: 'solar', name: 'Солнечные панели', category: 'shelter', desc: 'Нужен аккумулятор. Циклы грядок, очистки воды и переработки лома на 25% короче.', cost: { metal: 14, wire: 6, parts: 5, battery: 1 }, requires: 'pump', fixed: true },
   { id: 'tea', name: 'Травяной чай', category: 'supplies', desc: 'Восстанавливает 15 здоровья и 50 выносливости.', cost: { water: 1, herbs: 1 }, repeatable: true },
 ];
 export const CONTRACTS = [
@@ -123,7 +123,7 @@ function cleanFurniture(p,elapsed) {
  if(p.id==='cropbed'){item.crop=Object.hasOwn(CROPS,p.crop)?p.crop:null;item.plantedAt=item.crop&&Number.isFinite(p.plantedAt)?Math.max(0,Math.min(elapsed,p.plantedAt)):null;if(Number.isFinite(p.rainGrowth)&&p.rainGrowth>0)item.rainGrowth=Math.min(p.rainGrowth,10000);}
  if(STATION_UPGRADES[p.id])item.upgrade=p.upgrade===1?1:0;
  if(p.id==='raincatcher')item.rainWater=Number.isFinite(p.rainWater)?Math.max(0,Math.min(collectorCapacity(item),p.rainWater)):0;
- if(p.id==='dryrack'){item.dryingAt=Number.isFinite(p.dryingAt)?Math.max(0,Math.min(elapsed,p.dryingAt)):null;if(item.dryingAt!==null)item.dryingOutput=p.dryingOutput===4?4:2;}
+ if(p.id==='dryrack'){item.dryingAt=Number.isFinite(p.dryingAt)?Math.max(0,Math.min(elapsed,p.dryingAt)):null;if(item.dryingAt!==null){item.dryingOutput=p.dryingOutput===4?4:2;item.dryingDuration=p.dryingDuration===75&&item.upgrade===1&&item.dryingOutput===4?75:100;}}
  return item;
 }
 export function validateSave(input) {
@@ -360,7 +360,7 @@ export function deliverContract(state, id) {
 export function productionInfo(state,item) {
   if(item.id==='cropbed') return cropInfo(state,item);
   if(item.id==='raincatcher'){const n=Math.floor(item.rainWater||0);return {loot:{water:n},remaining:n?0:1,waitingForRain:!n,name:`Собрать воду · ${n}`};}
-  if(item.id==='dryrack')return {loot:{},mealOutput:item.dryingOutput===4?4:2,needsLoading:!Number.isFinite(item.dryingAt),remaining:Number.isFinite(item.dryingAt)?Math.max(0,100-(state.elapsed-item.dryingAt)):1,name:`Забрать ${item.dryingOutput===4?4:2} порции еды`};
+  if(item.id==='dryrack')return {loot:{},mealOutput:item.dryingOutput===4?4:2,needsLoading:!Number.isFinite(item.dryingAt),remaining:Number.isFinite(item.dryingAt)?Math.max(0,(item.dryingDuration===75?75:100)-(state.elapsed-item.dryingAt)):1,name:`Забрать ${item.dryingOutput===4?4:2} порции еды`};
   const recipes = {
     seedbed: { interval: 120, loot: { herbs: 6 }, name: 'Собрать редкие травы' },
     garden: { interval: 90, loot: { herbs: 3 }, name: 'Собрать травы' },
@@ -380,7 +380,7 @@ export function harvestProduction(state, item) {
   if(info.needsLoading)return {ok:false,reason:'Сначала загрузи улов'};
   if(info.waitingForRain)return {ok:false,reason:'Накопитель ожидает дождь'};
   if (info.remaining > 0) return { ok: false, reason: `До готовности ${Math.ceil(info.remaining)} сек.` };
-  if(info.mealOutput){state.meals+=info.mealOutput;item.dryingAt=null;delete item.dryingOutput;item.harvested=state.elapsed;return {ok:true,received:{},mealOutput:info.mealOutput};}
+  if(info.mealOutput){state.meals+=info.mealOutput;item.dryingAt=null;delete item.dryingOutput;delete item.dryingDuration;item.harvested=state.elapsed;return {ok:true,received:{},mealOutput:info.mealOutput};}
   const weight = Object.entries(info.loot).reduce((n, [id, count]) => n + RESOURCES[id].weight * count, 0);
   // Fees can free bag space, but readiness is atomic: nothing is spent until output fits.
   const freed = info.cost ? Object.entries(info.cost).reduce((n, [id, count]) => n + Math.max(0, count - (state.stash[id] || 0)) * RESOURCES[id].weight, 0) : 0;
@@ -473,7 +473,7 @@ export function updateRainCrops(state,dt,isInside) {
 export function startDrying(state,item){
  if(!state.placed.includes(item)||item.id!=='dryrack'||Number.isFinite(item.dryingAt))return {ok:false,reason:'Сушилка уже занята'};
  const batch=dryingBatch(item);if(!spend(state,batch.cost))return {ok:false,reason:`Нужно ${batch.cost.fish} рыбы и ${batch.cost.herbs} травы`};
- item.dryingAt=state.elapsed;item.dryingOutput=batch.output;return {ok:true};
+ item.dryingAt=state.elapsed;item.dryingOutput=batch.output;item.dryingDuration=batch.duration;return {ok:true};
 }
 export function saveLoadout(state,index){if(![0,1].includes(index)||!state.placed.some(p=>['gearrack','toolcabinet'].includes(p.id))||state.x<-27||state.x>-6||state.z<5||state.z>27)return false;state.loadouts[index]={...state.equipment};return true;}
 export function applyLoadout(state,index){

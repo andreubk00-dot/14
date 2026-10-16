@@ -13,9 +13,9 @@ export const OUTLAND_PLACES=[
  ['dachas','Дачи за лесополосой',-48,166,'Дома · обстановка · огороды'],
  ['forestlake','Лесное озеро',104,164,'Причал · рыбалка · дом рыбака'],
  ['woodcamp','Лагерь лесной бригады',35,151,'Древесина · инструменты · сухие запасы'],
- ['northwoods','Северные сторожки',-24,-163,'Сторожки · ткани · тихий лес'],
+ ['northwoods','Северные сторожки',-24,-163,'Сторожки · ткани · ремонтный склад'],
  ['oldnursery','Забытый питомник',-150,-145,'Семена · травы · садовые запасы'],
- ['eastwoods','Восточная просека',167,70,'Древесина · хозяйственные запасы'],
+ ['eastwoods','Восточная просека',167,70,'Древесина · насосные узлы'],
  ['pinewood','Сухой бор',160,-130,'Смолистые сосны · сторожевой дом'],
 ].map(([id,name,x,z,subtitle])=>({id,name,label:name,x,z,subtitle,radius:24,color:'#9cb48b',note:subtitle+'. Тропы связывают поляны с жилым районом; отдельные дома прячутся среди деревьев.'}));
 export const OUTLAND_BUILDINGS=[
@@ -69,6 +69,9 @@ const loot={cabin:[{cloth:4,wood:3},{water:3,herbs:2}],workshop:[{metal:4,parts:
 function supplies(b){
  const items=loot[b.role].map(stock=>({...stock}));
  if(b.id==='woodshed')return [{wood:8,cloth:2},{wood:5,wire:2}];
+ if(b.id==='fishhut')return [{cloth:3,wood:3},{fish:3,herbs:2,wire:1}];
+ if(b.id==='northshed')return [{metal:4,parts:3,battery:1},{wood:5,wire:3}];
+ if(b.id==='pinehouse')return [{cloth:5,wood:4},{herbs:3,water:3}];
  if(b.id==='bluecottage')items[0]={cloth:6,wood:2};
  if(b.id==='sharedkitchen')items[0]={vegetables:5,herbs:3};
  if(b.id==='quarryshop')items[1]={metal:5,wire:3,wood:3};
@@ -77,7 +80,7 @@ function supplies(b){
  if(b.id==='nursery')return [{seeds:4,flowers:2},{filterunit:2,water:2}];
  return items;
 }
-const supplyNames={quarryshop:['аккумулятор и ремонтные детали','металл, дерево и провод'],eastshop:['запасной насос и детали','дерево и провод'],nursery:['семена цветов','фильтры поливной системы']};
+const supplyNames={fishhut:['сухие вещи рыбака','улов и запас для сушки'],northshed:['аккумулятор и ремонтные детали','дерево и провод'],pinehouse:['тёплые вещи','питьевой запас'],quarryshop:['аккумулятор и ремонтные детали','металл, дерево и провод'],eastshop:['запасной насос и детали','дерево и провод'],nursery:['семена цветов','фильтры поливной системы']};
 export const OUTLAND_SUPPLIES=OUTLAND_BUILDINGS.flatMap(b=>supplies(b).map((items,i)=>[
  'crate',`${b.sign.toLocaleLowerCase('ru')} · ${supplyNames[b.id]?.[i]||(i?'сухой запас':'кладовая')}`,
  b.x+(i?1:-1)*b.w/4,b.z,items,null,null,null,

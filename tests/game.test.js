@@ -58,7 +58,7 @@ test('Fish distribution includes rare items and upgraded rod improves their rang
   assert.equal(catchFish(() => 0.85, true).resource, 'pearl');
 });
 test('Recipes complete the chapter in order and unlock equipment', () => {
-  const s = freshState(); s.stash = { wood: 100, metal: 100, parts: 100, wire: 100, pearl: 10 };
+  const s = freshState(); s.stash = { wood: 100, metal: 100, parts: 100, wire: 100, pearl: 10, pumpmodule:1, battery:1 };
   assert.equal(objective(s).recipe, 'generator');
   craft(s, 'generator'); assert.equal(objective(s).recipe, 'bridge');
   craft(s, 'bridge'); assert.equal(objective(s).recipe, 'radio');
@@ -928,4 +928,50 @@ test('Reflection cropping contains every visible water vertex, ignores hidden wa
  mesh.visible=false;assert.equal(reflectionScissor([mesh],camera,target),false);
  mesh.visible=true;mesh.position.x=30;mesh.updateMatrixWorld(true);assert.equal(reflectionScissor([mesh],camera,target),false);
  mesh.geometry.dispose();mesh.material.dispose();
+});
+
+test('Post-radio utilities use workshop components and reduce farm cycles without invalidating owned upgrades',()=>{
+ const s=freshState();s.owned=['generator','radio'];s.stash={metal:100,wire:100,parts:100};const before=structuredClone(s.stash);
+ assert.equal(craft(s,'pump').ok,false);assert.deepEqual(s.stash,before);
+ const east=OUTLAND_SUPPLIES[OUTLAND_BUILDINGS.findIndex(b=>b.id==='eastshop')*2];collect(s,east[4]);deposit(s);assert.equal(craft(s,'pump').ok,true);
+ assert.equal(productionInfo(s,{id:'garden',harvested:0}).interval,67.5);assert.equal(craft(s,'solar').ok,false);
+ const north=OUTLAND_SUPPLIES[OUTLAND_BUILDINGS.findIndex(b=>b.id==='northshed')*2];collect(s,north[4]);deposit(s);assert.equal(craft(s,'solar').ok,true);
+ assert.equal(productionInfo(s,{id:'garden',harvested:0}).interval,50.625);
+ const saved=validateSave(JSON.parse(JSON.stringify(s)));assert.ok(saved.owned.includes('pump')&&saved.owned.includes('solar'));assert.equal(saved.stash.pumpmodule,0);assert.equal(saved.stash.battery,0);
+});
+test('Ventilated drying shortens new batches only and keeps its timer when saved and packed',()=>{
+ const s=freshState();s.x=-16;s.z=22;const d={id:'dryrack',x:-20,z:23,harvested:0};s.placed=[d];s.stash={fish:6,herbs:3,...STATION_UPGRADES.dryrack.cost};
+ assert.equal(startDrying(s,d).ok,true);s.elapsed=50;assert.equal(upgradeStation(s,d).ok,true);assert.equal(productionInfo(s,d).remaining,50);
+ s.elapsed=100;assert.equal(harvestProduction(s,d).mealOutput,2);assert.equal(startDrying(s,d).ok,true);assert.equal(d.dryingDuration,75);
+ s.elapsed=120;assert.equal(packFurniture(s,0),true);s.elapsed=1000;const saved=validateSave(JSON.parse(JSON.stringify(s)));assert.equal(unpackFurniture(saved,0,-20,23,0),true);assert.equal(productionInfo(saved,saved.placed[0]).remaining,55);
+ saved.elapsed+=55;assert.equal(harvestProduction(saved,saved.placed[0]).mealOutput,4);assert.equal(harvestProduction(saved,saved.placed[0]).ok,false);
+ const old=validateSave({...freshState(),elapsed:40,placed:[{id:'dryrack',x:-20,z:23,harvested:0,upgrade:1,dryingAt:10,dryingOutput:4}]});assert.equal(productionInfo(old,old.placed[0]).remaining,70);
+});
+test('Room-specific supplies remain useful and do not grow unrelated resources on repeat visits',()=>{
+ for(const b of FRONTIER_BUILDINGS){const nodes=FRONTIER_NODES.filter(n=>Math.abs(n[2]-b.x)<b.w/2&&Math.abs(n[3]-b.z)<b.d/2);
+  assert.equal(nodes.length,3);
+  if(b.style==='retail'&&b.index===2)assert.ok(nodes.every(n=>!n[4].vegetables&&!n[4].metal&&!n[4].parts));
+  if(b.style==='port'&&b.index===2)assert.ok(nodes.every(n=>!n[4].battery&&!n[4].pumpmodule));
+  for(const n of nodes)for(const cycle of [1,4,12]){const loot=expeditionLoot({id:'node-130',type:n[0],x:n[2],z:n[3],originalLoot:n[4],regionProfile:n[8]},cycle);assert.ok(Object.keys(loot).every(id=>Object.hasOwn(n[4],id)));}
+ }
+ const pumps=FRONTIER_BUILDINGS.find(b=>b.style==='port'&&b.index===3);assert.ok(FRONTIER_NODES.some(n=>Math.abs(n[2]-pumps.x)<4&&n[4].pumpmodule));
+});
+
+import {staticColourKey,colourGeometry} from '../src/static-colours.js';
+test('Static colour sharing preserves linear colours and vertices, and separates every other material setting',()=>{
+ const red=new THREE.MeshStandardMaterial({color:'#9d673a',roughness:.88}),green=new THREE.MeshStandardMaterial({color:'#638a71',roughness:.88});
+ assert.equal(staticColourKey(red),staticColourKey(green));const metal=red.clone();metal.metalness=.5;assert.notEqual(staticColourKey(red),staticColourKey(metal));
+ const g=new THREE.BoxGeometry(1,2,3),before=Array.from(g.attributes.position.array),normals=Array.from(g.attributes.normal.array);colourGeometry(g,red.color);
+ assert.deepEqual(Array.from(g.attributes.position.array),before);assert.deepEqual(Array.from(g.attributes.normal.array),normals);
+ for(let i=0;i<g.attributes.color.count;i++)for(const [axis,value]of [['X',red.color.r],['Y',red.color.g],['Z',red.color.b]])assert.ok(Math.abs(g.attributes.color['get'+axis](i)-value)<1e-7);
+ const textured=red.clone();textured.map=new THREE.Texture();assert.equal(staticColourKey(textured),null);const glowing=red.clone();glowing.emissive.set('#ff5500');assert.equal(staticColourKey(glowing),null);
+ const dynamic=red.clone();dynamic.userData.dryRoughness=.88;assert.equal(staticColourKey(dynamic),null);
+ g.dispose();for(const m of [red,green,metal,textured,glowing,dynamic])m.dispose();textured.map.dispose();
+});
+
+test('A single static colour cell retains an independent directional shadow proxy',()=>{
+ const scene=new THREE.Scene(),material=new THREE.MeshStandardMaterial({vertexColors:true}),mesh=new THREE.Mesh(new THREE.BoxGeometry(2,3,2),material);mesh.castShadow=true;mesh.userData.staticBatch=true;scene.add(mesh);scene.updateMatrixWorld(true);
+ const frustum=new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().makeOrthographic(-10,10,10,-10,-10,10)),batches=staticShadowBatches(scene,[mesh],frustum);
+ assert.equal(batches.length,1);assert.equal(mesh.castShadow,false);assert.equal(batches[0].mesh.intersectsFrustum(frustum),true);assert.equal(batches[0].mesh.intersectsFrustum(new THREE.Frustum()),false);
+ for(const o of [mesh,batches[0].mesh]){o.geometry.dispose();o.material.dispose();}
 });
