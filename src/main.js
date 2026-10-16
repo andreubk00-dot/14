@@ -394,7 +394,7 @@ class QuietDistrict {
     if (recipe.slot === 'weapon') this.state.hotbarSelected = this.state.hotbar.indexOf(id);
     if (id === 'generator') { this.ui.toast('В убежище снова горит свет. Ты сделал это.', 'success'); this.ui.region(LOCATIONS.find(l => l.id === 'home'), true); }
     else if (id === 'bridge') this.ui.toast('Мост восстановлен. Через канаву снова можно пройти.', 'success');
-    else if (id === 'radio') { this.ui.toast('В тишине появился голос. Первая глава завершена.', 'success'); this.ui.open('journal'); }
+    else if (id === 'radio') this.ui.toast('Связь восстановлена. С Ладой можно договориться о помощи в убежище.', 'success');
     else if (id === 'pump') this.ui.toast('Чистая вода снова доступна. Грядки растут быстрее.', 'success');
     else if (id === 'solar') this.ui.toast('Солнечные панели питают производство. Дом стал самостоятельнее.', 'success');
     else this.ui.toast(`Готово: ${recipe.name}`, 'success');

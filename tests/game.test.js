@@ -1080,3 +1080,13 @@ test('Patrol routes avoid blocked waypoints, keep leashes and advance through ac
  const blocked=(x,z)=>x===1&&z===0,origin={x:0,z:0},route=patrolRoute('unknown',origin,blocked);assert.ok(route.length>=3);assert.ok(route.every(p=>!blocked(p.x,p.z)&&Math.hypot(p.x,p.z)<9));
  const enemy={x:0,z:0,patrolIndex:0,patrolRoute:[{x:0,z:0},{x:1,z:0},{x:0,z:2}]};assert.equal(idlePatrolTarget(enemy,blocked),null);assert.equal(enemy.patrolIndex,1);assert.equal(idlePatrolTarget(enemy,blocked),null);assert.equal(enemy.patrolIndex,2);assert.deepEqual(idlePatrolTarget(enemy,blocked),{x:0,z:2});enemy.z=2;assert.equal(idlePatrolTarget(enemy,blocked),null);assert.equal(enemy.patrolIndex,0);assert.equal(Object.keys(PATROL_ROUTES).length,9);
 });
+
+import {chronicle} from '../src/chronicle.js';
+test('Water and solar development require power but neither radio nor each other',()=>{
+ for(const id of ['pump','solar']){const s=freshState(),recipe=RECIPES.find(r=>r.id===id);s.stash={...recipe.cost};assert.equal(craft(s,id).ok,false);s.owned.push('generator');assert.equal(craft(s,id).ok,true);assert.equal(s.owned.includes('radio'),false);assert.equal(s.owned.includes(id==='pump'?'solar':'pump'),false);assert.equal(validateSave(s).owned.includes(id),true);}
+ const s=freshState();s.stash={...RECIPES.find(r=>r.id==='helper').cost};s.placed=[{id:'bed',x:-20,z:16,harvested:0}];assert.equal(craft(s,'helper').ok,false);s.owned.push('radio');assert.equal(craft(s,'helper').ok,true);
+});
+test('Chronicle records completed choices without mandatory order or revealing undiscovered restoration sites',()=>{
+ const s=freshState();assert.deepEqual(chronicle(s),[]);s.owned=['generator','solar','bag'];assert.deepEqual(chronicle(s).map(e=>e.id),['generator','solar','bag']);assert.ok(!chronicle(s).some(e=>e.id==='radio'||e.id==='pump'||e.id==='drain-works'));
+ s.restoredRoutes.push('drain-works');s.boat.repaired=true;const before=structuredClone(s);assert.ok(chronicle(s).some(e=>e.id==='drain-works'));assert.ok(chronicle(s).some(e=>e.id==='boat'));assert.deepEqual(s,before);assert.deepEqual(chronicle(validateSave(s)),chronicle(s));
+});

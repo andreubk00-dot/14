@@ -81,11 +81,11 @@ export const RECIPES = [
   { id: 'sofa', name: 'Диван из старого мира', category: 'shelter', desc: 'Уютный уголок с тканевой обивкой.', cost: { wood: 7, cloth: 6 }, placeable: true, icon: '▱' },
   { id: 'planter', name: 'Кашпо с папоротником', category: 'shelter', desc: 'Немного живой зелени в восстановленном доме.', cost: { wood: 3, herbs: 2 }, placeable: true, icon: '❧' },
   { id: 'rug', name: 'Тканый ковёр', category: 'shelter', desc: 'Тёплый акцент для жилой комнаты.', cost: { cloth: 4 }, placeable: true, icon: '▧' },
-  { id: 'radio', name: 'Восстановить радиостанцию', category: 'shelter', desc: 'Поймай сигнал из соседнего района. Завершает первую главу.', cost: { metal: 8, wire: 6, parts: 6 }, requires: 'generator', fixed: true, icon: '◉' },
-  { id: 'pump', name: 'Наладить водоснабжение', category: 'shelter', desc: 'Запускает насос у водонапорной башни. Нужен насосный узел из насосной или ремонтной мастерской. Время роста грядок −25%.', cost: { metal: 12, wire: 4, parts: 3, pumpmodule: 1 }, requires: 'radio', fixed: true },
+  { id: 'radio', name: 'Восстановить радиостанцию', category: 'shelter', desc: 'Связь с соседями. Позволяет пригласить Ладу для сбора домашней продукции.', cost: { metal: 8, wire: 6, parts: 6 }, requires: 'generator', fixed: true, icon: '◉' },
+  { id: 'pump', name: 'Наладить водоснабжение', category: 'shelter', desc: 'Запускает насос у водонапорной башни. Нужен насосный узел из насосной или ремонтной мастерской. Время роста грядок −25%.', cost: { metal: 12, wire: 4, parts: 3, pumpmodule: 1 }, requires: 'generator', fixed: true },
   { id: 'purifier', name: 'Станция очистки воды', category: 'shelter', desc: 'Производит 3 воды за 90 секунд. Урожай забирается дома.', cost: { metal: 8, wood: 4, cloth: 3 }, requires: 'pump', placeable: true },
   { id: 'recycler', name: 'Переработчик лома', category: 'shelter', desc: 'Перерабатывает 3 металла в 2 детали и 1 провод за цикл.', cost: { metal: 12, parts: 4, wire: 3 }, requires: 'generator', placeable: true },
-  { id: 'solar', name: 'Солнечные панели', category: 'shelter', desc: 'Нужен аккумулятор. Циклы грядок, очистки воды и переработки лома на 25% короче.', cost: { metal: 14, wire: 6, parts: 5, battery: 1 }, requires: 'pump', fixed: true },
+  { id: 'solar', name: 'Солнечные панели', category: 'shelter', desc: 'Нужен аккумулятор. Циклы грядок, очистки воды и переработки лома на 25% короче.', cost: { metal: 14, wire: 6, parts: 5, battery: 1 }, requires: 'generator', fixed: true },
   { id: 'tea', name: 'Травяной чай', category: 'supplies', desc: 'Восстанавливает 15 здоровья и 50 выносливости.', cost: { water: 1, herbs: 1 }, repeatable: true },
 ];
 export const CONTRACTS = [
