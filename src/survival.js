@@ -36,7 +36,10 @@ export function updateAwareness(enemy,dt,seen,player,distance){
  else enemy.alert=Math.max(0,(enemy.alert||0)-dt);
  return enemy.alert>0;
 }
-export function reactToHit(enemy,player){
- enemy.alert=3;enemy.suspicion=1;enemy.stagger=.18;enemy.windup=0;enemy.attack=null;enemy.route=null;enemy.routeAt=-Infinity;
+export function reactToHit(enemy,player,impact=null){
+ enemy.alert=3;enemy.suspicion=1;
+ const interrupts=!impact||impact.power>=(enemy.kind==='warden'?3:['runner','gunner'].includes(enemy.kind)?1:0);
+ if(interrupts){enemy.stagger=impact?.power===3?.65:impact?.power===0?.08:.18;enemy.windup=0;enemy.attack=null;}
+ enemy.route=null;enemy.routeAt=-Infinity;
  const dx=player.x-enemy.originX,dz=player.z-enemy.originZ,d=Math.hypot(dx,dz)||1,f=Math.min(1,8.5/d);enemy.lastSeen={x:enemy.originX+dx*f,z:enemy.originZ+dz*f};
 }

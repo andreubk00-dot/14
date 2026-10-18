@@ -1123,3 +1123,35 @@ test('Salvage queue snapshots whole machines without consuming them; completed l
  const loaded=validateSave(s);assert.equal(loaded.storedCargo.length,1);assert.equal(loaded.cargo.length,0);assert.equal(processSalvage(loaded,0,true).ok,true);assert.deepEqual(loaded.stash,{metal:6,parts:5,wire:2});
  loaded.x=80;assert.equal(salvageQueue(loaded).ok,false);assert.equal(nearFoundStation(loaded,'salvagejig'),false);
 });
+
+import {MELEE,GUNS,fireCharge,coolWeapons,shotSpread,traceShot,DODGE,beginDodge,advanceDodge} from '../src/combat.js';
+test('Melee roles trade reach, windup, mobility and stamina; only heavy impact stops an armoured windup',()=>{
+ assert.ok(MELEE.knife.hitAt<MELEE.pipe.hitAt&&MELEE.heavyaxe.hitAt>MELEE.spear.hitAt);assert.equal(MELEE.knife.mobility,1);assert.ok(MELEE.heavyaxe.stamina>MELEE.spear.stamina);
+ const e={kind:'warden',x:0,z:0,originX:0,originZ:0,health:78,windup:.6,attack:{kind:'slam'}};
+ reactToHit(e,{x:0,z:1},{power:0});assert.equal(e.attack.kind,'slam');assert.equal(e.windup,.6);
+ reactToHit(e,{x:0,z:1},{power:2});assert.equal(e.attack.kind,'slam');
+ reactToHit(e,{x:0,z:1},{power:3});assert.equal(e.attack,null);assert.equal(e.windup,0);assert.equal(e.stagger,.65);
+ const r={...e,kind:'runner',attack:{kind:'dash'},windup:.4};reactToHit(r,{x:0,z:1},{power:0});assert.equal(r.attack.kind,'dash');reactToHit(r,{x:0,z:1},{power:2});assert.equal(r.attack,null);
+ const s=freshState();s.stash={metal:100,cloth:100,wood:100,parts:100};assert.equal(craft(s,'heavyaxe').ok,false);assert.equal(craft(s,'knife').ok,true);assert.equal(craft(s,'axe').ok,true);assert.equal(craft(s,'heavyaxe').ok,true);assert.equal(validateSave(s).equipment.weapon,'heavyaxe');
+});
+test('Shot traces hit the first physical actor, miss outside radius and stop at cover, independent of intended target',()=>{
+ const p={x:0,z:0},near={x:0,z:3,health:50},far={x:0,z:8,health:50};
+ assert.equal(traceShot(p,0,11,[far,near],()=>true).target,near);
+ const wall=(x,z)=>z<2;const blocked=traceShot(p,0,11,[near,far],wall);assert.equal(blocked.target,null);assert.ok(blocked.z<2);
+ assert.equal(traceShot(p,Math.PI/2,11,[near],()=>true).target,null);
+ assert.equal(traceShot(p,0,11,[{...near,health:0},far],()=>true).target,far);
+ assert.equal(traceShot(p,0,11,[far],()=>true,.09,1).target,null);assert.equal(traceShot(p,0,11,[far],()=>true,shotSpread('pistol',true,true),1).target,far);
+ assert.ok(shotSpread('pistol',true,false)>shotSpread('pistol',false,false));assert.ok(shotSpread('carbine',true,false)<shotSpread('pistol',true,false));
+});
+test('Energy heat preserves common ammunition, locks at full heat and cannot reset through weapon switching or reload',()=>{
+ const s=freshState();s.ammo=20;for(let i=0;i<5;i++)assert.equal(fireCharge(s,'pistol').ok,true);assert.equal(s.gunLocked.pistol,true);assert.equal(s.ammo,15);
+ assert.equal(fireCharge(s,'pistol').ok,false);assert.equal(s.ammo,15);assert.equal(fireCharge(s,'carbine').ok,true);assert.equal(s.gunLocked.pistol,true);
+ const loaded=validateSave(s);assert.equal(loaded.gunHeat.pistol,1);assert.equal(loaded.gunLocked.pistol,true);coolWeapons(loaded,4.5);assert.equal(loaded.gunLocked.pistol,false);assert.equal(fireCharge(loaded,'pistol').ok,true);
+ const old=validateSave({...freshState(),gunHeat:undefined,gunLocked:undefined});assert.deepEqual(old.gunHeat,{pistol:0,carbine:0});
+ const bad=validateSave({...freshState(),gunHeat:{pistol:100,carbine:-1},gunLocked:{pistol:false,carbine:true},dodgeReadyAt:Infinity});assert.deepEqual(bad.gunHeat,{pistol:1,carbine:0});assert.deepEqual(bad.gunLocked,{pistol:true,carbine:false});assert.equal(bad.dodgeReadyAt,0);
+});
+test('Dodge costs once, observes cooldown and advances with short collision-safe steps at different frame rates',()=>{
+ const run=dt=>{const s=freshState();s.x=0;s.z=0;const d=beginDodge(s,1,0);assert.ok(d);assert.equal(s.stamina,76);assert.equal(beginDodge(s,1,0),null);let maxStep=0;while(d.remaining>1e-9)advanceDodge(d,dt,(dx,dz)=>{maxStep=Math.max(maxStep,Math.hypot(dx,dz));if(s.x+dx<1)s.x+=dx;s.z+=dz;});assert.ok(maxStep<=.10001);return s.x;};
+ assert.ok(Math.abs(run(1/30)-run(1/144))<.1);
+ const s=freshState();s.boat.aboard=true;assert.equal(beginDodge(s,1,0),null);s.boat.aboard=false;s.stamina=23;assert.equal(beginDodge(s,1,0),null);assert.equal(s.stamina,23);s.stamina=100;assert.equal(beginDodge(s,0,0),null);assert.equal(s.stamina,100);
+});

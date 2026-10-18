@@ -10,7 +10,7 @@ import {salvageDuration} from './salvage.js';
 import {toggleYardGate} from './game.js';
 import {salvageStatus,takeSalvage,processSalvage,recoverCargo} from './game.js';
 import {COOKING_RECIPES,atCookingStove} from './game.js';
-import {swingProfile,selectMeleeTarget,advanceSwing} from './combat.js';
+import {swingProfile,selectMeleeTarget,advanceSwing,GUNS,coolWeapons,fireCharge,shotSpread,traceShot,beginDodge,advanceDodge} from './combat.js';
 import {DRONE_TYPES,gearProfile,droneSees,attackCharge,updateAwareness,reactToHit} from './survival.js';
 import {STRUCTURES,snapStructure,dismantleAllowed} from './construction.js';
 import {buildStructure,dismantleStructure} from './game.js';
@@ -44,7 +44,7 @@ class QuietDistrict {
     this.state = loaded || freshState(); this.hasSave = !!loaded;
     this.started = false; this.ready = false; this.keys = new Set(); this.path = []; this.target = null;
     this.job = null; this.fish = null; this.build = null; this.pointerPosition = { x: innerWidth / 2, y: innerHeight / 2 };
-    this.swing=null;this.attackCooldown = 0; this.stepTimer = 0; this.uiTimer = 0; this.saveTimer = 0; this.visibilityPaused = false;
+    this.aiming=false;this.aimPoint=null;this.dodging=null;this.swing=null;this.attackCooldown = 0; this.stepTimer = 0; this.uiTimer = 0; this.saveTimer = 0; this.visibilityPaused = false;
     this.motion = new Locomotion(); this.touchMovement = { x: 0, z: 0 }; this.audio = new DistrictAudio();
     this.ui = new UI(document.getElementById('app'), this.state, (action, data) => this.action(action, data));
     try {
@@ -117,6 +117,8 @@ class QuietDistrict {
       const shortcuts = { KeyC: 'craft', KeyI: 'inventory', KeyB: 'build', KeyM: 'map', KeyJ: 'journal', KeyK: 'orders', KeyQ: 'use-medkit', KeyH: 'home' };
       if (shortcuts[key]) { this.action(shortcuts[key]); return; }
       if(key==='KeyR'&&this.fish?.phase==='reel'&&!this.ui.panel){this.action('relax-fish');return;}
+      if(key==='KeyR'&&!this.ui.panel&&!this.fish&&!this.build){this.ventWeapon();return;}
+      if(key==='AltLeft'&&!this.ui.panel){event.preventDefault();this.dodge();return;}
       if (key === 'KeyR' && this.build) { this.action('rotate-build'); return; }
       if (this.ui.panel) return;
       if(key==='KeyF'&&!this.fish&&!this.build&&!this.job){event.preventDefault();this.cycleInteraction();return;}
@@ -125,7 +127,7 @@ class QuietDistrict {
       this.keys.add(key);
     });
     window.addEventListener('keyup', event => this.keys.delete(event.code));
-    window.addEventListener('blur', () => { this.keys.clear(); this.touchMovement = { x: 0, z: 0 }; });
+    window.addEventListener('blur', () => {this.aiming=false;this.aimPoint=null;this.dodging=null; this.keys.clear(); this.touchMovement = { x: 0, z: 0 }; });
     document.addEventListener('visibilitychange', () => {
       this.visibilityPaused = document.hidden; this.keys.clear(); this.touchMovement = { x: 0, z: 0 };
       if (document.hidden) { this.save(false); this.audio.pause(); } else if (this.started) this.audio.resume();
@@ -133,15 +135,24 @@ class QuietDistrict {
     });
     window.addEventListener('pagehide', () => this.save(false));
     canvas.addEventListener('wheel', event => { event.preventDefault(); this.world.zoom(event.deltaY); }, { passive: false });
+    canvas.addEventListener('contextmenu',event=>event.preventDefault());
+    window.addEventListener('mouseup',event=>{if(event.button===2){this.aiming=false;this.aimPoint=null;}});
     canvas.addEventListener('pointermove', event => {
       this.pointerPosition = { x: event.clientX, y: event.clientY };
       if (this.build) this.updateBuildPreview();
+      if(this.aiming&&this.aimPoint)this.updateAim();
+    });
+    // Chorded mice send mousedown, but no second pointerdown while RMB is held.
+    canvas.addEventListener('mousedown',event=>{
+      if(event.button===2&&this.started&&!this.ui.panel&&!this.build&&!this.fish&&!this.job&&!this.state.boat.aboard&&GUNS[weapon(this.state).id]){event.preventDefault();this.aiming=true;this.aimPoint={};this.pointerPosition={x:event.clientX,y:event.clientY};this.path=[];this.target=null;this.updateAim();return;}
+      if(event.button===0&&(event.buttons&2)&&this.aiming&&!this.ui.panel)this.attack();
     });
     canvas.addEventListener('pointerdown', event => {
       if (!this.started || this.ui.panel || event.button > 0) return;
       this.pointerPosition = { x: event.clientX, y: event.clientY };
       if (this.build) { this.updateBuildPreview(); this.confirmBuild(); return; }
       if (this.fish) return;
+      if(this.aiming&&GUNS[weapon(this.state).id]){this.attack();return;}
       const hit = this.world.pointer(event.clientX, event.clientY);
       this.job = null; this.ui.progress(null);
       if(this.state.boat.aboard){this.target=null;this.navigate(hit.point.x,hit.point.z,false);return;}
@@ -178,7 +189,10 @@ class QuietDistrict {
     if (action === 'reload') { location.reload(); return; }
     if (action === 'start') { this.start(); return; }
     if (!this.started) return;
-    if (action === 'panel-open') { this.state.boat.vx=this.state.boat.vz=0;this.swing=null;this.world.clearWeaponEffect(); this.motion.reset(); this.path = []; this.target = null; this.job = null; this.keys.clear(); this.touchMovement = { x: 0, z: 0 }; this.ui.progress(null); this.cancelFishing(); return; }
+    if(action==='dodge'){this.dodge();return;}
+    if(action==='vent'){this.ventWeapon();return;}
+    if(action==='aim'){if(!this.ui.panel&&!this.build&&!this.fish&&!this.job&&!this.state.boat.aboard&&GUNS[weapon(this.state).id]){this.aiming=!this.aiming;this.aimPoint=null;this.path=[];this.target=null;this.ui.aiming=this.aiming;this.ui.update();}return;}
+    if (action === 'panel-open') {this.aiming=false;this.aimPoint=null;this.dodging=null; this.state.boat.vx=this.state.boat.vz=0;this.swing=null;this.world.clearWeaponEffect(); this.motion.reset(); this.path = []; this.target = null; this.job = null; this.keys.clear(); this.touchMovement = { x: 0, z: 0 }; this.ui.progress(null); this.cancelFishing(); return; }
     if (action === 'panel-close') { this.keys.clear(); return; }
     if(this.state.boat.aboard&&['build','craft','orders','station-route','structure-select'].includes(action)){this.ui.toast('Сначала причаль к берегу.');return;}
     if (this.ui.pendingConfirm) return;
@@ -564,6 +578,7 @@ class QuietDistrict {
   }
   finishJob() {
     const job = this.job; this.job = null; this.ui.progress(null);
+    if(job.type==='vent'){this.state.gunHeat[job.weaponId]=0;this.state.gunLocked[job.weaponId]=false;this.audio.playSample('metal_click',.25);this.changed();return;}
     if(job.type==='restore-route'){const result=restoreRoute(this.state,job.projectId);if(result.ok){this.world.syncNodes();this.world.flood.restorations.sync();this.world.renderDirty=true;this.audio.craft();this.ui.toast(job.projectId==='drain-works'?'Ремонтный зал осушен. Сквозной выход открыт.':'Мостки восстановлены. Можно идти пешком.','success');this.changed();}else this.ui.toast(result.reason);return;}
     if (job.type === 'rest') { this.state.health = Math.max(this.state.health, job.max); this.state.stamina = 100; this.ui.toast('Силы вернулись. Дом ждёт новых находок.', 'success'); this.changed(); return; }
     if(job.type==='gate'){const result=openGate(this.state,job.gate.id);if(result.ok){this.world.syncGates();if(result.received)this.showLoot(result.received,job.gate.x,job.gate.z);this.audio.craft();this.ui.toast('Проход открыт.','success');this.changed();}else this.ui.toast(result.reason);return;}
@@ -592,19 +607,45 @@ class QuietDistrict {
     const entries = Object.entries(loot);
     if (entries.length) this.world.floatingText(entries.map(([id, n]) => `+${n} ${RESOURCES[id].name.toLowerCase()}`).join(' · '), x, z, '#e6cc98', entries.map(([id]) => id));
   }
+  updateAim(){
+    if(!this.aiming||!this.aimPoint)return;
+    const p=this.world.groundPoint(this.pointerPosition.x,this.pointerPosition.y);if(!p)return;
+    this.aimPoint={x:p.x,z:p.z};if(!this.swing&&!this.dodging){this.world.facing=Math.atan2(p.x-this.state.x,p.z-this.state.z);this.world.playerVisual.rotation.y=this.world.facing;}
+  }
+  dodge(){
+    if(!this.started||this.ui.panel||this.build||this.fish||this.job||this.dodging||this.state.boat.aboard||this.swing&&!this.swing.resolved)return;
+    let x=this.touchMovement.x,z=this.touchMovement.z;
+    if(this.keys.has('KeyW')||this.keys.has('ArrowUp'))z--;if(this.keys.has('KeyS')||this.keys.has('ArrowDown'))z++;
+    if(this.keys.has('KeyA')||this.keys.has('ArrowLeft'))x--;if(this.keys.has('KeyD')||this.keys.has('ArrowRight'))x++;
+    const dx=x*.754+z*.657,dz=z*.754-x*.657,f=this.world.facing||0;
+    const result=beginDodge(this.state,Math.hypot(dx,dz)>.08?dx:-Math.sin(f),Math.hypot(dx,dz)>.08?dz:-Math.cos(f));
+    if(!result){this.ui.toast(this.state.stamina<24?'Для уклонения нужно 24 выносливости.':'Уклонение ещё восстанавливается.');return;}
+    this.dodging=result;this.swing=null;this.path=[];this.target=null;this.motion.reset();this.world.clearWeaponEffect();this.audio.playSample('handle_small_leather',.2);this.changed();
+  }
+  ventWeapon(){
+    const id=weapon(this.state).id;
+    if(!this.started||!GUNS[id]||this.state.boat.aboard||this.ui.panel||this.build||this.fish||this.job||this.dodging||this.swing)return;
+    if(this.state.gunHeat[id]<.05)return;
+    this.path=[];this.target=null;this.motion.reset();this.job={type:'vent',weaponId:id,x:this.state.x,z:this.state.z,elapsed:0,duration:1.2,label:'Охлаждаем оружие…'};this.audio.playSample('metal_click',.25);
+  }
   attack(target) {
-    if(this.state.boat.aboard||this.ui.panel||this.build||this.job||this.swing||this.attackCooldown>0)return;
-    const s=this.state,w=weapon(s),ranged=['pistol','carbine'].includes(w.id);
-    target ||= this.world.enemies.filter(e=>e.health>0&&Math.hypot(e.x-s.x,e.z-s.z)<=w.range&&this.world.canSee(s.x,s.z,e.x,e.z)).sort((a,b)=>Math.hypot(a.x-s.x,a.z-s.z)-Math.hypot(b.x-s.x,b.z-s.z))[0];
-    if(target?.health<=0)return;
-    if(target&&(Math.hypot(target.x-s.x,target.z-s.z)>w.range||!this.world.canSee(s.x,s.z,target.x,target.z))){this.ui.toast('Укрытие или расстояние мешает удару.');return;}
-    if(ranged&&!s.ammo){this.ui.toast('Нет зарядов. Создай их на станции или возьми трубу.');return;}
-    if(ranged&&!target){this.ui.toast('В пределах досягаемости нет противника.');return;}
-    const facing=target?Math.atan2(target.x-s.x,target.z-s.z):(this.world.facing||0);
+    if(this.state.boat.aboard||this.ui.panel||this.build||this.job||this.swing||this.dodging||this.attackCooldown>0)return;
+    const s=this.state,w=weapon(s),ranged=!!GUNS[w.id],manual=ranged&&this.aiming&&this.aimPoint;
+    if(!manual)target ||= this.world.enemies.filter(e=>e.health>0&&Math.hypot(e.x-s.x,e.z-s.z)<=w.range&&this.world.canSee(s.x,s.z,e.x,e.z)).sort((a,b)=>Math.hypot(a.x-s.x,a.z-s.z)-Math.hypot(b.x-s.x,b.z-s.z))[0];
+    if(!manual&&target?.health<=0)return;
+    if(!manual&&target&&(Math.hypot(target.x-s.x,target.z-s.z)>w.range||!this.world.canSee(s.x,s.z,target.x,target.z))){this.ui.toast('Укрытие или расстояние мешает удару.');return;}
+    if(ranged&&!target&&!manual){this.ui.toast('В пределах досягаемости нет противника.');return;}
+    const point=manual?this.aimPoint:target,facing=point?Math.atan2(point.x-s.x,point.z-s.z):(this.world.facing||0);
+    if(ranged){const result=fireCharge(s,w.id);if(!result.ok){this.ui.toast(result.reason);return;}}
+    else {const cost=swingProfile(w.id).stamina;if(s.stamina<cost){this.ui.toast('Не хватает выносливости для удара.');return;}s.stamina-=cost;}
     this.attackCooldown=w.cooldown;this.world.facing=facing;this.world.playerVisual.rotation.y=facing;
-    if(ranged){s.ammo--;this.world.shot(s.x,s.z,target.x,target.z);this.world.weaponEffect(w.id,facing);this.audio.shoot(w.id);this.damageEnemy(target,w);}
-    else{this.swing={elapsed:0,resolved:false,weapon:{...w},profile:swingProfile(w.id),facing};this.world.weaponEffect(w.id,facing);this.audio.swing(w.id);}
-    this.world.playCharacterAction(ranged?'1h_ranged_shoot':w.id==='spear'?'1h_melee_attack_stab':'1h_melee_attack_chop');
+    if(ranged){
+      const shot=traceShot(s,facing,w.range,this.world.enemies,(x,z)=>this.world.canSee(s.x,s.z,x,z),shotSpread(w.id,this.world.moveSpeed>1,this.aiming),Math.random());
+      this.world.shot(s.x,s.z,shot.x,shot.z);this.world.weaponEffect(w.id,shot.angle);this.audio.shoot(w.id);
+      if(shot.target){this.damageEnemy(shot.target,w);this.audio.weaponHit(w.id,shot.target.x,shot.target.z);}else this.world.weaponMiss();this.changed();
+    }else{this.swing={elapsed:0,resolved:false,weapon:{...w},profile:swingProfile(w.id),facing};this.world.weaponEffect(w.id,facing);this.audio.swing(w.id);}
+    this.world.playCharacterAction(ranged?'1h_ranged_shoot':['spear','knife'].includes(w.id)?'1h_melee_attack_stab':'1h_melee_attack_chop',ranged?null:swingProfile(w.id).duration);
+    if(!ranged)this.changed();
   }
   updateSwing(dt) {
     const swing=this.swing;if(!swing)return;
@@ -616,10 +657,10 @@ class QuietDistrict {
     if(swing.elapsed>=swing.profile.duration)this.swing=null;
   }
   damageEnemy(target,w) {
-    const s=this.state;reactToHit(target,s);target.health=Math.max(0,target.health-w.damage);this.world.floatingText(`−${w.damage}`,target.x,target.z,'#edbf87');this.world.enemyImpact(target,w.id);
+    const s=this.state;reactToHit(target,s,{power:GUNS[w.id]?1:swingProfile(w.id).power});target.health=Math.max(0,target.health-w.damage);this.world.floatingText(`−${w.damage}`,target.x,target.z,'#edbf87');this.world.enemyImpact(target,w.id);
     if(!['pistol','carbine'].includes(w.id)){
       const d=Math.hypot(target.x-s.x,target.z-s.z)||1,push=swingProfile(w.id).push,x=target.x+(target.x-s.x)/d*push,z=target.z+(target.z-s.z)/d*push;
-      if(!this.world.blocked(x,z,.4)) {target.x=x;target.z=z;}target.windup=0;
+      if(!this.world.blocked(x,z,.4)) {target.x=x;target.z=z;}
     }
     if(!target.health){target.deadAt=s.elapsed;s.droneDeaths[target.id]=s.elapsed;s.kills++;const result=collect(s,DRONE_TYPES[target.kind].loot||{metal:2,parts:1});this.showLoot(result.received,target.x,target.z);
       if(result.full){const drop={id:`drop-${Date.now()}-${s.kills}`,x:target.x,z:target.z,loot:result.remaining};s.drops.push(drop);this.world.addDrop(drop);this.ui.toast('Рюкзак полон. Обломки остались на месте — вернись за ними.');}this.audio.playSample('enemy_destroy',.45,1,{x:target.x,z:target.z});this.audio.collect();this.target=null;
@@ -655,7 +696,7 @@ class QuietDistrict {
           this.world.impact(event.x,.25,event.z,'#e8af7b',1.7);this.audio.resourceHit('quarry',event.x,event.z,true);
           if(Math.hypot(this.state.x-event.x,this.state.z-event.z)<=event.radius&&Math.hypot(e.x-this.state.x,e.z-this.state.z)<3.5&&this.world.canSee(e.x,e.z,this.state.x,this.state.z)&&this.enemyDamage(event.damage))return;
         }
-        if(event?.kind==='dash'&&event.damage&&segmentDistance(this.state.x,this.state.z,event.ax,event.az,event.bx,event.bz)<.8){event.attack.hit=true;if(this.enemyDamage(event.damage))return;}
+        if(event?.kind==='dash'&&event.damage&&segmentDistance(this.state.x,this.state.z,event.ax,event.az,event.bx,event.bz)<.8&&this.world.canSee(e.x,e.z,this.state.x,this.state.z)){event.attack.hit=true;if(this.enemyDamage(event.damage))return;}
         if(event?.kind==='shot'){
           const dx=event.x-e.x,dz=event.z-e.z,d=Math.hypot(dx,dz)||1;
           const bolt={x:e.x,z:e.z,dx:dx/d,dz:dz/d,remaining:9,damage:event.damage};
@@ -682,7 +723,7 @@ class QuietDistrict {
   die() {
     for(const b of this.enemyBolts||[])this.world.scene.remove(b.mesh);this.enemyBolts=[];
     for(const e of this.world.enemies){e.attack=null;e.windup=0;e.alert=0;e.suspicion=0;}
-    this.swing=null;this.world.clearWeaponEffect();
+    this.aiming=false;this.aimPoint=null;this.dodging=null;this.swing=null;this.world.clearWeaponEffect();
     this.motion.reset(); this.keys.clear(); this.touchMovement = { x: 0, z: 0 };
     const wasAboard=this.state.boat.aboard;respawn(this.state); this.path = []; this.target = null; this.job = null; this.cancelFishing(); this.cancelBuild();
     this.world.move(this.state.x, this.state.z); this.ui.progress(null); this.world.destination.visible = false;
@@ -731,6 +772,7 @@ class QuietDistrict {
   }
   cancelFishing() { this.fish = null; this.ui.fishing(null); }
   movement(dt) {
+    if(this.dodging){const oldX=this.state.x,oldZ=this.state.z,alive=advanceDodge(this.dodging,dt,(dx,dz)=>this.world.move(this.state.x+dx,this.state.z+dz));if(!alive){this.dodging=null;this.motion.reset();}this.world.moveSpeed=Math.hypot(this.state.x-oldX,this.state.z-oldZ)/dt;this.world.running=false;return this.world.moveSpeed>.01;}
     if (this.fish || this.build || this.job && !this.keys.size && !Math.hypot(this.touchMovement.x, this.touchMovement.z)) { this.motion.reset(); return false; }
     let screenX = this.touchMovement.x, screenZ = this.touchMovement.z;
     if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) screenZ--;
@@ -757,7 +799,7 @@ class QuietDistrict {
     if (distance > 0.08 && this.job) { this.job = null; this.ui.progress(null); }
     const result = this.motion.update(dt, dx, dz, this.state.stamina,
       this.keys.has('ShiftLeft') || this.keys.has('ShiftRight'), this.state.equipment.boots === 'boots',activeFood(this.state));
-    const profile=gearProfile(this.state,RECIPES);result.x*=profile.speed*(this.swing?.resolved===false?.75:1);result.z*=profile.speed*(this.swing?.resolved===false?.75:1);
+    const profile=gearProfile(this.state,RECIPES);const mobility=(this.swing&&!this.swing.resolved?swingProfile(this.swing.weapon.id).mobility:1)*(this.aiming&&GUNS[weapon(this.state).id]?.65:1);result.x*=profile.speed*mobility;result.z*=profile.speed*mobility;
     this.state.stamina = result.stamina; this.world.running = result.running;
     // Follow the checked segment precisely; velocity easing must not cut a corner into a wall.
     if (!manual && this.path.length) {
@@ -798,7 +840,7 @@ class QuietDistrict {
     const active = this.started && !this.ui.panel && !this.visibilityPaused;
     let moving = false;
     if (active) {
-      this.state.elapsed += dt;updateRainCrops(this.state,dt,(x,z)=>this.world.sheltered(x,z));
+      this.state.elapsed += dt;coolWeapons(this.state,dt);if(this.state.boat.aboard||!GUNS[weapon(this.state).id]){this.aiming=false;this.aimPoint=null;}this.updateAim();this.ui.aiming=this.aiming;updateRainCrops(this.state,dt,(x,z)=>this.world.sheltered(x,z));
       this.audio.rain(weatherAt(this.state.elapsed).rain,this.world.sheltered(this.state.x,this.state.z));this.audio.environment(this.world.ambience(),this.world.sheltered(this.state.x,this.state.z),this.state.elapsed);
       if (updateHelper(this.state)) this.ui.update(); this.attackCooldown = Math.max(0, this.attackCooldown - dt);
       this.audio.setListener(this.state.x,this.state.z);moving = this.movement(dt);this.updateSwing(dt); this.updateEnemies(dt); this.audio.tick(this.state.elapsed);const music=this.state.placed.filter(p=>p.id==='recordplayer'&&p.enabled).map(p=>Math.hypot(p.x-this.state.x,p.z-this.state.z));this.audio.record(this.state.elapsed,music.length?Math.min(...music):Infinity);const radios=this.state.placed.filter(p=>p.id==='homeradio'&&p.enabled).map(p=>Math.hypot(p.x-this.state.x,p.z-this.state.z));this.audio.radio(this.state.elapsed,radios.length?Math.min(...radios):Infinity);
@@ -844,6 +886,7 @@ class QuietDistrict {
       this.panelRendered = !!this.ui.panel;
       this.ui.floating(this.world.floating, this.world);
     }
+    const reticle=document.getElementById('combat-reticle');reticle.hidden=!this.aiming||!this.aimPoint||!!this.ui.panel||!GUNS[weapon(this.state).id];if(!reticle.hidden){reticle.style.left=this.pointerPosition.x+'px';reticle.style.top=this.pointerPosition.y+'px';reticle.classList.toggle('moving',this.world.moveSpeed>1);}
     requestAnimationFrame(this.frame);
   }
 }

@@ -66,6 +66,8 @@ const art = {
   cutter: line(15,55,36,27,'#bf654c',9)+line(49,55,29,27,'#bf654c',9)+path('M26 28L15 9L25 7L33 22L41 7L51 9L40 28Z',steel)+circle(33,28,5,dark),
   rod: fishingRod(false), rod2: fishingRod(true),
   spear: line(12,57,43,16,wood,5)+path('M36 18L51 4L55 7L48 27L40 24Z',steel)+path('M51 4L48 24L43 19Z','#dfebe6')+line(30,30,38,35,'#dad2b5',3),
+  knife:line(20,53,28,37,wood,7)+path('M26 39L31 10L47 5L34 42Z',steel)+line(20,35,38,44,gold,4),
+  heavyaxe:line(18,56,40,12,wood,7)+path('M26 10L39 14L53 9L58 28L39 30L22 20Z',steel)+line(38,13,41,29,gold,4),
   pistol: path('M8 17H53V31H28L22 54H10L16 31H8Z',dark)+rect(11,17,39,9,steel)+rect(13,36,9,15,wood)+rect(42,20,10,5,gold)+path('M28 33H39V42H26Z',dark),
   carbine: path('M5 24H16V16H55V31H36L29 46H20L23 31H16V47H5Z',dark)+rect(19,18,32,9,steel)+rect(25,8,18,7,dark)+rect(51,22,10,6,gold)+rect(6,27,8,16,wood)+rect(38,29,8,12,wood),
   vest: path('M17 10H26L32 18L38 10H47L55 24L47 30V56H17V30L9 24Z','#a58d63')+rect(20,30,10,15,dark)+rect(36,30,10,15,dark)+line(32,20,32,55,gold,2),

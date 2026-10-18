@@ -41,3 +41,12 @@ All assets are bundled locally; the game does not fetch third-party assets at ru
 - Model SHA-256: 7112f6a08400914f9da546f3e6029e947cc9eab2b4a6da5eb99776111289efb1.
 - CC0 1.0, as explicitly stated by the upstream README. Commercial use permitted. Runtime selects the provided idle/walk animations.
 - Gunner drones reuse the ready Kenney enemy-flying and blaster models from the FPS kit credited above; no generated character geometry is used for the new enemies.
+
+## KayKit — ready melee weapons (v0.28.0)
+- Same CC0 Adventurers pack and pinned commit `672074b73ba276876a19e8816ecdc5241817ab47` as the player character above.
+- Upstream directory: `addons/kaykit_character_pack_adventures/Assets/gltf/`.
+- `dagger.gltf` + its buffer and referenced texture → `models/weapons/knife.glb`.
+- `axe_2handed.gltf` + its buffer and referenced texture → `models/weapons/heavyaxe.glb`.
+- Changes: GLTF, buffer and original PNG packaged together into GLB; geometry and materials preserved. Runtime scales the ready models for the character's hand.
+- SHA-256: knife `5218f00586c3d214f77dbc2ecb163b12f9f4ead99b2216f5d1d0ddc2fc546831`; heavyaxe `60bf5f7bae468c845c798b25ba8b8601a34bf68ef2d3b856b644a123d892aa3a`.
+- Existing `KAYKIT-LICENSE.txt` applies. Free personal and commercial use under CC0.

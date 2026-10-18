@@ -1,3 +1,4 @@
+import {swingProfile} from './combat.js';
 import {dressLandmark} from './landmark-dressing.js';
 import {LANDMARK_FINDS} from './landmark-rewards.js';
 import {supplyPeriod} from './expedition-balance.js';
@@ -1178,19 +1179,19 @@ export class World {
     if(id==='axe'||id==='pick'){
       const handle=this.cylinder(0,0,-.25,.035,.85,'#937954',this.weaponRoot,8);handle.rotation.x=.7;handle.userData.generatedHandItem=true;
       const head=this.box(0,.29,-.5,id==='axe'?.34:.6,.12,.065,'#b5bab0',this.weaponRoot);head.userData.generatedHandItem=true;
-    }else if (id === 'pistol' || id === 'carbine') {
-      const asset = this.assets?.[id === 'pistol' ? 'blaster' : 'blaster-repeater'];
+    }else if (['knife','heavyaxe','pistol','carbine'].includes(id)) {
+      const asset = this.assets?.[id==='knife'||id==='heavyaxe'?id:id === 'pistol' ? 'blaster' : 'blaster-repeater'];
       if (!asset) return;
       const model = asset.scene.clone();
-      const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3()); model.scale.setScalar(0.8 / Math.max(size.x, size.y, size.z)); this.weaponRoot.add(model);
+      const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3()); model.scale.setScalar((id==='heavyaxe'?1.25:id==='knife'?.48:.8) / Math.max(size.x, size.y, size.z)); this.weaponRoot.add(model);
     } else { const pipe = this.cylinder(0, 0, -0.3, id === 'spear' ? 0.04 : 0.06, id === 'spear' ? 1.8 : 0.8, '#b2b8a0', this.weaponRoot, 6); pipe.rotation.x = 0.7;pipe.userData.generatedHandItem=true; }
     this.playerLight.intensity = this.state.owned.includes('lantern') && this.state.lanternOn !== false ? 3.5 : 0;
   }
-  playCharacterAction(name) {
+  playCharacterAction(name,duration=null) {
     const action = this.actions?.[name]||(['1h_melee_attack_stab'].includes(name)?this.actions?.['1h_melee_attack_chop']:null); if (!action || action === this.idleAction || action === this.walkAction) return;
     this.oneShot?.action.stop();
-    action.reset().setLoop(THREE.LoopOnce, 1); action.clampWhenFinished = true; action.setEffectiveWeight(1).play();
-    this.oneShot = { action, remaining: Math.min(action.getClip().duration, 1.8) };
+    action.reset().setEffectiveTimeScale(duration?action.getClip().duration/duration:1).setLoop(THREE.LoopOnce, 1); action.clampWhenFinished = true; action.setEffectiveWeight(1).play();
+    this.oneShot = { action, remaining: duration||Math.min(action.getClip().duration, 1.8) };
   }
   applyProgress() {
     this.renderDirty = true;
@@ -1549,10 +1550,10 @@ export class World {
     // Compact indexes after expired particles are removed, without allocating meshes.
     for(let i=0;i<particles.length;i++){const p=particles[i];this.debrisPosition.set(p.x,p.y,p.z);this.debrisScale.setScalar(Math.min(1,p.life/.15));this.debrisMatrix.compose(this.debrisPosition,this.debrisQuaternion,this.debrisScale);this.debris.setMatrixAt(i,this.debrisMatrix);this.debris.setColorAt(i,p.color);}
     this.debris.count=particles.length;this.debris.visible=particles.length>0;if(particles.length){this.debris.instanceMatrix.needsUpdate=true;this.debris.instanceColor.needsUpdate=true;}
-    const effect=this.weaponVisual;if(!effect)return;effect.time+=dt;const ranged=['pistol','carbine'].includes(effect.id),duration=ranged?(effect.id==='carbine'?.2:.16):.52;
+    const effect=this.weaponVisual;if(!effect)return;effect.time+=dt;const ranged=['pistol','carbine'].includes(effect.id),duration=ranged?(effect.id==='carbine'?.2:.16):swingProfile(effect.id).duration;
     const facing=effect.facing,x=this.state.x,z=this.state.z,dx=Math.sin(facing),dz=Math.cos(facing);
     if(ranged){this.muzzleFlash.position.set(x+dx*.7,1.15,z+dz*.7);this.muzzleFlash.visible=effect.time<.08;this.muzzleFlash.material.opacity=Math.max(0,1-effect.time/.08);this.weaponRecoil=Math.sin(Math.min(1,effect.time/duration)*Math.PI)*(effect.id==='carbine'?-.27:-.18);}
-    else{const stab=effect.id==='spear',mesh=stab?this.thrustTrail:this.swingTrail;mesh.visible=effect.time>.08&&effect.time<.34;mesh.position.set(x+(stab?dx*1.2:0),1,z+(stab?dz*1.2:0));mesh.rotation.y=facing;mesh.scale.set(stab?1:1.6,1,stab?1.5:1.6);mesh.material.opacity=Math.max(0,Math.sin((effect.time-.08)/.26*Math.PI))*.24;}
+    else{const profile=swingProfile(effect.id),start=Math.max(0,profile.hitAt-.12),end=profile.hitAt+.12,stab=['spear','knife'].includes(effect.id),mesh=stab?this.thrustTrail:this.swingTrail;mesh.visible=effect.time>start&&effect.time<end;mesh.position.set(x+(stab?dx*1.2:0),1,z+(stab?dz*1.2:0));mesh.rotation.y=facing;mesh.scale.set(stab?1:1.6,1,stab?1.5:1.6);mesh.material.opacity=Math.max(0,Math.sin((effect.time-start)/(end-start)*Math.PI))*.24;}
     if(effect.time>=duration)this.clearWeaponEffect();
   }
 
@@ -1565,6 +1566,7 @@ export class World {
     this.boltGeometry??=new THREE.SphereGeometry(.11,6,4);this.boltMaterial??=new THREE.MeshBasicMaterial({color:'#ffc287'});
     const mesh=new THREE.Mesh(this.boltGeometry,this.boltMaterial);mesh.position.set(bolt.x,1.1,bolt.z);this.scene.add(mesh);return mesh;
   }
+  groundPoint(x,y){const rect=this.renderer.domElement.getBoundingClientRect();this.mouse.set((x-rect.left)/rect.width*2-1,-(y-rect.top)/rect.height*2+1);this.raycaster.setFromCamera(this.mouse,this.camera);this.aimGround??=new THREE.Vector3();return this.raycaster.ray.intersectPlane(this.plane,this.aimGround);}
   shot(x, z, tx, tz) {
     const points = [new THREE.Vector3(x, 1.15, z), new THREE.Vector3(tx, 1.1, tz)];
     const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: '#ffe0a1', transparent: true, opacity: 1 }));

@@ -1,3 +1,4 @@
+import {GUNS} from './combat.js';
 import {cleanRestorations} from './restoration.js';
 import {WORLD_BOUNDS,freshBoat,cleanBoat,FLOOD_DOCKS,CAMP,BOAT_REPAIR} from './floodplain.js';
 import {cleanMapMarks} from './map-marks.js';
@@ -30,6 +31,8 @@ export const RESOURCES = {
   water: { name: 'Чистая вода', icon: 'water', color: '#84bfc7', weight: 0.5 },
 };
 export const RECIPES = [
+ {id:'knife',name:'Походный клинок',category:'weapons',desc:'Урон 11 · дистанция 1,6 м · быстрый удар за 6 выносливости. Можно двигаться во время замаха; тяжёлые атаки не прерывает.',cost:{metal:4,cloth:2},slot:'weapon',damage:11,range:1.6,cooldown:.32},
+ {id:'heavyaxe',name:'Тяжёлый боевой топор',category:'weapons',desc:'Урон 42 · дистанция 2,1 м · 24 выносливости. Долгий замах прерывает даже удар тяжёлого смотрителя.',cost:{wood:6,metal:12,parts:3,cloth:3},requires:'axe',slot:'weapon',damage:42,range:2.1,cooldown:1.05},
  {id:'cargorack',name:'Стеллаж для техники',category:'shelter',desc:'Хранение целой техники: +12 мест к четырём базовым. Работает после установки дома. Общий предел: 200 агрегатов.',cost:{wood:10,metal:6},placeable:true},
  {id:'precisionbench',name:'Разборочный верстак',category:'shelter',desc:'Разбор привезённой техники за 1,6 вместо 3,2 секунды. Ещё одна ремонтная деталь с каждого груза.',cost:{metal:18,parts:12,wire:6,battery:1},requires:'generator',fixed:true},
  {id:'trailpack',name:'Рюкзак дальнего маршрута',category:'gear',desc:'Вместимость 80 без штрафа скорости. Для вылазок в дальние кварталы.',cost:{cloth:16,metal:4,parts:4},requires:'bag2',slot:'bag',capacity:80},
@@ -60,9 +63,9 @@ export const RECIPES = [
   { id: 'cutter', name: 'Болторез', category: 'tools', desc: 'Открывает запертые технические контейнеры.', cost: { metal: 10, parts: 3 }, slot: 'tool', icon: '✂' },
   { id: 'rod', name: 'Удочка из орешника', category: 'tools', desc: 'Рыбалка у затопленного причала. Забрось и дождись поклёвки.', cost: { wood: 5, cloth: 2, wire: 1 }, slot: 'tool', icon: '≈' },
   { id: 'rod2', name: 'Удочка «Глубина»', category: 'tools', desc: 'Шире зона подсечки. Повышает шанс редких находок.', cost: { wood: 6, metal: 5, parts: 3, pearl: 2 }, requires: 'rod', slot: 'tool', icon: '≈' },
-  { id: 'spear', name: 'Стальное копьё', category: 'weapons', desc: 'Дальность 3 м · урон 25 · без боеприпасов.', cost: { wood: 5, metal: 7, cloth: 2 }, slot: 'weapon', damage: 25, range: 3, cooldown: 0.65, icon: '↗' },
-  { id: 'pistol', name: 'Сигнальный бластер', category: 'weapons', desc: 'Дальность 11 м · урон 19 · в комплекте 6 зарядов.', starterAmmo: 6, cost: { metal: 12, parts: 4, wire: 3 }, slot: 'weapon', damage: 19, range: 11, cooldown: 0.48, icon: '⌁' },
-  { id: 'carbine', name: 'Импульсный карабин', category: 'weapons', desc: 'Дальность 15 м · урон 30 · в комплекте 12 зарядов.', starterAmmo: 12, cost: { metal: 20, parts: 8, wire: 6, pearl: 2 }, requires: 'generator', slot: 'weapon', damage: 30, range: 15, cooldown: 0.32, icon: '⌁' },
+  { id: 'spear', name: 'Стальное копьё', category: 'weapons', desc: 'Дальность 3 м · урон 25 · 12 выносливости. Узкий выпад прерывает лёгких противников.', cost: { wood: 5, metal: 7, cloth: 2 }, slot: 'weapon', damage: 25, range: 3, cooldown: 0.65, icon: '↗' },
+  { id: 'pistol', name: 'Сигнальный бластер', category: 'weapons', desc: 'Дальность 11 м · урон 19 · 6 зарядов. ПКМ — прицел, ЛКМ / пробел — выстрел. R — охлаждение.', starterAmmo: 6, cost: { metal: 12, parts: 4, wire: 3 }, slot: 'weapon', damage: 19, range: 11, cooldown: 0.48, icon: '⌁' },
+  { id: 'carbine', name: 'Импульсный карабин', category: 'weapons', desc: 'Дальность 15 м · урон 30 · 12 зарядов. Точнее бластера; нагревается быстрее. ПКМ — прицел, R — охлаждение.', starterAmmo: 12, cost: { metal: 20, parts: 8, wire: 6, pearl: 2 }, requires: 'generator', slot: 'weapon', damage: 30, range: 15, cooldown: 0.32, icon: '⌁' },
   { id: 'vest', name: 'Рабочий жилет', category: 'gear', desc: 'Снижает входящий урон на 25%.', cost: { cloth: 6, metal: 3 }, slot: 'armor', defense: 0.25, icon: '▣' },
   { id: 'armor', name: 'Пластинчатая куртка', category: 'gear', desc: 'Защита 45% · скорость −10%. Для опасных мест.', cost: { cloth: 10, metal: 12, parts: 3 }, requires: 'vest', slot: 'armor', defense: 0.45, speedMultiplier:.9, icon: '▣' },
   { id: 'bag', name: 'Рюкзак сборщика', category: 'gear', desc: 'Вместимость 40 вместо 26. Больше находок за один путь.', cost: { cloth: 7, wood: 2 }, slot: 'bag', capacity: 40, icon: '▤' },
@@ -106,7 +109,7 @@ export const FISH = [
 export const HOME = { x: -16, z: 16 };
 export function freshState() {
   return {
-    packingPlan:{},restoredRoutes:[],boat:freshBoat(),camp:{ready:false,store:{}},mapMarks:[],keepResources:[],cargo:[],storedCargo:[],strippedNodes:[],construction:[],brokenNodes:[],loadouts:[null,null],openedGates:[],packedFurniture:[],fishingBait:'none',visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
+    gunHeat:{pistol:0,carbine:0},gunLocked:{pistol:false,carbine:false},dodgeReadyAt:0,packingPlan:{},restoredRoutes:[],boat:freshBoat(),camp:{ready:false,store:{}},mapMarks:[],keepResources:[],cargo:[],storedCargo:[],strippedNodes:[],construction:[],brokenNodes:[],loadouts:[null,null],openedGates:[],packedFurniture:[],fishingBait:'none',visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
     version: 1, x: HOME.x + 1, z: HOME.z + 2, health: 100, stamina: 100,
     stash: { wood: 3, metal: 2, cloth: 2 }, bag: {}, owned: [],
     equipment: { weapon: 'pipe', armor: null, bag: null, boots: null },
@@ -131,6 +134,7 @@ function cleanFurniture(p,elapsed) {
 export function validateSave(input) {
   if (!input || input.version !== 1) return null;
   const state = freshState();
+  for(const id of Object.keys(GUNS)){const n=input.gunHeat?.[id];state.gunHeat[id]=Number.isFinite(n)?Math.max(0,Math.min(1,n)):0;state.gunLocked[id]=state.gunHeat[id]>=1||state.gunHeat[id]>.3&&input.gunLocked?.[id]===true;}
   state.restoredRoutes=cleanRestorations(input.restoredRoutes);
   state.boat=cleanBoat(input.boat,state.restoredRoutes);
   state.camp.ready=input.camp?.ready===true;
@@ -222,6 +226,7 @@ export function validateSave(input) {
   state.settings.music=input.settings?.music!==false;state.settings.musicVolume=Number.isFinite(input.settings?.musicVolume)?Math.max(0,Math.min(1,input.settings.musicVolume)):.5;
   state.settings.quality = input.settings?.quality === 'low' ? 'low' : 'high';
   if(state.boat.aboard){state.x=state.boat.x;state.z=state.boat.z;}
+  state.dodgeReadyAt=Number.isFinite(input.dodgeReadyAt)?Math.max(0,Math.min(state.elapsed+1.05,input.dodgeReadyAt)):0;
   return state;
 }
 export function bagWeight(state) {
