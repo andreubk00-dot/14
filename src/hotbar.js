@@ -1,3 +1,4 @@
+import {GUNS} from './combat.js';
 import {SUPPLY_FIELDS} from './food.js';
 import { RECIPES, DEFAULT_WEAPON } from './game.js';
 export const DEFAULT_HOTBAR = ['pipe', 'axe', 'rod', 'medkit', 'meal', 'tea'];
@@ -6,7 +7,7 @@ export function hotbarItem(state, id) {
   const item = HOTBAR_ITEMS.find(r => r.id === id);
   if (!item) return null;
   const field = Object.hasOwn(SUPPLY_FIELDS,id)?SUPPLY_FIELDS[id]:null;
-  const count = field ? state[field] : ['pistol', 'carbine'].includes(id) ? state.ammo : null;
+  const count = field ? state[field] : !!GUNS[id] ? state.ammo : null;
   const available = field ? count > 0 : id === 'pipe' || state.owned.includes(id);
   return { ...item, count, available, supply: !!field };
 }

@@ -1,4 +1,4 @@
-import {swingProfile} from './combat.js';
+import {swingProfile,GUNS} from './combat.js';
 import {dressLandmark} from './landmark-dressing.js';
 import {LANDMARK_FINDS} from './landmark-rewards.js';
 import {supplyPeriod} from './expedition-balance.js';
@@ -534,7 +534,7 @@ export class World {
     for(const x of [-27.4,-26.8])this.cylinder(x,.14,32.2,.08,.14,'#c6bea3');
     this.box(52,.5,19,2,1,1,'#817b62');this.collider(52,19,2,1);
     this.cylinder(54.5,.55,19.2,.4,1.1,'#6e8274');this.collider(54.5,19.2,.8,.8);
-    for(const n of MEMORIES) {const h=n.y??(n.id==='dispatch'?1.48:n.id==='laundry'?1.61:n.id==='bus'?.7:n.id==='yard'?1.01:n.id==='salvage'?.21:.065);this.box(n.x,h,n.z,.3,.012,.23,'#e0d6b8');}
+    for(const n of MEMORIES) {const h=n.y??(n.id==='dispatch'?1.48:n.id==='laundry'?1.61:n.id==='bus'?.7:n.id==='yard'?1.01:n.id==='salvage'?.21:.065);this.box(n.x,h,n.z,.3,n.wall?.23:.012,n.wall?.012:.23,'#e0d6b8');}
   }
   buildExpandedDistrict() {
     // Three silhouettes: a low timber hut, a tall factory and a house with veranda.
@@ -1174,16 +1174,17 @@ export class World {
   updateEquipment() {
     this.renderDirty = true;
     this.playerLight.intensity = this.state.owned.includes('lantern') && this.state.lanternOn !== false ? 3.5 : 0;
-    this.weaponRoot.traverse(m=>{if(m.userData.generatedHandItem)m.geometry.dispose();});this.weaponRoot.clear(); const id = this.harvestTool||this.state.equipment.weapon;
+    this.weaponRoot.traverse(m=>{if(m.userData.generatedHandItem)m.geometry.dispose();if(m.userData.ownedHandMaterial)for(const mat of Array.isArray(m.material)?m.material:[m.material])mat.dispose();});this.weaponRoot.clear(); const id = this.harvestTool||this.state.equipment.weapon;
     if (!id) return;
     if(id==='axe'||id==='pick'){
       const handle=this.cylinder(0,0,-.25,.035,.85,'#937954',this.weaponRoot,8);handle.rotation.x=.7;handle.userData.generatedHandItem=true;
       const head=this.box(0,.29,-.5,id==='axe'?.34:.6,.12,.065,'#b5bab0',this.weaponRoot);head.userData.generatedHandItem=true;
-    }else if (['knife','heavyaxe','pistol','carbine'].includes(id)) {
+    }else if (['knife','heavyaxe'].includes(id)||GUNS[id]) {
       const asset = this.assets?.[id==='knife'||id==='heavyaxe'?id:id === 'pistol' ? 'blaster' : 'blaster-repeater'];
       if (!asset) return;
       const model = asset.scene.clone();
-      const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3()); model.scale.setScalar((id==='heavyaxe'?1.25:id==='knife'?.48:.8) / Math.max(size.x, size.y, size.z)); this.weaponRoot.add(model);
+      if(id==='stunner')model.traverse(m=>{if(m.isMesh){m.material=m.material.clone();m.material.color.set('#9ccbc8');m.userData.ownedHandMaterial=true;}});
+      const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3()); model.scale.setScalar((id==='heavyaxe'?1.25:id==='knife'?.48:id==='stunner'?.65:.8) / Math.max(size.x, size.y, size.z)); this.weaponRoot.add(model);
     } else { const pipe = this.cylinder(0, 0, -0.3, id === 'spear' ? 0.04 : 0.06, id === 'spear' ? 1.8 : 0.8, '#b2b8a0', this.weaponRoot, 6); pipe.rotation.x = 0.7;pipe.userData.generatedHandItem=true; }
     this.playerLight.intensity = this.state.owned.includes('lantern') && this.state.lanternOn !== false ? 3.5 : 0;
   }
@@ -1209,6 +1210,7 @@ export class World {
     this.syncNodes();
   }
   syncNodes() {
+    const powered=this.state.restoredRoutes.includes('quarry-workshop');if(this.quarryIndicator&&this.quarryPowered!==powered){this.quarryPowered=powered;this.quarryIndicator.material.color.set(powered?'#a8c39c':'#bd8b6f');this.quarryIndicator.material.emissive.set(powered?'#80bb8c':'#ad6d4f');this.renderDirty=true;}
     for (const node of this.nodes) {
       const time = this.state.depleted[node.id];
       let visible=node.find?!this.state.findClaims.includes(node.id):time===undefined||this.state.elapsed-time>=node.respawnTime;
@@ -1517,7 +1519,7 @@ export class World {
     this.ensureHitEffects();for(let i=0;i<count&&this.debrisParticles.length<128;i++)this.debrisParticles.push({x,y,z,vx:(Math.random()-.5)*2.2,vy:1.4+Math.random()*1.7,vz:(Math.random()-.5)*2.2,life:.5+Math.random()*.25,max:.75,color:new THREE.Color(color)});
   }
   weaponEffect(id,facing) {
-    this.ensureHitEffects();this.weaponVisual={id,facing,time:0};this.weaponRecoil=0;
+    this.ensureHitEffects();this.muzzleFlash.material.color.set(id==='stunner'?'#a5e5df':'#ffe0a1');this.weaponVisual={id,facing,time:0};this.weaponRecoil=0;
   }
   clearWeaponEffect() {this.weaponVisual=null;if(this.swingTrail)this.swingTrail.visible=false;if(this.thrustTrail)this.thrustTrail.visible=false;if(this.muzzleFlash)this.muzzleFlash.visible=false;this.weaponRecoil=0;}
   weaponMiss() {if(this.weaponVisual)this.weaponVisual.miss=true;}
@@ -1550,7 +1552,7 @@ export class World {
     // Compact indexes after expired particles are removed, without allocating meshes.
     for(let i=0;i<particles.length;i++){const p=particles[i];this.debrisPosition.set(p.x,p.y,p.z);this.debrisScale.setScalar(Math.min(1,p.life/.15));this.debrisMatrix.compose(this.debrisPosition,this.debrisQuaternion,this.debrisScale);this.debris.setMatrixAt(i,this.debrisMatrix);this.debris.setColorAt(i,p.color);}
     this.debris.count=particles.length;this.debris.visible=particles.length>0;if(particles.length){this.debris.instanceMatrix.needsUpdate=true;this.debris.instanceColor.needsUpdate=true;}
-    const effect=this.weaponVisual;if(!effect)return;effect.time+=dt;const ranged=['pistol','carbine'].includes(effect.id),duration=ranged?(effect.id==='carbine'?.2:.16):swingProfile(effect.id).duration;
+    const effect=this.weaponVisual;if(!effect)return;effect.time+=dt;const ranged=!!GUNS[effect.id],duration=ranged?(effect.id==='carbine'?.2:.16):swingProfile(effect.id).duration;
     const facing=effect.facing,x=this.state.x,z=this.state.z,dx=Math.sin(facing),dz=Math.cos(facing);
     if(ranged){this.muzzleFlash.position.set(x+dx*.7,1.15,z+dz*.7);this.muzzleFlash.visible=effect.time<.08;this.muzzleFlash.material.opacity=Math.max(0,1-effect.time/.08);this.weaponRecoil=Math.sin(Math.min(1,effect.time/duration)*Math.PI)*(effect.id==='carbine'?-.27:-.18);}
     else{const profile=swingProfile(effect.id),start=Math.max(0,profile.hitAt-.12),end=profile.hitAt+.12,stab=['spear','knife'].includes(effect.id),mesh=stab?this.thrustTrail:this.swingTrail;mesh.visible=effect.time>start&&effect.time<end;mesh.position.set(x+(stab?dx*1.2:0),1,z+(stab?dz*1.2:0));mesh.rotation.y=facing;mesh.scale.set(stab?1:1.6,1,stab?1.5:1.6);mesh.material.opacity=Math.max(0,Math.sin((effect.time-start)/(end-start)*Math.PI))*.24;}
@@ -1567,10 +1569,10 @@ export class World {
     const mesh=new THREE.Mesh(this.boltGeometry,this.boltMaterial);mesh.position.set(bolt.x,1.1,bolt.z);this.scene.add(mesh);return mesh;
   }
   groundPoint(x,y){const rect=this.renderer.domElement.getBoundingClientRect();this.mouse.set((x-rect.left)/rect.width*2-1,-(y-rect.top)/rect.height*2+1);this.raycaster.setFromCamera(this.mouse,this.camera);this.aimGround??=new THREE.Vector3();return this.raycaster.ray.intersectPlane(this.plane,this.aimGround);}
-  shot(x, z, tx, tz) {
+  shot(x, z, tx, tz,colour='#ffe0a1') {
     const points = [new THREE.Vector3(x, 1.15, z), new THREE.Vector3(tx, 1.1, tz)];
-    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: '#ffe0a1', transparent: true, opacity: 1 }));
-    this.scene.add(line); this.effects ||= []; this.effects.push({ mesh: line, life: 0.15, max: 0.15 }); this.impact(tx, 1.1, tz);
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), new THREE.LineBasicMaterial({ color: colour, transparent: true, opacity: 1 }));
+    this.scene.add(line); this.effects ||= []; this.effects.push({ mesh: line, life: 0.15, max: 0.15 }); this.impact(tx, 1.1, tz,colour);
   }
   update(dt, moving, focus = true) {
     this.time += dt;this.flood.update();this.flood.syncBoat(dt,moving);this.updateHitEffects(dt); this.updateRoofs(dt);this.updateConstructionRoofs(dt);this.syncFurniture();const weather=weatherAt(this.state.elapsed);this.updateRain(dt,weather);

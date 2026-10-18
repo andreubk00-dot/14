@@ -1,3 +1,4 @@
+import {QUARRY_WORKSHOP,QUARRY_FIELD_RECIPES} from './quarry.js';
 import {GUNS} from './combat.js';
 import {cleanRestorations} from './restoration.js';
 import {WORLD_BOUNDS,freshBoat,cleanBoat,FLOOD_DOCKS,CAMP,BOAT_REPAIR} from './floodplain.js';
@@ -31,6 +32,7 @@ export const RESOURCES = {
   water: { name: 'Чистая вода', icon: 'water', color: '#84bfc7', weight: 0.5 },
 };
 export const RECIPES = [
+ {id:'stunner',name:'Дуговой разрядник',category:'weapons',desc:'Дальность 5 м · урон 6. Сбивает атаку тяжёлого противника, освобождая время для отхода. Быстро перегревается. Обычные энергозаряды.',cost:{metal:10,parts:5,wire:6,battery:1},schematic:'quarry-discharge',slot:'weapon',damage:6,range:5,cooldown:1.2},
  {id:'knife',name:'Походный клинок',category:'weapons',desc:'Урон 11 · дистанция 1,6 м · быстрый удар за 6 выносливости. Можно двигаться во время замаха; тяжёлые атаки не прерывает.',cost:{metal:4,cloth:2},slot:'weapon',damage:11,range:1.6,cooldown:.32},
  {id:'heavyaxe',name:'Тяжёлый боевой топор',category:'weapons',desc:'Урон 42 · дистанция 2,1 м · 24 выносливости. Долгий замах прерывает даже удар тяжёлого смотрителя.',cost:{wood:6,metal:12,parts:3,cloth:3},requires:'axe',slot:'weapon',damage:42,range:2.1,cooldown:1.05},
  {id:'cargorack',name:'Стеллаж для техники',category:'shelter',desc:'Хранение целой техники: +12 мест к четырём базовым. Работает после установки дома. Общий предел: 200 агрегатов.',cost:{wood:10,metal:6},placeable:true},
@@ -74,7 +76,7 @@ export const RECIPES = [
   { id: 'lantern', name: 'Походный фонарь', category: 'gear', desc: 'Тёплый свет сопровождает тебя в тумане.', cost: { metal: 4, wire: 2, parts: 1 }, slot: 'tool', icon: '☼' },
   { id: 'medkit', name: 'Полевая аптечка', category: 'supplies', desc: 'Восстанавливает 45 здоровья. Использование: Q.', cost: { herbs: 3, cloth: 2 }, repeatable: true, icon: '✚' },
   { id: 'meal', name: 'Походная еда', category: 'supplies', desc: 'Восстанавливает 30 здоровья и всю выносливость.', cost: { fish: 1, herbs: 1, wood: 1 }, repeatable: true, icon: '♨' },
-  { id: 'ammo', name: 'Энергозаряды × 12', category: 'supplies', desc: 'Боеприпасы для бластера и карабина.', cost: { metal: 2, wire: 1 }, repeatable: true, icon: '▰' },
+  { id: 'ammo', name: 'Энергозаряды × 12', category: 'supplies', desc: 'Общие боеприпасы для бластера, карабина и разрядника.', cost: { metal: 2, wire: 1 }, repeatable: true, icon: '▰' },
   { id: 'generator', name: 'Восстановить генератор', category: 'shelter', desc: 'Верни свет домой. Питает мастерскую и открывает новые рецепты.', cost: { metal: 10, wire: 4, parts: 3 }, icon: 'ϟ', fixed: true },
   { id: 'bridge', name: 'Починить мост в депо', category: 'shelter', desc: 'Восстанавливает прямой путь через канаву к техническим запасам депо.', cost: { wood: 14, metal: 8 }, icon: '═', fixed: true },
   { id: 'lamp', name: 'Уличный фонарь', category: 'shelter', desc: 'Тёплый свет во дворе. Требуется электричество.', cost: { metal: 4, wire: 2 }, requires: 'generator', placeable: true, icon: '☼' },
@@ -109,7 +111,7 @@ export const FISH = [
 export const HOME = { x: -16, z: 16 };
 export function freshState() {
   return {
-    gunHeat:{pistol:0,carbine:0},gunLocked:{pistol:false,carbine:false},dodgeReadyAt:0,packingPlan:{},restoredRoutes:[],boat:freshBoat(),camp:{ready:false,store:{}},mapMarks:[],keepResources:[],cargo:[],storedCargo:[],strippedNodes:[],construction:[],brokenNodes:[],loadouts:[null,null],openedGates:[],packedFurniture:[],fishingBait:'none',visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
+    gunHeat:Object.fromEntries(Object.keys(GUNS).map(id=>[id,0])),gunLocked:Object.fromEntries(Object.keys(GUNS).map(id=>[id,false])),dodgeReadyAt:0,packingPlan:{},restoredRoutes:[],boat:freshBoat(),camp:{ready:false,store:{}},mapMarks:[],keepResources:[],cargo:[],storedCargo:[],strippedNodes:[],construction:[],brokenNodes:[],loadouts:[null,null],openedGates:[],packedFurniture:[],fishingBait:'none',visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
     version: 1, x: HOME.x + 1, z: HOME.z + 2, health: 100, stamina: 100,
     stash: { wood: 3, metal: 2, cloth: 2 }, bag: {}, owned: [],
     equipment: { weapon: 'pipe', armor: null, bag: null, boots: null },
@@ -238,6 +240,7 @@ export function capacity(state) {
 export function total(state, id) { return (state.stash[id] || 0) + (state.bag[id] || 0); }
 export function craftStatus(state, recipe) {
   if (!recipe) return { ok: false, reason: 'Неизвестный рецепт' };
+  if(recipe.schematic&&!state.notes.includes(recipe.schematic))return {ok:false,reason:'Схема ещё не изучена'};
   if(recipe.id==='fishtrophy'&&!state.fishCollection.includes('Лунная форель'))return {ok:false,reason:'Сначала поймай лунную форель'};
   if(recipe.foundOnly&&state.placed.length>=70) return {ok:false,reason:'Достигнут лимит построек'};
   if(recipe.foundOnly) return (state.finds[recipe.id]||0)+(state.storedFinds[recipe.id]||0)>0?{ok:true}:{ok:false,reason:'Эту вещь можно найти в районе'};
@@ -601,4 +604,18 @@ export function salvageQueue(state){
  if(!nearFoundStation(state,'salvagejig'))return {ok:false,reason:'Подойди к разборочной оснастке дома'};
  const queue=[...state.cargo.map(cargo=>({cargo,stored:false})),...state.storedCargo.map(cargo=>({cargo,stored:true}))];
  return queue.length?{ok:true,queue}:{ok:false,reason:'Нет техники для разбора'};
+}
+
+export function atQuarryWorkshop(state){return state.restoredRoutes.includes(QUARRY_WORKSHOP.id)&&!state.boat.aboard&&Math.hypot(state.x-QUARRY_WORKSHOP.x,state.z-QUARRY_WORKSHOP.z)<2.6;}
+export function quarryCraftStatus(state,id){
+ if(!atQuarryWorkshop(state))return {ok:false,reason:'Подойди к восстановленной мастерской разреза'};
+ if(!QUARRY_FIELD_RECIPES.includes(id))return {ok:false,reason:'Этот рецепт доступен на другой станции'};
+ const recipe=RECIPES.find(r=>r.id===id);if(!fieldCost(state,recipe.cost))return {ok:false,reason:'Материалы должны быть в рюкзаке'};
+ return {ok:true,recipe};
+}
+export function craftAtQuarry(state,id){
+ const result=quarryCraftStatus(state,id);if(!result.ok)return result;
+ for(const [key,n]of Object.entries(result.recipe.cost))state.bag[key]-=n;
+ if(id==='ammo')state.ammo+=12;else state.medkits++;
+ return {ok:true};
 }

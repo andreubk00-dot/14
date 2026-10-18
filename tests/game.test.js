@@ -1147,11 +1147,30 @@ test('Energy heat preserves common ammunition, locks at full heat and cannot res
  const s=freshState();s.ammo=20;for(let i=0;i<5;i++)assert.equal(fireCharge(s,'pistol').ok,true);assert.equal(s.gunLocked.pistol,true);assert.equal(s.ammo,15);
  assert.equal(fireCharge(s,'pistol').ok,false);assert.equal(s.ammo,15);assert.equal(fireCharge(s,'carbine').ok,true);assert.equal(s.gunLocked.pistol,true);
  const loaded=validateSave(s);assert.equal(loaded.gunHeat.pistol,1);assert.equal(loaded.gunLocked.pistol,true);coolWeapons(loaded,4.5);assert.equal(loaded.gunLocked.pistol,false);assert.equal(fireCharge(loaded,'pistol').ok,true);
- const old=validateSave({...freshState(),gunHeat:undefined,gunLocked:undefined});assert.deepEqual(old.gunHeat,{pistol:0,carbine:0});
- const bad=validateSave({...freshState(),gunHeat:{pistol:100,carbine:-1},gunLocked:{pistol:false,carbine:true},dodgeReadyAt:Infinity});assert.deepEqual(bad.gunHeat,{pistol:1,carbine:0});assert.deepEqual(bad.gunLocked,{pistol:true,carbine:false});assert.equal(bad.dodgeReadyAt,0);
+ const old=validateSave({...freshState(),gunHeat:undefined,gunLocked:undefined});assert.deepEqual(old.gunHeat,{pistol:0,carbine:0,stunner:0});
+ const bad=validateSave({...freshState(),gunHeat:{pistol:100,carbine:-1},gunLocked:{pistol:false,carbine:true},dodgeReadyAt:Infinity});assert.deepEqual(bad.gunHeat,{pistol:1,carbine:0,stunner:0});assert.deepEqual(bad.gunLocked,{pistol:true,carbine:false,stunner:false});assert.equal(bad.dodgeReadyAt,0);
 });
 test('Dodge costs once, observes cooldown and advances with short collision-safe steps at different frame rates',()=>{
  const run=dt=>{const s=freshState();s.x=0;s.z=0;const d=beginDodge(s,1,0);assert.ok(d);assert.equal(s.stamina,76);assert.equal(beginDodge(s,1,0),null);let maxStep=0;while(d.remaining>1e-9)advanceDodge(d,dt,(dx,dz)=>{maxStep=Math.max(maxStep,Math.hypot(dx,dz));if(s.x+dx<1)s.x+=dx;s.z+=dz;});assert.ok(maxStep<=.10001);return s.x;};
  assert.ok(Math.abs(run(1/30)-run(1/144))<.1);
  const s=freshState();s.boat.aboard=true;assert.equal(beginDodge(s,1,0),null);s.boat.aboard=false;s.stamina=23;assert.equal(beginDodge(s,1,0),null);assert.equal(s.stamina,23);s.stamina=100;assert.equal(beginDodge(s,0,0),null);assert.equal(s.stamina,100);
+});
+
+import {QUARRY_WORKSHOP,QUARRY_FIELD_RECIPES,QUARRY_MEMORIES} from '../src/quarry.js';
+import {atQuarryWorkshop,quarryCraftStatus,craftAtQuarry} from '../src/game.js';
+test('Quarry schematic unlocks a tactical weapon without granting it or modifying earlier discoveries',()=>{
+ const s=freshState();s.stash={metal:40,parts:20,wire:20,battery:2};assert.equal(craft(s,'stunner').ok,false);const before=structuredClone(s.stash);
+ s.notes.push('quarry-discharge');assert.equal(craft(s,'stunner').ok,true);assert.equal(s.equipment.weapon,'stunner');assert.equal(s.ammo,0);assert.equal(s.stash.battery,before.battery-1);assert.equal(craft(s,'stunner').ok,false);
+ const load=validateSave(s);assert.deepEqual(load.notes,s.notes);assert.equal(load.equipment.weapon,'stunner');assert.equal(load.gunHeat.stunner,0);assert.equal(hotbarItem(load,'stunner').count,0);
+});
+test('Quarry restoration consumes the local battery once and field recipes cannot spend the home stash',()=>{
+ const s=freshState(),p=RESTORATIONS.find(p=>p.id==='quarry-workshop');s.x=p.x;s.z=p.z;s.owned=['wrench'];s.stash={metal:100,wire:100,cloth:100,herbs:100,medicine:100,parts:100,battery:100};
+ assert.equal(atQuarryWorkshop(s),false);assert.equal(restoreRoute(s,p.id).ok,false);s.bag={...p.cost};assert.equal(restoreRoute(s,p.id).ok,true);assert.equal(restoreRoute(s,p.id).ok,false);assert.equal(atQuarryWorkshop(s),true);
+ const before=structuredClone(s.stash);assert.equal(craftAtQuarry(s,'ammo').ok,false);s.bag={metal:4,wire:2,herbs:3,cloth:3,medicine:1};assert.equal(craftAtQuarry(s,'ammo').ok,true);assert.equal(s.ammo,12);assert.equal(craftAtQuarry(s,'medkit').ok,true);assert.equal(craftAtQuarry(s,'dressing').ok,true);assert.equal(s.medkits,3);assert.deepEqual(s.stash,before);
+ assert.equal(craftAtQuarry(s,'stunner').ok,false);s.x=0;const snapshot=structuredClone(s);assert.equal(craftAtQuarry(s,'ammo').ok,false);assert.deepEqual(s,snapshot);assert.ok(validateSave(s).restoredRoutes.includes(p.id));
+});
+test('Quarry district has distinct diagram, local restoration and reversible energy-only stun with ordinary charges',()=>{
+ const s=freshState();s.ammo=4;assert.ok(QUARRY_MEMORIES.every(n=>n.wall));assert.deepEqual(QUARRY_FIELD_RECIPES,['ammo','medkit','dressing']);
+ const e={kind:'warden',x:0,z:0,originX:0,originZ:0,windup:.8,attack:{kind:'slam'}};assert.equal(fireCharge(s,'stunner').ok,true);reactToHit(e,{x:0,z:2},{power:GUNS.stunner.power});assert.equal(e.attack,null);assert.equal(e.stagger,.65);assert.equal(fireCharge(s,'stunner').ok,true);assert.equal(s.gunLocked.stunner,true);assert.equal(s.ammo,2);assert.equal(fireCharge(s,'stunner').ok,false);coolWeapons(s,4.5);assert.equal(s.gunLocked.stunner,false);assert.equal(validateSave(s).ammo,2);
+ const old=validateSave({...freshState(),gunHeat:{pistol:.5,carbine:.7},gunLocked:{pistol:false,carbine:false}});assert.equal(old.gunHeat.pistol,.5);assert.equal(old.gunHeat.carbine,.7);assert.equal(old.gunHeat.stunner,0);
 });

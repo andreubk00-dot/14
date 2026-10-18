@@ -49,6 +49,7 @@ export const OUTLAND_WAYMARKS=[
 ];
 const path=(x,z,w,d)=>({x,z,w,d,garden:true});
 export const OUTLAND_PATHS=[
+ path(-179,111,10,1.8),path(-174,113.8,1.6,5.6),
  // Outer footpaths offer a longer approach around the guarded working yards.
  path(-184,24,3,56),path(-169,-4,30,3),path(-155,6,3,20),path(-169,52,30,3),
  path(-184,129,3,54),path(-169,104,30,3),path(-166,156,36,3),path(-148,153.5,3,5),
@@ -248,7 +249,7 @@ const OUTLAND_DETAIL_ZONES=[{x:-177,z:25,w:9,d:11},{x:-177,z:113,w:10,d:18},{x:-
 export function buildOutlandScenery(w){
  const outline=new THREE.Shape();outline.moveTo(-11,-4);for(const [x,z]of [[-8,-10],[1,-12],[10,-7],[12,3],[6,11],[-5,10],[-12,4]])outline.lineTo(x,z);outline.closePath();const clearing=w.cylinder(-160,.005,120,1,.02,'#717a6d',w.scene,8);clearing.geometry.dispose();clearing.geometry=new THREE.ShapeGeometry(outline);clearing.rotation.x=-Math.PI/2;clearing.castShadow=false;
  for(const b of OUTLAND_BUILDINGS){
-  w.building(b.x,b.z,b.w,b.d,b.h,b.shade,b.sign,{roofStyle:b.roofStyle,pitch:b.pitch,roofColor:b.role==='workshop'?'#697d74':'#786e59'});
+  w.building(b.x,b.z,b.w,b.d,b.h,b.shade,b.sign,{backDoor:b.id==='quarryshop',roofStyle:b.roofStyle,pitch:b.pitch,roofColor:b.role==='workshop'?'#697d74':'#786e59'});
   const room=w.buildings.at(-1),back=b.z-b.d/2+1.1,left=b.x-b.w/2+1.1,right=b.x+b.w/2-1.3,start=room.wallMeshes.length;
   room.ambience=b.role==='workshop'?'metal':'room';
   for(const y of [.35,1.1,1.85])w.box(left,y,back,1.4,.12,.65,'#7e8068');for(const x of [left-.62,left+.62])w.box(x,1.1,back,.08,2.2,.6,'#596d64');w.collider(left,back,1.4,.65);
@@ -272,6 +273,14 @@ export function buildOutlandScenery(w){
    for(const dx of [-.7,0,.7])w.cutawayDetail(w.box(b.x+dx,1.7,b.z-b.d/2+.21,.045,.8,.025,'#6b8067'),room);
   }
   if(b.id==='quarryshop')for(const dx of [-.45,0,.45])w.box(right+dx,1.03,back,.25,.18,.3,'#8e9a91');
+  if(b.id==='quarryshop'){
+   // Reuse the existing bench and collider; leave both central doors unobstructed.
+   w.box(right,1.24,back,.7,.45,.35,'#718b82');
+   const lamp=w.box(right+.2,1.3,back+.2,.12,.12,.035,'#bd8b6f');lamp.material=new THREE.MeshStandardMaterial({color:'#bd8b6f',emissive:'#ad6d4f',emissiveIntensity:.7});lamp.userData.cutaway=true;lamp.castShadow=false;w.quarryIndicator=lamp;
+   const board=w.box(-176.1,1.7,117.23,1.7,1.05,.055,'#637a70');w.cutawayDetail(board,room);
+   for(const x of [-176.65,-176.25,-175.85]){w.cutawayDetail(w.box(x,1.7,117.28,.1,.65,.025,'#b9b794'),room);w.cutawayDetail(w.box(x+.12,1.85,117.3,.25,.07,.025,'#98b9b2'),room);}
+  }
+
   if(b.id==='sharedkitchen')for(const dx of [-.3,.3])w.cylinder(right+dx,1.04,back,.09,.18,'#d4c5a1',w.scene,8);
   w.mergeBuildingDetails(room,start);dressRoom(w,room,b.role,OUTLAND_BUILDINGS.indexOf(b));
   if(['cabin','ranger','fish'].includes(b.role))w.canopy(b.x,b.z+b.d/2+.65,b.w*.65,1.6,2.6,'#7e8068');
@@ -282,7 +291,7 @@ export function buildOutlandScenery(w){
  for(const x of [-178.5,-177.5,-176.5,-175.5]){w.box(x,.8,27,.22,1.6,.3,'#a49572');w.collider(x,27,.25,.35);}
  for(const z of [22,23])for(const x of [-180.5,-179.9,-179.3]){const log=w.cylinder(x,.3,z,.28,3,'#958566',w.scene,7);log.rotation.x=Math.PI/2;}w.collider(-179.9,22.5,1.8,4);
  // Quarry: open loading gantry, short conveyor and a spoil bank outside the road.
- for(const x of [-180,-174]){w.box(x,2,108,.25,4,.25,'#6d7a72');w.collider(x,108,.3,.3);}w.box(-177,4,108,6.5,.3,.35,'#6d7a72');
+ for(const x of [-180,-174]){w.box(x,2,108,.25,4,.25,'#6d7a72');w.collider(x,108,.3,.3);}w.box(-177,4,108,6.5,.3,.35,'#6d7a72');w.box(-180,1.45,108.18,.7,.55,.04,'#778474');
  w.box(-177,3.15,108,.06,1.6,.06,'#434e48');w.box(-177,2.3,108,.7,.18,.7,'#747b68');
  w.box(-179,.7,116,1.7,.25,5,'#667269');w.collider(-179,116,1.7,5);for(const z of [114,116,118])w.box(-179,.86,z,1.65,.1,.12,'#9b997d');
  for(const [x,z,size]of [[-176,136,1.4],[-179,138,1],[-174,138,1.1]]){const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(size,0),new THREE.MeshStandardMaterial({color:'#7c8272',roughness:.95}));rock.position.set(x,size*.4,z);rock.scale.set(1,.65,.85);rock.castShadow=true;rock.receiveShadow=true;w.scene.add(rock);w.collider(x,z,size*1.8,size*1.5);}

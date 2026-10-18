@@ -50,3 +50,8 @@ All assets are bundled locally; the game does not fetch third-party assets at ru
 - Changes: GLTF, buffer and original PNG packaged together into GLB; geometry and materials preserved. Runtime scales the ready models for the character's hand.
 - SHA-256: knife `5218f00586c3d214f77dbc2ecb163b12f9f4ead99b2216f5d1d0ddc2fc546831`; heavyaxe `60bf5f7bae468c845c798b25ba8b8601a34bf68ef2d3b856b644a123d892aa3a`.
 - Existing `KAYKIT-LICENSE.txt` applies. Free personal and commercial use under CC0.
+
+## Kenney — arc discharger variant (v0.29.0)
+- Reuses the pinned CC0 `models/blaster-repeater.glb` from Starter Kit FPS above.
+- The source model is unchanged. Runtime uses a smaller scale and a cloned teal-tinted material for the optional arc discharger; shared original materials remain intact.
+- No additional model download or license is required.

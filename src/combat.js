@@ -28,7 +28,7 @@ export const MELEE={
  spear:{hitAt:.24,duration:.52,arc:.38,push:.35,stamina:12,power:2,mobility:.75},
  heavyaxe:{hitAt:.48,duration:.9,arc:.85,push:.6,stamina:24,power:3,mobility:.45},
 };
-export const GUNS={pistol:{heat:.22,cooling:.16,spread:.025,movingSpread:.09},carbine:{heat:.3,cooling:.16,spread:.018,movingSpread:.065}};
+export const GUNS={stunner:{heat:.6,cooling:.16,spread:.012,movingSpread:.05,power:3},pistol:{heat:.22,cooling:.16,spread:.025,movingSpread:.09},carbine:{heat:.3,cooling:.16,spread:.018,movingSpread:.065}};
 export function coolWeapons(state,dt){for(const [id,g]of Object.entries(GUNS)){state.gunHeat[id]=Math.max(0,state.gunHeat[id]-Math.max(0,dt)*g.cooling);if(state.gunHeat[id]<=.3)state.gunLocked[id]=false;}}
 export function fireCharge(state,id){
  const g=GUNS[id];if(!g)return {ok:false,reason:'Это не стрелковое оружие'};

@@ -1,3 +1,5 @@
+import {QUARRY_WORKSHOP} from './quarry.js';
+import {craftAtQuarry} from './game.js';
 import {nearFoundStation,rememberPackingPlan,refillPackingPlan,salvageQueue} from './game.js';
 import {idlePatrolTarget} from './patrols.js';
 import {RESTORATIONS,restorationStatus,restoreRoute,drainBlocked} from './restoration.js';
@@ -196,7 +198,7 @@ class QuietDistrict {
     if (action === 'panel-close') { this.keys.clear(); return; }
     if(this.state.boat.aboard&&['build','craft','orders','station-route','structure-select'].includes(action)){this.ui.toast('Сначала причаль к берегу.');return;}
     if (this.ui.pendingConfirm) return;
-    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders', 'helper', 'storage', 'garden','dryer','station','loadouts','architecture','cook','salvage','salvage-workbench','packing'].includes(action)) {
+    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders', 'helper', 'storage', 'garden','dryer','station','loadouts','architecture','cook','salvage','salvage-workbench','packing','quarry-workshop'].includes(action)) {
       if (action === 'storage' && !this.atHome()) { this.ui.toast('Подойди к хранилищу в убежище.'); return; }
       this.cancelBuild(); this.cancelFishing();
       if (this.ui.panel === action) this.ui.close(); else this.ui.open(action);
@@ -218,6 +220,7 @@ class QuietDistrict {
       const index=Number(data.index),stored=data.stored==='true';if(Math.hypot(this.state.x+21,this.state.z-13)>=4.5&&!nearFoundStation(this.state,'salvagejig')){this.ui.toast('Подойди к станции рецептов или оснастке.');return;}
       const cargo=(stored?this.state.storedCargo:this.state.cargo)[index];if(!cargo)return;this.ui.close();this.world.playCharacterAction('pickup');this.job={type:'process-salvage',cargo,index,stored,elapsed:0,duration:salvageDuration(this.state),label:'Разбираем технику на верстаке…'};return;
     }
+    if(action==='quarry-craft'){const result=craftAtQuarry(this.state,data.id);if(result.ok){this.audio.craft();this.ui.toast('Готово. Материалы взяты из рюкзака.','success');}else this.ui.toast(result.reason);this.changed();return;}
     if(action==='start-restoration'){const id=data.id,result=restorationStatus(this.state,id);if(!result.ok){this.ui.toast(result.reason);return;}const p=RESTORATIONS.find(p=>p.id===id);this.ui.close();this.job={type:'restore-route',projectId:id,elapsed:0,duration:p.duration,x:this.state.x,z:this.state.z,label:p.name+'…'};this.world.playCharacterAction('pickup');return;}
     if(action==='field-repair'){const result=repairField(this.state,data.id);if(result.ok){this.audio.craft();this.ui.toast(data.id==='boat'?'Лодка готова к выходу на воду.':'Стоянка восстановлена. Можно отдохнуть и оставить запасы.','success');this.world.renderDirty=true;this.changed();}else this.ui.toast(result.reason);return;}
     if(action==='camp-transfer'){const result=transferCamp(this.state,data.id,data.direction,Number(data.count));if(!result.ok)this.ui.toast(result.reason);this.changed();return;}
@@ -468,6 +471,7 @@ class QuietDistrict {
     const s = this.state, candidates = [];
     if(s.boat.aboard){const dock=dockNearBoat(s.boat);return dock?{type:'boat-land',x:dock.boat.x,z:dock.boat.z,label:'Причалить · '+dock.name,hint:'Выйти на настил',entity:dock,distance:0}:{type:'boat-water',x:s.x,z:s.z,label:'На воде',hint:'WASD / стрелки · подойди к причалу для высадки',distance:0};}
     const add = (type, x, z, label, hint, entity, range = 2.4) => { const distance = Math.hypot(s.x - x, s.z - z); if (distance < range) candidates.push({ type, x, z, label, hint, entity, distance }); };
+    if(s.restoredRoutes.includes(QUARRY_WORKSHOP.id)&&this.world.canSee(s.x,s.z,QUARRY_WORKSHOP.x,QUARRY_WORKSHOP.z,null,true))add('quarry-workshop',QUARRY_WORKSHOP.x,QUARRY_WORKSHOP.z,'Мастерская разреза','Заряды и аптечки · материалы из рюкзака',QUARRY_WORKSHOP,2.6);
     for(const p of RESTORATIONS)if(!s.restoredRoutes.includes(p.id)&&Math.hypot(s.x-p.x,s.z-p.z)<2.6&&this.world.canSee(s.x,s.z,p.x,p.z,null,true))add('restoration',p.x,p.z,p.name,s.owned.includes('wrench')?'Ремонт · материалы из рюкзака':'Нужен гаечный ключ',p,2.6);
     for(const note of this.world.memories) if((s.x-note.x)**2+(s.z-note.z)**2<1.8**2&&this.world.canSee(s.x,s.z,note.x,note.z,null,true))add('note',note.x,note.z,'Прочитать запись',note.name,note,1.8);
     for (const node of this.world.nodes) if (node.group.visible&&(s.x-node.x)**2+(s.z-node.z)**2<2.4**2&&(!node.accessGate||s.openedGates.includes(node.accessGate))&&this.world.canSee(s.x,s.z,node.x,node.z,node.collider,true)) add('node', node.x, node.z, `${s.brokenNodes.includes(node.id)?'Забрать добычу':['appliance','motor'].includes(node.machine)?'Осмотреть технику':({ tree: 'Рубить дерево', wood: 'Собрать доски', stone:'Добыть камень', ore: 'Добыть металл', herbs: 'Собрать растения', electronics: 'Разобрать электронику', crate: 'Открыть ящик', cloth: 'Собрать ткань', scrap: 'Разобрать лом', drop: 'Забрать добычу' })[node.type] || (node.find?'Забрать находку':'Собрать')} · ${node.name}`, node.requires && !s.owned.includes(node.requires) ? `Нужно: ${RECIPES.find(r => r.id === node.requires)?.name}` : node.find?`Вес находки: ${FINDS[node.find].weight}`:s.brokenNodes.includes(node.id)?'Оставшиеся ресурсы в рюкзак':dismantleInfo(s.owned,node).kind?`${dismantleInfo(s.owned,node).duration.toFixed(1)} сек. · ${dismantleInfo(s.owned,node).fast?'инструмент ускоряет разбор':'ручной разбор'}`:'Добыча в рюкзак', node);
@@ -518,7 +522,7 @@ class QuietDistrict {
     if(target.type==='cook'){this.ui.open('cook');return;}
     if(target.type==='loadouts'){this.ui.open('loadouts');return;}
     if(target.type==='gate') {if(!this.state.owned.includes(target.entity.tool)){this.ui.toast('Нужен '+RECIPES.find(r=>r.id===target.entity.tool).name);return;}this.job={type:'gate',gate:target.entity,elapsed:0,duration:target.entity.duration,label:target.entity.kind?'Разбираем завал…':'Открываем проход…'};return;}
-    if(['packing','salvage-workbench'].includes(target.type)){this.ui.open(target.type);return;}
+    if(['packing','salvage-workbench','quarry-workshop'].includes(target.type)){this.ui.open(target.type);return;}
     if(target.type==='note') {if(!this.state.notes.includes(target.entity.id))this.state.notes.push(target.entity.id);this.ui.noteId=target.entity.id;this.ui.open('note');this.save(false);return;}
     if(target.type==='garden') {this.ui.gardenIndex=this.state.placed.indexOf(target.entity);this.ui.open('garden');return;}
     if(target.type==='furniture-toggle') {this.action('toggle-furniture',{index:this.state.placed.indexOf(target.entity)});return;}
@@ -579,7 +583,7 @@ class QuietDistrict {
   finishJob() {
     const job = this.job; this.job = null; this.ui.progress(null);
     if(job.type==='vent'){this.state.gunHeat[job.weaponId]=0;this.state.gunLocked[job.weaponId]=false;this.audio.playSample('metal_click',.25);this.changed();return;}
-    if(job.type==='restore-route'){const result=restoreRoute(this.state,job.projectId);if(result.ok){this.world.syncNodes();this.world.flood.restorations.sync();this.world.renderDirty=true;this.audio.craft();this.ui.toast(job.projectId==='drain-works'?'Ремонтный зал осушен. Сквозной выход открыт.':'Мостки восстановлены. Можно идти пешком.','success');this.changed();}else this.ui.toast(result.reason);return;}
+    if(job.type==='restore-route'){const result=restoreRoute(this.state,job.projectId);if(result.ok){this.world.syncNodes();this.world.flood.restorations.sync();this.world.renderDirty=true;this.audio.craft();this.ui.toast(job.projectId==='quarry-workshop'?'Мастерская разреза готова. Заряды и аптечки можно делать здесь.':job.projectId==='drain-works'?'Ремонтный зал осушен. Сквозной выход открыт.':'Мостки восстановлены. Можно идти пешком.','success');this.changed();}else this.ui.toast(result.reason);return;}
     if (job.type === 'rest') { this.state.health = Math.max(this.state.health, job.max); this.state.stamina = 100; this.ui.toast('Силы вернулись. Дом ждёт новых находок.', 'success'); this.changed(); return; }
     if(job.type==='gate'){const result=openGate(this.state,job.gate.id);if(result.ok){this.world.syncGates();if(result.received)this.showLoot(result.received,job.gate.x,job.gate.z);this.audio.craft();this.ui.toast('Проход открыт.','success');this.changed();}else this.ui.toast(result.reason);return;}
     if(job.type==='process-salvage'){const list=job.stored?this.state.storedCargo:this.state.cargo;if(list[job.index]!==job.cargo)return;const result=processSalvage(this.state,job.index,job.stored);if(result.ok){this.audio.craft();this.ui.selectedItem=null;this.changed();if(job.queue?.length&&nearFoundStation(this.state,'salvagejig')){this.beginSalvageQueue(job.queue);return;}this.ui.toast('Техника разобрана. Материалы на складе.','success');this.ui.open('salvage-workbench');}else this.ui.toast(result.reason);return;}
@@ -641,7 +645,7 @@ class QuietDistrict {
     this.attackCooldown=w.cooldown;this.world.facing=facing;this.world.playerVisual.rotation.y=facing;
     if(ranged){
       const shot=traceShot(s,facing,w.range,this.world.enemies,(x,z)=>this.world.canSee(s.x,s.z,x,z),shotSpread(w.id,this.world.moveSpeed>1,this.aiming),Math.random());
-      this.world.shot(s.x,s.z,shot.x,shot.z);this.world.weaponEffect(w.id,shot.angle);this.audio.shoot(w.id);
+      this.world.shot(s.x,s.z,shot.x,shot.z,w.id==='stunner'?'#a5e5df':'#ffe0a1');this.world.weaponEffect(w.id,shot.angle);this.audio.shoot(w.id);
       if(shot.target){this.damageEnemy(shot.target,w);this.audio.weaponHit(w.id,shot.target.x,shot.target.z);}else this.world.weaponMiss();this.changed();
     }else{this.swing={elapsed:0,resolved:false,weapon:{...w},profile:swingProfile(w.id),facing};this.world.weaponEffect(w.id,facing);this.audio.swing(w.id);}
     this.world.playCharacterAction(ranged?'1h_ranged_shoot':['spear','knife'].includes(w.id)?'1h_melee_attack_stab':'1h_melee_attack_chop',ranged?null:swingProfile(w.id).duration);
@@ -657,8 +661,8 @@ class QuietDistrict {
     if(swing.elapsed>=swing.profile.duration)this.swing=null;
   }
   damageEnemy(target,w) {
-    const s=this.state;reactToHit(target,s,{power:GUNS[w.id]?1:swingProfile(w.id).power});target.health=Math.max(0,target.health-w.damage);this.world.floatingText(`−${w.damage}`,target.x,target.z,'#edbf87');this.world.enemyImpact(target,w.id);
-    if(!['pistol','carbine'].includes(w.id)){
+    const s=this.state;reactToHit(target,s,{power:GUNS[w.id]?(GUNS[w.id].power||1):swingProfile(w.id).power});target.health=Math.max(0,target.health-w.damage);this.world.floatingText(`−${w.damage}`,target.x,target.z,'#edbf87');this.world.enemyImpact(target,w.id);
+    if(!GUNS[w.id]){
       const d=Math.hypot(target.x-s.x,target.z-s.z)||1,push=swingProfile(w.id).push,x=target.x+(target.x-s.x)/d*push,z=target.z+(target.z-s.z)/d*push;
       if(!this.world.blocked(x,z,.4)) {target.x=x;target.z=z;}
     }

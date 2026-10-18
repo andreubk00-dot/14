@@ -2,7 +2,8 @@
 export const RESTORATIONS=[
  {id:'camp-crossing',name:'Мостки к стоянке',x:325,z:35,duration:5,cost:{wood:10,metal:3,parts:2},joins:['reedcamp','floodhomes'],decks:[{x:301,z:42,w:2.8,d:14},{x:312,z:35,w:24,d:2.8}],ends:[{x:301,z:49},{x:324,z:35}],desc:'Прямой пеший путь между жилой улицей и стоянкой. Лодка останется для дальних вылазок.'},
  {id:'garden-crossing',name:'Мостки к садам',x:358,z:76,duration:5,cost:{wood:10,metal:3,wire:2},joins:['floodhomes','floodgardens'],decks:[{x:358,z:58,w:2.8,d:34}],ends:[{x:358,z:41},{x:358,z:75}],desc:'Восстанови переход от садов к жилой улице: урожай можно будет унести пешком.'},
- {id:'drain-works',name:'Осушить ремонтный зал',x:278,z:-57,duration:8,cost:{parts:4,wire:4,pumpmodule:1},desc:'Подключи запасной насос. Вода уйдёт из ремонтного зала, откроются техника и сквозной выход за мастерскую.'}
+ {id:'drain-works',name:'Осушить ремонтный зал',x:278,z:-57,duration:8,cost:{parts:4,wire:4,pumpmodule:1},desc:'Подключи запасной насос. Вода уйдёт из ремонтного зала, откроются техника и сквозной выход за мастерскую.'},
+ {id:'quarry-workshop',name:'Мастерская Каменного разреза',x:-171.3,z:118.1,duration:6,cost:{metal:6,wire:2,parts:2,battery:1},desc:'Восстанови питание рабочего стола. Здесь можно будет делать заряды и аптечки из принесённых материалов, продолжая дальнюю вылазку.'},
 ];
 export const DRAIN_AREA={x:280,z:-73,w:14,d:8};
 export const DRAIN_PASSAGE={x:280,z:-68,w:4,d:2};
