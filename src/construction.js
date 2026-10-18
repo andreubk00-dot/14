@@ -57,7 +57,7 @@ export function buildAllowed(state,part,obstacles=[]){
   if(link(part))return {ok:false,reason:'Оставь соединение с домом открытым'};
   const colliders=structureColliders(part);if(colliders.some(c=>circleHitsRect(state.x,state.z,.32,c)))return {ok:false,reason:'Отойди от места установки'};
   if(colliders.some(c=>obstacles.some(o=>!o.disabled&&!o.construction&&overlaps(c,o,.03))))return {ok:false,reason:'Конструкция пересекает существующий объект'};
-  if(colliders.some(c=>state.placed.some(p=>!['rug','wallclock','wallshelf','fishtrophy'].includes(p.id)&&overlaps(c,footprint(p),.1))))return {ok:false,reason:'Сначала переставь мебель'};
+  if(colliders.some(c=>state.placed.some(p=>!['rug','wallclock','wallshelf','fishtrophy','estatepanel'].includes(p.id)&&overlaps(c,footprint(p),.1))))return {ok:false,reason:'Сначала переставь мебель'};
  }
  const next=[...parts,part];if(!connectedFloor(next))return {ok:false,reason:'Эта стена перекроет единственный проход. Выбери дверной проём'};
  if(closedRooms(next).some(room=>state.placed.some(p=>p.id==='raincatcher'&&room.tiles.some(t=>Math.abs(t.x-p.x)<1&&Math.abs(t.z-p.z)<1))))return {ok:false,reason:'Дождевой накопитель должен оставаться под открытым небом'};
@@ -65,7 +65,7 @@ export function buildAllowed(state,part,obstacles=[]){
 }
 export function dismantleAllowed(state,part){
  const parts=state.construction||[];if(!part||!parts.includes(part))return {ok:false,reason:'Выбери установленную конструкцию'};
- if(part.id!=='floor'&&state.placed.some(p=>['wallclock','wallshelf','fishtrophy'].includes(p.id)&&Math.hypot(p.x-part.x,p.z-part.z)<1.2))return {ok:false,reason:'Сначала сними настенные предметы'};
+ if(part.id!=='floor'&&state.placed.some(p=>['wallclock','wallshelf','fishtrophy','estatepanel'].includes(p.id)&&Math.hypot(p.x-part.x,p.z-part.z)<1.2))return {ok:false,reason:'Сначала сними настенные предметы'};
  if(part.id==='floor'){
   if(circleHitsRect(state.x,state.z,.3,structureRect(part)))return {ok:false,reason:'Сойди с пола перед разбором'};
   if(parts.some(p=>p.id!=='floor'&&tileEdges(part).some(e=>matching(e,p))))return {ok:false,reason:'Сначала разбери стены этого пола'};
@@ -83,7 +83,7 @@ export function replacementPlan(state,part,obstacles=[]){
  const old=(state.construction||[]).find(p=>part&&p.id!=='floor'&&partKey(p)===partKey(part));
  if(!old)return {...buildAllowed(state,part,obstacles),cost:part?STRUCTURES[part.id]?.cost:{},refund:{}};
  if(old.id===part.id)return {ok:false,reason:'Здесь уже есть такая конструкция'};
- if(state.placed.some(p=>['wallclock','wallshelf','fishtrophy'].includes(p.id)&&Math.hypot(p.x-old.x,p.z-old.z)<1.2))return {ok:false,reason:'Сначала сними настенные предметы'};
+ if(state.placed.some(p=>['wallclock','wallshelf','fishtrophy','estatepanel'].includes(p.id)&&Math.hypot(p.x-old.x,p.z-old.z)<1.2))return {ok:false,reason:'Сначала сними настенные предметы'};
  const next={...state,construction:state.construction.filter(p=>p!==old)},allowed=buildAllowed(next,part,obstacles);
  if(!allowed.ok)return allowed;
  const cost={},refund={};for(const id of new Set([...Object.keys(STRUCTURES[old.id].cost),...Object.keys(STRUCTURES[part.id].cost)])){

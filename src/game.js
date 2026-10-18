@@ -106,7 +106,7 @@ export const FISH = [
 export const HOME = { x: -16, z: 16 };
 export function freshState() {
   return {
-    restoredRoutes:[],boat:freshBoat(),camp:{ready:false,store:{}},mapMarks:[],keepResources:[],cargo:[],storedCargo:[],strippedNodes:[],construction:[],brokenNodes:[],loadouts:[null,null],openedGates:[],packedFurniture:[],fishingBait:'none',visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
+    packingPlan:{},restoredRoutes:[],boat:freshBoat(),camp:{ready:false,store:{}},mapMarks:[],keepResources:[],cargo:[],storedCargo:[],strippedNodes:[],construction:[],brokenNodes:[],loadouts:[null,null],openedGates:[],packedFurniture:[],fishingBait:'none',visited: ['home'], foundNodes: [], lastHaul: {}, finds:{},storedFinds:{},findClaims:[],notes:[],lastFindHaul:{},
     version: 1, x: HOME.x + 1, z: HOME.z + 2, health: 100, stamina: 100,
     stash: { wood: 3, metal: 2, cloth: 2 }, bag: {}, owned: [],
     equipment: { weapon: 'pipe', armor: null, bag: null, boots: null },
@@ -136,6 +136,7 @@ export function validateSave(input) {
   state.camp.ready=input.camp?.ready===true;
   let storedWeight=0;for(const id of Object.keys(RESOURCES)){const n=input.camp?.store?.[id];if(Number.isSafeInteger(n)&&n>0){const count=Math.min(n,Math.floor((CAMP.capacity-storedWeight)/RESOURCES[id].weight));if(count>0){state.camp.store[id]=count;storedWeight+=count*RESOURCES[id].weight;}}}
   state.mapMarks=cleanMapMarks(input.mapMarks);
+  state.packingPlan=Object.fromEntries(Object.keys(RESOURCES).filter(id=>Number.isInteger(input.packingPlan?.[id])&&input.packingPlan[id]>0).map(id=>[id,Math.min(1000,input.packingPlan[id])]));
   state.keepResources=[...new Set((Array.isArray(input.keepResources)?input.keepResources:[]).filter(id=>Object.hasOwn(RESOURCES,id)))];
   state.cargo=cleanCargo(input.cargo,RESOURCES);state.storedCargo=cleanCargo(input.storedCargo,RESOURCES);state.strippedNodes=[...new Set((Array.isArray(input.strippedNodes)?input.strippedNodes:Object.keys(input.nodeLoot||{})).filter(id=>/^node-\d{1,3}$/.test(id)))];
   state.construction=cleanConstruction(input.construction);state.brokenNodes=[...new Set((Array.isArray(input.brokenNodes)?input.brokenNodes:[]).filter(id=>typeof id==='string'&&/^node-\d{1,3}$/.test(id)))].slice(0,500);
@@ -531,7 +532,7 @@ export function takeSalvage(state,node){
  state.cargo.push({machine:node.machine,node:node.id,loot:{...node.loot}});state.depleted[node.id]=state.elapsed;delete state.nodeLoot[node.id];return {ok:true};
 }
 export function processSalvage(state,index,stored=false){
- if(Math.hypot(state.x+21,state.z-13)>=4.5)return {ok:false,reason:'Подойди к станции рецептов'};
+ if(Math.hypot(state.x+21,state.z-13)>=4.5&&!nearFoundStation(state,'salvagejig'))return {ok:false,reason:'Подойди к станции рецептов или разборочной оснастке'};
  const list=stored?state.storedCargo:state.cargo,cargo=list[index];if(!cargo)return {ok:false,reason:'Груз уже разобран'};
  const received=cargoLoot(cargo,state);for(const [id,n]of Object.entries(received))state.stash[id]=(state.stash[id]||0)+n;list.splice(index,1);state.gathered+=Object.values(received).reduce((a,b)=>a+b,0);return {ok:true,received};
 }
@@ -570,4 +571,29 @@ export function cookCamp(state,id){
  if(!atCamp(state)||!COOKING_RECIPES.includes(id))return {ok:false,reason:'Подойди к печи стоянки'};
  const recipe=RECIPES.find(r=>r.id===id);if(!fieldCost(state,recipe.cost))return {ok:false,reason:'Ингредиенты должны быть в рюкзаке'};
  for(const [key,n]of Object.entries(recipe.cost))state.bag[key]-=n;state[SUPPLY_FIELDS[id]]++;return {ok:true};
+}
+
+// Found workstations enable conveniences, never free supplies or faster production.
+export function nearFoundStation(state,id){return !state.boat.aboard&&state.x>=-27&&state.x<=-6&&state.z>=5&&state.z<=27&&state.placed.some(p=>p.id===id&&Math.hypot(p.x-state.x,p.z-state.z)<3);}
+export function rememberPackingPlan(state){
+ if(!nearFoundStation(state,'packingdesk'))return {ok:false,reason:'Подойди к столу подготовки дома'};
+ const plan=Object.fromEntries(Object.keys(RESOURCES).filter(id=>(state.bag[id]||0)>0).map(id=>[id,Math.min(1000,state.bag[id])]));
+ state.packingPlan=plan;return {ok:true};
+}
+export function refillPackingPlan(state){
+ if(!nearFoundStation(state,'packingdesk'))return {ok:false,reason:'Подойди к столу подготовки дома'};
+ if(!Object.keys(state.packingPlan).length)return {ok:false,reason:'Сначала запомни ресурсы в рюкзаке'};
+ const received={},missing={};let space=capacity(state)-bagWeight(state);
+ for(const [id,target]of Object.entries(state.packingPlan)){
+  if(!RESOURCES[id])continue;
+  const need=Math.max(0,target-(state.bag[id]||0)),n=Math.max(0,Math.min(need,state.stash[id]||0,Math.floor((space+.001)/RESOURCES[id].weight)));
+  if(n){state.stash[id]-=n;state.bag[id]=(state.bag[id]||0)+n;received[id]=n;space-=n*RESOURCES[id].weight;}
+  if(n<need)missing[id]=need-n;
+ }
+ return {ok:true,received,missing};
+}
+export function salvageQueue(state){
+ if(!nearFoundStation(state,'salvagejig'))return {ok:false,reason:'Подойди к разборочной оснастке дома'};
+ const queue=[...state.cargo.map(cargo=>({cargo,stored:false})),...state.storedCargo.map(cargo=>({cargo,stored:true}))];
+ return queue.length?{ok:true,queue}:{ok:false,reason:'Нет техники для разбора'};
 }

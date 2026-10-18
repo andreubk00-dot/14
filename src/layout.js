@@ -1,6 +1,7 @@
 // Geometry shared by movement, furnishing previews and district checks.
 import {gridPath} from './navigation.js';
 export const FURNITURE = {
+ salvagejig:[1.4,.8],packingdesk:[1.4,.8],estatepanel:[1.4,.15],
  cargorack:[1.8,.75],
  yardfence:[2,.2],yardgate:[2,.2],yardpath:[2,2],
  campstove:[1.06,.86],toolcabinet:[1.4,.7],
@@ -14,7 +15,7 @@ export function footprint(item) {
 }
 export function solidFootprint(item) { const rect=footprint(item); return item.id==='lamp'?{...rect,w:.14,d:.14}:rect; }
 export function furnitureColliders(item){
- if(['rug','yardpath','wallclock','wallshelf','fishtrophy'].includes(item.id))return [];
+ if(['rug','yardpath','wallclock','wallshelf','fishtrophy','estatepanel'].includes(item.id))return [];
  if(item.id!=='yardgate'||!item.open)return [solidFootprint(item)];
  const c=Math.cos(item.rotation||0),s=Math.sin(item.rotation||0),rect=(x,z,w,d)=>({x:item.x+x*c+z*s,z:item.z-x*s+z*c,w,d,rotation:item.rotation||0});
  return [rect(-.94,0,.12,.2),rect(.94,0,.12,.2),rect(-.82,-.82*(item.openSide||1),.14,1.64)];
@@ -44,10 +45,10 @@ export function circleHitsRect(x,z,radius,rect) {
 export function placementStatus(item,obstacles,placed,ignore=-1,construction=[]) {
  const yard=['yardfence','yardgate','yardpath'].includes(item.id),flat=item.id==='rug'||item.id==='yardpath';
  if(yard&&(overlaps(footprint(item),{x:-18,z:15,w:12,d:9},.12)||construction.some(p=>p.id==='floor'&&overlaps(footprint(item),{...p,w:2,d:2},.05))))return {ok:false,reason:'Ограду и дорожки ставят во дворе, вне дома и пристройки'};
- if(['wallclock','fishtrophy','wallshelf'].includes(item.id)) {
+ if(['wallclock','fishtrophy','wallshelf','estatepanel'].includes(item.id)) {
   const anchor=clockAnchor(item.x,item.z,item.id,construction);
   if(!anchor||Math.hypot(item.x-anchor.x,item.z-anchor.z)>=.05||Math.cos((item.rotation||0)-anchor.rotation)<=.99)return {ok:false,reason:'Выбери стену внутри убежища'};
-  if(placed.some((p,i)=>i!==ignore&&['wallclock','fishtrophy','wallshelf'].includes(p.id)&&Math.hypot(p.x-item.x,p.z-item.z)<=(footprint(p).w+footprint(item).w)/2+.1))return {ok:false,reason:'Этот участок стены уже занят'};
+  if(placed.some((p,i)=>i!==ignore&&['wallclock','fishtrophy','wallshelf','estatepanel'].includes(p.id)&&Math.hypot(p.x-item.x,p.z-item.z)<=(footprint(p).w+footprint(item).w)/2+.1))return {ok:false,reason:'Этот участок стены уже занят'};
   return {ok:true};
  }
  const rect=footprint(item),c=Math.abs(Math.cos(rect.rotation)),s=Math.abs(Math.sin(rect.rotation));
@@ -58,7 +59,7 @@ export function placementStatus(item,obstacles,placed,ignore=-1,construction=[])
  const doors=construction.filter(p=>p.id==='door').map(p=>p.axis==='x'?{x:p.x,z:p.z,w:1.2,d:1.5}:{x:p.x,z:p.z,w:1.5,d:1.2});
  if([...doors,...(flat?[]:passages)].some(o=>overlaps(rect,o,.12)))return {ok:false,reason:'Оставь свободными дверь и подход к станции'};
  if(obstacles.some(o=>!o.disabled&&overlaps(rect,o,.12)))return {ok:false,reason:'Здесь мешает стена или другой объект'};
- if(placed.some((p,i)=>i!==ignore&&!flat&&p.id!=='yardpath'&&!['wallclock','fishtrophy','wallshelf'].includes(p.id)&&p.id!=='rug'&&overlaps(rect,footprint(p),yard&&['yardfence','yardgate'].includes(p.id)?0:.15)))return {ok:false,reason:'Здесь уже стоит мебель'};
+ if(placed.some((p,i)=>i!==ignore&&!flat&&p.id!=='yardpath'&&!['wallclock','fishtrophy','wallshelf','estatepanel'].includes(p.id)&&p.id!=='rug'&&overlaps(rect,footprint(p),yard&&['yardfence','yardgate'].includes(p.id)?0:.15)))return {ok:false,reason:'Здесь уже стоит мебель'};
  return {ok:true};
 }
 export function placementAllowed(...args){return placementStatus(...args).ok;}
@@ -68,7 +69,7 @@ export function repairFurniture(obstacles,placed,construction=[]) {
   let moved=0;
   placed.forEach((item,index)=>{
     if(placementAllowed(item,obstacles,placed,index,construction)) return;
-    if(['wallclock','fishtrophy','wallshelf'].includes(item.id)) {
+    if(['wallclock','fishtrophy','wallshelf','estatepanel'].includes(item.id)) {
       const spots=[];for(let x=-23;x<=-13;x+=.5) {const p=clockAnchor(x,10.66,item.id,construction);if(placementAllowed({...item,...p},obstacles,placed,index,construction)) spots.push(p);}
       spots.sort((a,b)=>Math.hypot(a.x-item.x,a.z-item.z)-Math.hypot(b.x-item.x,b.z-item.z));if(spots[0]) {Object.assign(item,spots[0]);moved++;}return;
     }

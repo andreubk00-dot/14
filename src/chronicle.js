@@ -2,6 +2,7 @@
 export function chronicle(state){
  const entries=[],owned=new Set(state.owned),placed=new Set(state.placed.map(p=>p.id));
  const add=(id,title,text)=>entries.push({id,title,text});
+ for(const [id,title,text]of [['salvagejig','Оснастка из ремонтного комплекса','Привезённая оснастка установлена дома. Технику можно разбирать по очереди.'],['packingdesk','Готовиться проще','Найденный стол установлен: он помогает пополнять рюкзак со склада по своему списку.'],['estatepanel','Озеро на стене','Мозаика из дальнего дома теперь украшает убежище.']])if(placed.has(id))add(id,title,text);
  if(owned.has('generator'))add('generator','Свет в убежище','Генератор снова работает. У мастерской появился тёплый свет.');
  if(owned.has('bridge'))add('bridge','Прямой путь в депо','Мост через дренажный канал восстановлен. К техническим запасам можно пройти короче.');
  if(owned.has('pump'))add('pump','Своя вода','Насос у башни запущен. Вода доступна у башни, посадки растут быстрее.');

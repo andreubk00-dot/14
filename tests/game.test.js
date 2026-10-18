@@ -1090,3 +1090,36 @@ test('Chronicle records completed choices without mandatory order or revealing u
  const s=freshState();assert.deepEqual(chronicle(s),[]);s.owned=['generator','solar','bag'];assert.deepEqual(chronicle(s).map(e=>e.id),['generator','solar','bag']);assert.ok(!chronicle(s).some(e=>e.id==='radio'||e.id==='pump'||e.id==='drain-works'));
  s.restoredRoutes.push('drain-works');s.boat.repaired=true;const before=structuredClone(s);assert.ok(chronicle(s).some(e=>e.id==='drain-works'));assert.ok(chronicle(s).some(e=>e.id==='boat'));assert.deepEqual(s,before);assert.deepEqual(chronicle(validateSave(s)),chronicle(s));
 });
+
+import {nearFoundStation,rememberPackingPlan,refillPackingPlan,salvageQueue} from '../src/game.js';
+import {LANDMARK_FINDS} from '../src/landmark-rewards.js';
+test('Unique expedition finds retain claims, inventory, storage and installed furnishings on reload',()=>{
+ const s=freshState();s.owned=['trailpack'];s.equipment.bag='trailpack';
+ for(const [i,node]of LANDMARK_FINDS.entries()){
+  const n={id:`node-${385+i}`,find:node[6]};assert.equal(claimFind(s,n).ok,true);assert.equal(claimFind(s,n).ok,false);
+ }
+ assert.equal(bagWeight(s),14);deposit(s);assert.deepEqual(s.storedFinds,{salvagejig:1,packingdesk:1,estatepanel:1});
+ assert.equal(place(s,'salvagejig',-16,12),true);assert.equal(place(s,'packingdesk',-16,15),true);
+ assert.equal(place(s,'estatepanel',-16,10.66),true);assert.equal(place(s,'estatepanel',-18,10.66),false);
+ const loaded=validateSave(s);assert.deepEqual(loaded.findClaims,['node-385','node-386','node-387']);assert.equal(loaded.placed.length,3);assert.deepEqual(loaded.storedFinds,{});
+});
+test('Packing table remembers a resource plan, fills only deficits and cannot duplicate supplies',()=>{
+ const s=freshState();s.x=-16;s.z=16;s.placed=[{id:'packingdesk',x:-16,z:15}];s.bag={wood:5,water:3};s.stash={wood:10,water:4,cloth:2};
+ assert.equal(rememberPackingPlan(s).ok,true);assert.deepEqual(s.packingPlan,{wood:5,water:3});
+ s.bag={wood:2,cloth:1};const result=refillPackingPlan(s);assert.deepEqual(result.received,{wood:3,water:3});assert.deepEqual(result.missing,{});assert.deepEqual(s.bag,{wood:5,cloth:1,water:3});assert.deepEqual(s.stash,{wood:7,water:1,cloth:2});
+ const before=structuredClone(s);assert.deepEqual(refillPackingPlan(s).received,{});assert.deepEqual(s,before);
+ s.x=80;assert.equal(refillPackingPlan(s).ok,false);s.x=-16;s.placed=[];assert.equal(rememberPackingPlan(s).ok,false);assert.equal(refillPackingPlan(s).ok,false);
+});
+test('Packing handles weight including found furniture and cargo, partial stocks and malformed old saves',()=>{
+ const s=freshState();s.x=-16;s.z=16;s.placed=[{id:'packingdesk',x:-16,z:15}];s.packingPlan={wood:8,water:5};s.stash={wood:100,water:1};s.bag={metal:10};s.finds={estatepanel:1};s.cargo=[{machine:'motor',node:'node-1',loot:{metal:1}}];
+ const result=refillPackingPlan(s);assert.ok(bagWeight(s)<=capacity(s));assert.ok(Object.keys(result.missing).length);assert.equal(s.finds.estatepanel,1);assert.equal(s.cargo.length,1);
+ const loaded=validateSave({...freshState(),packingPlan:{wood:10000,water:2,metal:-5,cloth:1.5,typo:42}});assert.deepEqual(loaded.packingPlan,{wood:1000,water:2});assert.deepEqual(validateSave({...freshState(),packingPlan:undefined}).packingPlan,{});
+});
+test('Salvage queue snapshots whole machines without consuming them; completed loads pay exactly once',()=>{
+ const s=freshState();s.x=-16;s.z=16;s.placed=[{id:'salvagejig',x:-16,z:15}];s.cargo=[{machine:'motor',node:'node-1',loot:{metal:4}}];s.storedCargo=[{machine:'appliance',node:'node-2',loot:{metal:2}}];s.stash={};
+ const {queue}=salvageQueue(s);assert.equal(queue.length,2);assert.equal(queue[0].cargo,s.cargo[0]);assert.equal(s.cargo.length,1);
+ assert.equal(processSalvage(s,0).ok,true);assert.deepEqual(s.stash,{metal:4,parts:3,wire:1});assert.equal(processSalvage(s,0).ok,false);
+ // Cancelling/reloading keeps the unprocessed load, with no pending reward or saved queue.
+ const loaded=validateSave(s);assert.equal(loaded.storedCargo.length,1);assert.equal(loaded.cargo.length,0);assert.equal(processSalvage(loaded,0,true).ok,true);assert.deepEqual(loaded.stash,{metal:6,parts:5,wire:2});
+ loaded.x=80;assert.equal(salvageQueue(loaded).ok,false);assert.equal(nearFoundStation(loaded,'salvagejig'),false);
+});

@@ -1,3 +1,4 @@
+import {nearFoundStation,rememberPackingPlan,refillPackingPlan,salvageQueue} from './game.js';
 import {idlePatrolTarget} from './patrols.js';
 import {RESTORATIONS,restorationStatus,restoreRoute,drainBlocked} from './restoration.js';
 import {FLOOD_DOCKS,CAMP,dockNearBoat,rowBoat,inWorld} from './floodplain.js';
@@ -181,7 +182,7 @@ class QuietDistrict {
     if (action === 'panel-close') { this.keys.clear(); return; }
     if(this.state.boat.aboard&&['build','craft','orders','station-route','structure-select'].includes(action)){this.ui.toast('Сначала причаль к берегу.');return;}
     if (this.ui.pendingConfirm) return;
-    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders', 'helper', 'storage', 'garden','dryer','station','loadouts','architecture','cook','salvage','salvage-workbench'].includes(action)) {
+    if (['craft', 'inventory', 'build', 'map', 'journal', 'settings', 'orders', 'helper', 'storage', 'garden','dryer','station','loadouts','architecture','cook','salvage','salvage-workbench','packing'].includes(action)) {
       if (action === 'storage' && !this.atHome()) { this.ui.toast('Подойди к хранилищу в убежище.'); return; }
       this.cancelBuild(); this.cancelFishing();
       if (this.ui.panel === action) this.ui.close(); else this.ui.open(action);
@@ -191,8 +192,16 @@ class QuietDistrict {
       const node=this.world.nodes.find(n=>n.id===this.ui.salvageNode);this.ui.close();if(!node||Math.hypot(node.x-this.state.x,node.z-this.state.z)>2.4)return;
       if(action==='salvage-quick')this.harvest(node);else {const status=salvageStatus(this.state,node);if(!status.ok)this.ui.toast(status.reason);else {this.world.playCharacterAction('pickup');this.audio.collect();this.job={type:'haul',node,elapsed:0,duration:2.4,label:'Грузим технику…'};}}return;
     }
+    if(action==='packing-remember'||action==='packing-refill'){
+      const result=action==='packing-remember'?rememberPackingPlan(this.state):refillPackingPlan(this.state);
+      if(!result.ok)this.ui.toast(result.reason);else this.ui.toast(action==='packing-remember'?'Состав рюкзака запомнен.':Object.keys(result.missing).length?'Получено доступное. Не всё удалось пополнить: проверь запас и свободный вес.':'Рюкзак пополнен по списку.','success');this.changed();return;
+    }
+    if(action==='process-salvage-all'){
+      const result=salvageQueue(this.state);if(!result.ok){this.ui.toast(result.reason);return;}
+      this.ui.close();this.beginSalvageQueue(result.queue);return;
+    }
     if(action==='process-salvage'){
-      const index=Number(data.index),stored=data.stored==='true';if(Math.hypot(this.state.x+21,this.state.z-13)>=4.5){this.ui.toast('Подойди к станции рецептов.');return;}
+      const index=Number(data.index),stored=data.stored==='true';if(Math.hypot(this.state.x+21,this.state.z-13)>=4.5&&!nearFoundStation(this.state,'salvagejig')){this.ui.toast('Подойди к станции рецептов или оснастке.');return;}
       const cargo=(stored?this.state.storedCargo:this.state.cargo)[index];if(!cargo)return;this.ui.close();this.world.playCharacterAction('pickup');this.job={type:'process-salvage',cargo,index,stored,elapsed:0,duration:salvageDuration(this.state),label:'Разбираем технику на верстаке…'};return;
     }
     if(action==='start-restoration'){const id=data.id,result=restorationStatus(this.state,id);if(!result.ok){this.ui.toast(result.reason);return;}const p=RESTORATIONS.find(p=>p.id===id);this.ui.close();this.job={type:'restore-route',projectId:id,elapsed:0,duration:p.duration,x:this.state.x,z:this.state.z,label:p.name+'…'};this.world.playCharacterAction('pickup');return;}
@@ -405,7 +414,7 @@ class QuietDistrict {
     const hit = this.world.pointer(this.pointerPosition.x, this.pointerPosition.y), b = this.build;
     if(b.recipe.structural){const selected=this.world.structureUnderPointer();const part=b.recipe.id==='dismantle'?selected:b.recipe.id!=='floor'&&selected&&selected.id!=='floor'?{...selected,id:b.recipe.id}:snapStructure(b.recipe.id,hit.point.x,hit.point.z,this.state.construction,b.axis);b.part=part;const status=b.recipe.id==='dismantle'?dismantleAllowed(this.state,part):this.world.canBuildStructure(part);b.valid=status.ok;b.reason=status.reason;this.world.updateStructureGhost(part,b.valid);this.ui.buildHint(b.recipe,b.valid,part?.axis==='z'?Math.PI/2:0);const hint=document.querySelector('#build-hint span');if(hint)hint.textContent=b.valid?(b.recipe.id==='dismantle'?'Нажми на выбранную деталь для разбора':(status.old?'Нажми, чтобы заменить деталь; доплата: '+(Object.entries(status.cost).map(([id,n])=>n+' '+RESOURCES[id].name.toLowerCase()).join(', ')||'не требуется'):'Нажми, чтобы установить конструкцию')):status.reason;return;}
     Object.assign(b,furniturePoint(hit.point.x,hit.point.z));
-    if(['wallclock','fishtrophy','wallshelf'].includes(b.recipe.id)) {const anchor=clockAnchor(hit.point.x,hit.point.z,b.recipe.id,this.state.construction);if(anchor) Object.assign(b,anchor);}
+    if(['wallclock','fishtrophy','wallshelf','estatepanel'].includes(b.recipe.id)) {const anchor=clockAnchor(hit.point.x,hit.point.z,b.recipe.id,this.state.construction);if(anchor) Object.assign(b,anchor);}
     let status=this.world.placementStatus({id:b.recipe.id,x:b.x,z:b.z,rotation:b.rotation},b.movingIndex);
     if(status.ok&&b.movingIndex===undefined&&b.packedIndex===undefined)status=craftStatus(this.state,b.recipe);
     b.valid=status.ok;b.reason=status.reason;
@@ -463,6 +472,8 @@ class QuietDistrict {
     for (const p of s.placed) {
       const info = productionInfo(s, p);
       if(p.id==='yardgate')add('yardgate',p.x,p.z,p.open?'Закрыть калитку':'Открыть калитку','Ограда двора',p);
+      if(p.id==='packingdesk')add('packing',p.x,p.z,'Стол подготовки вылазок','Запомнить и пополнить рюкзак',p,3);
+      if(p.id==='salvagejig')add('salvage-workbench',p.x,p.z,'Разборочная оснастка','Разобрать привезённую технику',p,3);
       if(p.id==='campstove')add('cook',p.x,p.z,'Кухонная печь','Готовить еду и чай',p,2.5);
       if(p.id==='dryrack')add('dryer',p.x,p.z,'Сушилка для улова',info.needsLoading?'Загрузить рыбу':info.remaining?`До готовности: ${Math.ceil(info.remaining)} сек.`:'Еда готова',p);
       if(['gearrack','toolcabinet'].includes(p.id))add('loadouts',p.x,p.z,p.id==='toolcabinet'?'Инструментальный шкаф':'Стеллаж комплектов','Выбрать снаряжение',p);
@@ -493,6 +504,7 @@ class QuietDistrict {
     if(target.type==='cook'){this.ui.open('cook');return;}
     if(target.type==='loadouts'){this.ui.open('loadouts');return;}
     if(target.type==='gate') {if(!this.state.owned.includes(target.entity.tool)){this.ui.toast('Нужен '+RECIPES.find(r=>r.id===target.entity.tool).name);return;}this.job={type:'gate',gate:target.entity,elapsed:0,duration:target.entity.duration,label:target.entity.kind?'Разбираем завал…':'Открываем проход…'};return;}
+    if(['packing','salvage-workbench'].includes(target.type)){this.ui.open(target.type);return;}
     if(target.type==='note') {if(!this.state.notes.includes(target.entity.id))this.state.notes.push(target.entity.id);this.ui.noteId=target.entity.id;this.ui.open('note');this.save(false);return;}
     if(target.type==='garden') {this.ui.gardenIndex=this.state.placed.indexOf(target.entity);this.ui.open('garden');return;}
     if(target.type==='furniture-toggle') {this.action('toggle-furniture',{index:this.state.placed.indexOf(target.entity)});return;}
@@ -537,6 +549,13 @@ class QuietDistrict {
     this.job = { type:'harvest',node,resourceWork,elapsed:0,duration,beats:resourceWork?harvestTimeline(duration):[],x:this.state.x,z:this.state.z,label:this.state.brokenNodes.includes(node.id)?'Собираем добычу…':node.type==='herbs'?'Собираем травы…':node.machine==='standingtree'?'Рубим дерево…':node.machine==='quarry'?'Добываем камень…':'Разбираем находку…' };
     if(resourceWork){this.world.setHarvestTool(node.requires);this.world.facing=Math.atan2(node.x-this.state.x,node.z-this.state.z);this.world.playerVisual.rotation.y=this.world.facing;this.harvestBeat(this.job);}else this.world.playCharacterAction('pickup');
   }
+  beginSalvageQueue(queue){
+    // Keep object identities: cancellation or a changed inventory cannot process a different load.
+    const next=queue.shift();if(!next)return;
+    const index=(next.stored?this.state.storedCargo:this.state.cargo).indexOf(next.cargo);
+    if(index<0||!nearFoundStation(this.state,'salvagejig'))return;
+    this.world.playCharacterAction('pickup');this.job={type:'process-salvage',...next,index,queue,elapsed:0,duration:salvageDuration(this.state),x:this.state.x,z:this.state.z,label:`Разбираем технику · осталось ${queue.length+1}…`};
+  }
   harvestBeat(job){
     for(const beat of advanceHarvest(job)){
       if(beat.type==='swing'){this.world.playCharacterAction('1h_melee_attack_chop');this.audio.swing(job.node.requires);}
@@ -548,7 +567,7 @@ class QuietDistrict {
     if(job.type==='restore-route'){const result=restoreRoute(this.state,job.projectId);if(result.ok){this.world.syncNodes();this.world.flood.restorations.sync();this.world.renderDirty=true;this.audio.craft();this.ui.toast(job.projectId==='drain-works'?'Ремонтный зал осушен. Сквозной выход открыт.':'Мостки восстановлены. Можно идти пешком.','success');this.changed();}else this.ui.toast(result.reason);return;}
     if (job.type === 'rest') { this.state.health = Math.max(this.state.health, job.max); this.state.stamina = 100; this.ui.toast('Силы вернулись. Дом ждёт новых находок.', 'success'); this.changed(); return; }
     if(job.type==='gate'){const result=openGate(this.state,job.gate.id);if(result.ok){this.world.syncGates();if(result.received)this.showLoot(result.received,job.gate.x,job.gate.z);this.audio.craft();this.ui.toast('Проход открыт.','success');this.changed();}else this.ui.toast(result.reason);return;}
-    if(job.type==='process-salvage'){const list=job.stored?this.state.storedCargo:this.state.cargo;if(list[job.index]!==job.cargo)return;const result=processSalvage(this.state,job.index,job.stored);if(result.ok){this.audio.craft();this.ui.selectedItem=null;this.ui.toast('Техника разобрана. Материалы на складе.','success');this.ui.open('salvage-workbench');this.changed();}else this.ui.toast(result.reason);return;}
+    if(job.type==='process-salvage'){const list=job.stored?this.state.storedCargo:this.state.cargo;if(list[job.index]!==job.cargo)return;const result=processSalvage(this.state,job.index,job.stored);if(result.ok){this.audio.craft();this.ui.selectedItem=null;this.changed();if(job.queue?.length&&nearFoundStation(this.state,'salvagejig')){this.beginSalvageQueue(job.queue);return;}this.ui.toast('Техника разобрана. Материалы на складе.','success');this.ui.open('salvage-workbench');}else this.ui.toast(result.reason);return;}
     if(job.type==='haul'){const result=takeSalvage(this.state,job.node);if(result.ok){this.world.syncNodes();this.audio.collect();this.ui.toast('Техника в рюкзаке. Можно разобрать на станции.','success');this.changed();}else this.ui.toast(result.reason);return;}
     const node=job.node;
     if(node.find) {const result=claimFind(this.state,node);if(!result.ok) this.ui.toast(result.reason);else {node.group.visible=false;node.marker.visible=false;if(node.collider)node.collider.disabled=true;this.world.floatingText(`+1 ${FINDS[node.find].name}`,node.x,node.z,'#e6cc98',[node.find]);this.audio.collect();}this.changed();return;}

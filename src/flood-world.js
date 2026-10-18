@@ -1,3 +1,4 @@
+import {dressLandmark} from './landmark-dressing.js';
 import {RestorationWorld} from './restoration-world.js';
 import {roadSurfaces} from './roads.js';
 import * as THREE from 'three';
@@ -77,6 +78,7 @@ export class FloodWorld{
      for(const x of [b.x-2,b.x+2]){w.cylinder(x,.8,back,.45,1.4,'#6c8580');w.box(x,1.55,back,.8,.16,.8,'#99a88e');}
     }else if(b.greenhouse){for(const x of [b.x-4,b.x,b.x+4]){w.box(x,.33,b.z-2,2,.5,1.2,'#867956');w.bush(x,b.z-2,.5).position.y=.55;}}
     else {w.box(left,.38,b.z+1.8,1.3,.5,1.8,'#61756c');w.box(left,.72,b.z+1.8,1.3,.16,1.8,'#b8baa3');}
+    if(b.id==='floodgarage')dressLandmark(w,record,'warehouse');
     yield;
    }
    if(chunk.place.id==='floodworks'){for(const x of [278,282])w.box(x,1.5,-68,.32,3,2,'#7d8983');w.box(280,.1,-68,4,.2,2,'#92998a');}
