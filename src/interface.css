@@ -161,7 +161,6 @@
 .fish-ui { width: 360px; border-radius: 10px; }
 .fish-ui p { font-size: 12px; }
 .toolbar-cargo { display: none; }
-.inventory-tabs { margin-top: 0; }
 .equipment-stats { display: flex; gap: 18px; margin-top: 16px; border-top: 1px solid var(--border); padding-top: 13px; }
 .equipment-stats > div { flex: 1; }
 .equipment-stats b { display: block; font-size: 21px; font-weight: 500; color: #d9c69b; }

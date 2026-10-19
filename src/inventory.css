@@ -51,8 +51,6 @@
  .recipe-icon { width: 54px; height: 54px; }
  .recipe-icon .item-icon { width: 48px; height: 48px; }
 }
-.item-details:not(.empty-details) { position: sticky; bottom: -24px; background: #172e25fa; z-index: 5; padding: 16px 10px; box-shadow: 0 -10px 25px #091b1740; border-radius: 10px 10px 0 0; }
-@media(max-width:760px) { .item-details:not(.empty-details) { bottom: -18px; } }
 .equipment-slot small { max-width: 100%; overflow-wrap: anywhere; }
 .haul-summary { margin-top:24px; border-top:1px solid var(--border);padding-top:18px; }
 .haul-summary summary { cursor:pointer; font-size:18px; color:#d8c898; }
@@ -68,3 +66,51 @@
 .furniture-controls button {display:flex;gap:10px;align-items:center;}
 
 .furniture-row{display:flex;align-items:center;gap:10px;width:100%;padding:12px;border:1px solid #91b3a329;border-radius:12px;background:#0b211999;flex-wrap:wrap}.furniture-row>span{flex:1;min-width:120px;font-size:17px}.owned-items{display:grid;gap:10px}.packed-furniture{display:grid;gap:10px}@media(max-width:600px){.furniture-row .secondary,.furniture-row .text-button{min-height:44px}}
+
+/* A single bag window: shortcuts, equipped items, carried items, then details. */
+.inventory-hotbar { position: sticky; top: -24px; z-index: 6; background: #172e25; padding: 12px 0 16px; margin: -12px 0 22px; border-bottom: 1px solid var(--border); }
+.inventory-bar-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.inventory-bar-title h3 { margin: 0; white-space: nowrap; }
+.inventory-bar-title small { color: var(--muted); line-height: 1.4; }
+.inventory-hotbar .hotbar-slot { height: 72px; background: #10271f; }
+.inventory-hotbar .hotbar-slot.active { border-color: #edd296; background: #344532; }
+.empty-slot-mark { font-size: 28px; color: #9db4a577; font-weight: 300; }
+.clear-hotbar { display: flex; align-items: center; gap: 6px; margin: 10px 0 -6px auto; min-height: 44px; }
+[data-drag-id] { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; cursor: grab; }
+.inventory-dragging, .inventory-dragging * { cursor: grabbing !important; user-select: none !important; }
+.inventory-drag-ghost { position: fixed; z-index: 1000; pointer-events: none; width: 68px; height: 68px; display: grid; place-items: center; transform: translate(-50%,-50%); background: #233d30ed; border: 2px solid #efd49c; border-radius: 10px; box-shadow: 0 8px 24px #0007; }
+.inventory-drag-ghost .item-icon { width: 60px; height: 60px; }
+.drop-ready { outline: 2px solid #efd49c; outline-offset: -2px; background: #506443 !important; }
+.shortcut-badge { position: absolute; left: 4px; top: 4px; margin: 0; padding: 0 4px; border: 0; background: #10271fe6; color: #efd49c; font-size: 16px; }
+.item-details { scroll-margin-top: 180px; }
+.panel button:focus-visible, .hotbar-slot:focus-visible { outline: 2px solid #f2d89d; outline-offset: -3px; }
+.panel-header { padding: 18px 26px; }
+.panel-header .eyebrow { display: none; }
+.panel-header h2 { font-size: 28px; }
+.panel-header p { margin-top: 10px; }
+.panel-title-icon { background: transparent; border: 0; }
+@media(max-width:760px) {
+ .inventory-hotbar { top: -18px; padding-top: 10px; margin-top: -8px; }
+ .inventory-bar-title { display: block; }
+ .inventory-bar-title small { display: block; margin-top: 4px; font-size: 16px; }
+ .inventory-hotbar .hotbar-slots { gap: 5px; }
+ .inventory-hotbar .hotbar-slot { height: 58px; }
+ .inventory-hotbar .hotbar-slot > .item-icon { width: 38px; height: 38px; }
+ .panel-header { padding: 16px 18px; }
+ .panel-header h2 { font-size: 26px; }
+ .inventory-layout { gap: 18px; }
+}
+@media(max-height:520px) {
+ .inventory-bar-title small { display: none; }
+ .inventory-hotbar { position: static; }
+}
+.equipment-slot small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; width: 100%; }
+.item-cell { scroll-margin-top: 210px; }
+@media(pointer:coarse) {
+ .combat-controls [data-action="dodge"] { display: none; }
+ .combat-controls:not(:has([data-action="aim"])) { display: none; }
+}
+
+.panel-title { padding-right: 56px; }
+.panel-title-icon { flex-shrink: 0; }
+.panel-title h2 { min-width: 0; line-height: 1.2; }

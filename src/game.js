@@ -118,7 +118,7 @@ export function freshState() {
     equipment: { weapon: 'pipe', armor: null, bag: null, boots: null },
     ammo: 0, medkits: 1, meals: 0, teas: 0, fishmeals:0, stews:0, foodEffect:null, cultivars:['herbs'], placed: [], depleted: {}, nodeLoot: {}, droneDeaths: {}, drops: [], contracts: {}, completedOrders: 0, waterCollected: -120,
     elapsed: 0, fishCollection: [], kills: 0, trips: 0, gathered: 0,
-    hotbar: ['pipe', 'axe', 'rod', 'medkit', 'meal', 'tea'], hotbarSelected: 0, lanternOn: true,
+    hotbar: ['pipe', null, null, 'medkit', null, null], hotbarSelected: 0, lanternOn: true,
     helper: { assignment: 'garden', cycles: 0 }, recovered: false, grave: null, settings: { sound: true, music:true, musicVolume:.5, quality: 'high', questExpanded: false, minimapExpanded: false },
     tutorial: true, chapterComplete: false,
   };
@@ -214,8 +214,8 @@ export function validateSave(input) {
   }
   if (['garden', 'seedbed', 'purifier', 'recycler', 'rest'].includes(input.helper?.assignment)) state.helper.assignment = input.helper.assignment;
   if (Number.isFinite(input.helper?.cycles)) state.helper.cycles = Math.floor(Math.max(0, Math.min(100000000, input.helper.cycles)));
-  const hotbarIds = new Set(['pipe', ...RECIPES.filter(r => r.slot === 'weapon' || r.slot === 'tool' || Object.hasOwn(SUPPLY_FIELDS,r.id)).map(r => r.id)]);
-  if (Array.isArray(input.hotbar)) state.hotbar = Array.from({ length: 6 }, (_, i) => hotbarIds.has(input.hotbar[i]) ? input.hotbar[i] : null);
+  const hotbarIds = new Set(['pipe', ...Object.keys(RESOURCES), ...Object.keys(FINDS), ...RECIPES.filter(r => r.slot || Object.hasOwn(SUPPLY_FIELDS,r.id) || r.id==='ammo').map(r => r.id)]), seenHotbar=new Set();
+  if (Array.isArray(input.hotbar)) state.hotbar = Array.from({ length: 6 }, (_, i) => hotbarIds.has(input.hotbar[i])&&!seenHotbar.has(input.hotbar[i]) ? (seenHotbar.add(input.hotbar[i]),input.hotbar[i]) : null);
   if (Number.isInteger(input.hotbarSelected)) state.hotbarSelected = Math.max(-1, Math.min(5, input.hotbarSelected));
   state.visited=[...new Set(['home',...(Array.isArray(input.visited)?input.visited:[]).filter(id=>LOCATIONS.some(l=>l.id===id))])];
   state.foundNodes=[...new Set((Array.isArray(input.foundNodes)?input.foundNodes:[]).filter(id=>typeof id==='string'&&/^node-\d{1,3}$/.test(id)))].slice(0,1000);

@@ -1254,3 +1254,19 @@ test('Awning stays outside house and annex, and an annex cannot silently enclose
 test('Restoring the powered gate cannot trap the player in its parked leaves or spend parts on a rejected opening',()=>{
  const s=freshState(),p=INDUSTRY_PROJECTS.find(p=>p.id==='grid-gate');s.owned.push('wrench');s.restoredRoutes=['grid-feed'];s.bag={...p.cost};s.x=3;s.z=-229.5;const before=structuredClone(s);assert.equal(restoreRoute(s,p.id).ok,false);assert.deepEqual(s,before);s.x=4.8;assert.ok(restoreRoute(s,p.id).ok);assert.ok(s.restoredRoutes.includes('grid-gate'));
 });
+
+test('Free hotbar accepts carried resources and equipment without moving inventory; rejects unowned items',()=>{
+ const s=freshState();s.bag.wood=4;s.owned.push('armor');
+ assert.equal(assignHotbar(s,1,'wood'),true);assert.equal(assignHotbar(s,2,'armor'),true);
+ assert.equal(hotbarItem(s,'wood').count,4);assert.equal(hotbarItem(s,'armor').available,true);
+ assert.equal(assignHotbar(s,5,'carbine'),false);assert.equal(assignHotbar(s,5,'metal'),false);
+ assert.equal(s.bag.wood,4);assert.deepEqual(s.equipment,{weapon:'pipe',armor:null,bag:null,boots:null});
+ s.bag.wood=0;assert.equal(hotbarItem(s,'wood').available,false);assert.equal(assignHotbar(s,4,'wood'),true);
+ const restored=validateSave(JSON.parse(JSON.stringify(s)));assert.deepEqual(restored.hotbar,s.hotbar);assert.equal(restored.bag.wood,0);
+ assert.equal(assignHotbar(s,4,null),true);assert.equal(s.bag.wood,0);assert.ok(s.owned.includes('armor'));
+});
+test('Save normalization removes duplicate shortcuts while retaining legitimate empty supplies and equipment',()=>{
+ const s=freshState();s.owned.push('armor');s.hotbar=['wood','wood','armor','medkit','medkit','pipe'];
+ const r=validateSave(s);assert.deepEqual(r.hotbar,['wood',null,'armor','medkit',null,'pipe']);
+ assert.equal(hotbarItem(r,'wood').available,false);assert.equal(r.medkits,1);
+});

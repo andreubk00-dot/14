@@ -84,7 +84,7 @@ test('Actual station UI crafts equipment, restores power and advances story', as
   expect(await page.evaluate(() => window.__quietDistrict.state.owned.includes('axe'))).toBe(true);
   await page.locator('[data-category="weapons"]').click();
   await page.locator('[data-action="make"][data-id="pistol"]').click();
-  expect(await page.evaluate(() => window.__quietDistrict.state.equipment.weapon)).toBe('pistol');await expect(page.locator('#equipped-ammo')).toHaveText('6');
+  expect(await page.evaluate(() => window.__quietDistrict.state.equipment.weapon)).toBe('pistol');await expect(page.locator('#equipped-ammo')).toHaveText('12');
   await page.locator('[data-category="supplies"]').click();
   await page.locator('[data-action="make"][data-id="ammo"]').click();
   expect(await page.evaluate(() => window.__quietDistrict.state.ammo)).toBe(18);
@@ -298,15 +298,14 @@ test('Hotbar uses keyboard supplies, equips weapons and persists inventory assig
   expect(await page.evaluate(() => window.__quietDistrict.state.medkits)).toBe(1);
   await expect(page.locator('.hotbar-slot[data-index="3"] .hotbar-count')).toHaveText('1');
   await page.keyboard.press('Digit1');
-  expect(await page.evaluate(() => window.__quietDistrict.state.equipment.weapon)).toBe('pistol');await expect(page.locator('#equipped-ammo')).toHaveText('6');
+  expect(await page.evaluate(() => window.__quietDistrict.state.equipment.weapon)).toBe('pistol');await expect(page.locator('#equipped-ammo')).toHaveText('12');
   await page.keyboard.press('Digit6');
   expect(await page.evaluate(() => window.__quietDistrict.world.playerLight.intensity)).toBe(0);
   await page.keyboard.press('Digit6');
   expect(await page.evaluate(() => window.__quietDistrict.world.playerLight.intensity)).toBeGreaterThan(0);
   await page.keyboard.press('KeyI');
-  await page.locator('[data-action="inventory-tab"][data-view="hotbar"]').click();
-  await page.locator('[data-action="hotbar-edit-slot"][data-index="0"]').click();
-  await page.locator('[data-action="hotbar-assign"][data-id="carbine"]').click();
+  await page.locator('#inventory-grid [data-id="carbine"]').click();
+  await page.locator('#panel [data-drop-slot="0"]').click();
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('quiet-district-save-v1')).hotbar[0])).toBe('carbine');
   await page.keyboard.press('Digit4');
   expect(await page.evaluate(() => window.__quietDistrict.state.medkits)).toBe(1);
@@ -319,7 +318,7 @@ test('Hotbar uses keyboard supplies, equips weapons and persists inventory assig
   await page.screenshot({ path: '/workspace/artifacts/screenshots/v04-desktop.png' });
 });
 
-test('Mobile hotbar and editor have readable text, usable touch targets and no overlap', async ({ browser }) => {
+test('Mobile hotbar and inventory have readable text, usable touch targets and no overlap', async ({ browser }) => {
   test.setTimeout(180000);
   const context = await browser.newContext({viewport:{width:390,height:844},hasTouch:true,isMobile:true});
   const page = await context.newPage(), errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -339,10 +338,9 @@ test('Mobile hotbar and editor have readable text, usable touch targets and no o
   expect(await page.evaluate(() => window.__quietDistrict.state.health)).toBe(85);
   await page.screenshot({path:'/workspace/artifacts/screenshots/v04-mobile.png'});
   await page.locator('#hotbar [data-action="inventory"]').tap();
-  await page.locator('[data-action="inventory-tab"][data-view="hotbar"]').tap();
-  await expect(page.locator('.hotbar-edit-slots button')).toHaveCount(6);
-  await page.locator('[data-action="hotbar-edit-slot"][data-index="1"]').tap();
-  await page.locator('[data-action="hotbar-assign"][data-id="medkit"]').tap();
+  await expect(page.locator('#panel [data-drop-slot]')).toHaveCount(6);
+  await page.locator('#inventory-grid [data-id="medkit"]').tap();
+  await page.locator('#panel [data-drop-slot="1"]').tap();
   expect(await page.evaluate(() => window.__quietDistrict.state.hotbar[1])).toBe('medkit');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({path:'/workspace/artifacts/screenshots/v04-editor-mobile.png'});
@@ -829,7 +827,7 @@ test('Prepared dishes cook, replace one effect, use the hotbar and retain their 
  await page.locator('[data-action="make"][data-id="fishmeal"]').click();await page.locator('[data-action="make"][data-id="stew"]').click();await page.keyboard.press('Escape');await page.keyboard.press('KeyI');
  await page.locator('[data-action="select-item"][data-id="fishmeal"]').click();await page.locator('[data-action="use-fishmeal"]').click();await expect(page.locator('.food-summary')).toContainText('Сытость · 8:00');await expect(page.locator('[data-action="use-fishmeal"]')).toBeDisabled();
  await page.locator('[data-action="select-item"][data-id="stew"]').click();await expect(page.locator('.item-details')).toContainText('Заменит: Сытость');await page.locator('[data-action="use-stew"]').click();await expect(page.locator('.food-summary')).toContainText('Бодрость');
- await page.locator('[data-action="inventory-tab"][data-view="hotbar"]').click();await page.locator('[data-action="hotbar-edit-slot"][data-index="4"]').click();await page.locator('[data-action="hotbar-assign"][data-id="fishmeal"]').click();await page.keyboard.press('Escape');await page.keyboard.press('Digit5');
+ await page.locator('#inventory-grid [data-id="fishmeal"]').click();await page.locator('#panel [data-drop-slot="4"]').click();await page.keyboard.press('Escape');await page.keyboard.press('Digit5');
  expect(await page.evaluate(()=>{const s=window.__quietDistrict.state;return {id:s.foodEffect.id,remaining:s.foodEffect.until-s.elapsed};})).toEqual({id:'fishmeal',remaining:480});expect(await page.evaluate(()=>window.__quietDistrict.state.fishmeals)).toBe(0);
  await expect(page.locator('.food-status')).toHaveAttribute('aria-label',/Сытость/);await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:'/tmp/quiet-v18-mobile.png'});
  await page.evaluate(()=>{const g=window.__quietDistrict;g.state.elapsed=g.state.foodEffect.until-360;g.save();});const context=page.context();await page.close();const restored=await context.newPage();restored.on('pageerror',e=>page.__errors.push(e.message));try{await restored.goto('/');await expect(restored.locator('[data-action="start"]')).toBeEnabled({timeout:90000});expect(await restored.evaluate(()=>{const s=window.__quietDistrict.state;return {remaining:s.foodEffect.until-s.elapsed,fishmeals:s.fishmeals,stews:s.stews,slot:s.hotbar[4]};})).toEqual({remaining:360,fishmeals:0,stews:0,slot:'fishmeal'});await restored.locator('[data-action="start"]').click();await restored.evaluate(()=>{const g=window.__quietDistrict;g.visibilityPaused=true;g.state.elapsed=g.state.foodEffect.until+1;g.ui.update();});await expect(restored.locator('.food-status')).toHaveCount(0);}finally{await restored.close();}

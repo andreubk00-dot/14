@@ -1,3 +1,4 @@
+import {installInventoryDrag} from './inventory-drag.js';
 import {resourceUses} from './resource-uses.js';
 import {GUNS} from './combat.js';
 import {QUARRY_FIELD_RECIPES} from './quarry.js';
@@ -20,7 +21,7 @@ import {BAITS,FISHING_SPOTS,gameHour,weatherAt} from './expedition.js';
 import { CROPS, FINDS, MEMORIES, cropInfo } from './homelife.js';
 import { LOCATIONS, WORLD_LIMIT, ROADS, ROAD_SURFACES } from './district.js';
 import { inventoryItems, EQUIPMENT_SLOTS } from './inventory.js';
-import { HOTBAR_ITEMS, hotbarItem } from './hotbar.js';
+import { hotbarItem } from './hotbar.js';
 import { RESOURCES, RECIPES, CONTRACTS, bagWeight, capacity, total, craftStatus, contractStatus, productionInfo, weapon } from './game.js';
 
 import { icon, resourceIcon, recipeIcon, categoryIcon } from './icons.js';
@@ -33,7 +34,7 @@ const escape = value => String(value).replace(/[&<>"']/g, c => ({ '&': '&amp;', 
 export class UI {
   constructor(root, state, actions) {
     this.state = state; this.actions = actions; this.panel = null; this.category = 'tools'; this.root = root;
-    this.cache = new Map(); this.search = ''; this.onlyAvailable = false; this.returnFocus = null; this.inventoryView = 'bag'; this.hotbarEditSlot = 0; this.selectedItem = null;
+    this.cache = new Map(); this.search = ''; this.onlyAvailable = false; this.returnFocus = null; this.selectedHotbar = null; this.selectedItem = null;
     root.innerHTML = `
       <div id="world" aria-label="Игровой район"></div>
       <div class="cinematic-overlay"></div>
@@ -73,14 +74,18 @@ export class UI {
       if (action === 'close') this.close();
       else if(action==='build-category'){this.buildView=button.dataset.view;this.renderPanel(true);}
       else if (action === 'category') { this.category = button.dataset.category; this.renderPanel(true); }
-      else if (action === 'select-item') { this.selectedItem = button.dataset.id; this.renderPanel(); }
+      else if (action === 'select-item') this.selectItem(button.dataset.id);
       else if(action==='map-mark-mode'){this.mapMarking=!this.mapMarking;this.renderPanel();}
       else if(action==='map-zoom'){this.mapZoom=button.dataset.delta==='reset'?1:Math.max(1,Math.min(4,(this.mapZoom||1)+Number(button.dataset.delta)));this.renderMap(document.getElementById('large-map'),true);}
-      else if (action === 'inventory-tab') { this.inventoryView = button.dataset.view; this.selectedItem=null; this.renderPanel(true); }
+      else if (action === 'clear-item') { this.selectedItem=null;this.selectedHotbar=null; this.renderPanel(); }
       else if (action === 'available-filter') { this.onlyAvailable = !this.onlyAvailable; this.renderPanel(true); }
       else if (action === 'toggle-minimap') { this.state.settings.minimapExpanded = !this.state.settings.minimapExpanded; this.update(); this.actions('hud-change'); }
       else if (action === 'toggle-menu') { const nav = document.querySelector('.toolbar'); nav.hidden = !nav.hidden; button.setAttribute('aria-expanded', String(!nav.hidden)); }
-      else if (action === 'hotbar-edit-slot') { this.hotbarEditSlot = Number(button.dataset.index); this.renderPanel(); }
+      else if (action === 'inventory-hotbar') {
+        const index=Number(button.dataset.index),item=hotbarItem(this.state,this.selectedItem);
+        if(this.selectedHotbar===null&&item?.available)this.actions('hotbar-assign',{index,id:item.id});
+        else {this.selectedHotbar=index;this.selectedItem=this.state.hotbar[index];this.renderPanel();}
+      }
       else if (action === 'confirm-result') this.resolveConfirm(button.dataset.result === 'yes');
       else this.actions(action, button.dataset);
     });
@@ -91,6 +96,7 @@ export class UI {
       this.renderPanel(true); const input = document.getElementById('recipe-search'); input.focus(); input.setSelectionRange(cursor, cursor);
     });
     document.getElementById('panel-backdrop').addEventListener('click', () => this.close());
+    this.cancelInventoryDrag=installInventoryDrag(this,document.getElementById('panel'));
     this.map = document.getElementById('minimap'); this.renderMap(this.map);
     this.combatResize=new ResizeObserver(()=>{const row=document.querySelector('#hotbar .combat-controls');document.getElementById('hud').style.setProperty('--combat-space',(row?row.offsetHeight+6:0)+'px');});this.combatResize.observe(document.getElementById('hotbar'));
   }
@@ -136,16 +142,19 @@ export class UI {
     const selected = choice && (choice.slot !== 'weapon' && choice.id !== 'pipe' || state.equipment.weapon === choice.id) ? choice : hotbarItem(state, state.equipment.weapon);
     this.setHTML('hotbar', `<div class="hotbar-heading"><span>${selected ? `${recipeIcon(selected.id, 22)} <span class="hotbar-item-name">${selected.name}</span>${GUNS[selected.id]?`<b id="equipped-ammo" aria-label="Зарядов: ${state.ammo}">${icon('ammo',18)} ${state.ammo}</b>`:''}` : weapon(state).name}</span><button data-action="inventory" aria-label="Открыть рюкзак">${icon('bag', 22)} ${Number(bagWeight(state).toFixed(1))}/${capacity(state)}</button></div><div class="hotbar-slots">${state.hotbar.map((id, index) => {
       const item = hotbarItem(state, id), active = index === state.hotbarSelected && item && !item.supply && (item.slot !== 'weapon' && item.id !== 'pipe' || state.equipment.weapon === id);
-      return `<button class="hotbar-slot ${active ? 'active' : ''} ${item && !item.available ? 'unavailable' : ''}" data-action="hotbar-use" data-index="${index}" aria-label="${index + 1}: ${item ? item.name : 'Пустая ячейка'}${item?.count !== null && item ? `, ${item.count}` : ''}" aria-pressed="${!!active}" title="${item ? item.name : 'Назначить в инвентаре'} · ${index + 1}"><kbd>${index + 1}</kbd>${item ? recipeIcon(item.id, 36) : icon('add', 30)}${item?.count !== null && item ? `<b class="hotbar-count">${item.count}</b>` : ''}${item && !item.available && !item.supply ? `<span class="hotbar-lock">${icon('lock', 13)}</span>` : ''}</button>`;
+      return `<button class="hotbar-slot ${active ? 'active' : ''} ${item && !item.available ? 'unavailable' : ''}" data-action="hotbar-use" data-index="${index}" aria-label="${index + 1}: ${item ? item.name : 'Пустая ячейка'}${item?.count !== null && item ? `, ${item.count}` : ''}" aria-pressed="${!!active}" title="${item ? item.name : 'Назначить в инвентаре'} · ${index + 1}"><kbd>${index + 1}</kbd>${item ? recipeIcon(item.id, 36) : '<span class="empty-slot-mark">+</span>'}${item?.count !== null && item ? `<b class="hotbar-count">${item.count}</b>` : ''}${item && !item.available && item.count===null ? `<span class="hotbar-lock">${icon('lock', 13)}</span>` : ''}</button>`;
     }).join('')}</div><div class="combat-controls"><button data-action="dodge" ${state.stamina<24||state.dodgeReadyAt>state.elapsed?'disabled':''}>Alt · Уклонение${state.dodgeReadyAt>state.elapsed?' · '+(state.dodgeReadyAt-state.elapsed).toFixed(1):''}</button>${GUNS[weapon(state).id]?`<button data-action="aim" aria-pressed="${!!this.aiming}">${this.aiming?'Прицел включён':'ПКМ · Прицел'}</button><button data-action="vent" class="${state.gunLocked[weapon(state).id]?'overheated':''}">R · ${state.gunLocked[weapon(state).id]?'Перегрев':'Охладить'} ${Math.round(state.gunHeat[weapon(state).id]*100)}%</button>`:''}</div>`);
   }
-  hotbarEditor() {
-    const state = this.state, index = this.hotbarEditSlot;
-    const choices = HOTBAR_ITEMS.filter(item => item.id === 'pipe' || state.owned.includes(item.id) || Object.hasOwn(SUPPLY_FIELDS,item.id)&&(!Object.hasOwn(FOOD_EFFECTS,item.id)||state[SUPPLY_FIELDS[item.id]]>0||state.hotbar.includes(item.id)));
-    return `<p class="panel-note">Выбери ячейку, затем предмет. Цифры 1–6 и нажатия работают во время игры. Инструменты из набора также применяются автоматически.</p><div class="hotbar-edit-slots">${state.hotbar.map((id, slot) => `<button data-action="hotbar-edit-slot" data-index="${slot}" class="${slot === index ? 'active' : ''}" aria-label="Настроить ячейку ${slot + 1}" aria-pressed="${slot === index}"><b>${slot + 1}</b>${id ? recipeIcon(id, 30) : icon('add', 30)}</button>`).join('')}</div><div class="section-title"><h3>Предмет для ячейки ${index + 1}</h3></div><div class="hotbar-choices">${choices.map(item => {
-      const info = hotbarItem(state, item.id);
-      return `<button data-action="hotbar-assign" data-index="${index}" data-id="${item.id}" class="${state.hotbar[index] === item.id ? 'selected' : ''}">${recipeIcon(item.id, 32)}<span>${item.name}${info.supply ? `<small>В запасе: ${info.count}</small>` : ''}</span>${state.hotbar[index] === item.id ? icon('check', 20) : ''}</button>`;
-    }).join('')}</div><button class="secondary full-width" data-action="hotbar-assign" data-index="${index}" data-id="">Очистить ячейку ${index + 1}</button>`;
+  selectItem(id) {
+    this.selectedItem=id;this.selectedHotbar=null;this.renderPanel();
+    document.querySelector('#panel .item-details')?.scrollIntoView({block:'nearest'});
+  }
+  hotbarInfo(id) { return hotbarItem(this.state,id); }
+  inventoryHotbar() {
+    return `<section class="inventory-hotbar" aria-label="Быстрый доступ"><div class="inventory-bar-title"><h3>Быстрый доступ</h3><small>Перетащи предмет или выбери его и нажми ячейку</small></div><div class="hotbar-slots">${this.state.hotbar.map((id,index)=>{
+      const item=hotbarItem(this.state,id);
+      return `<button class="hotbar-slot ${item&&!item.available?'unavailable':''} ${this.selectedHotbar===index?'active':''}" data-action="inventory-hotbar" data-index="${index}" data-drop-slot="${index}" ${item?`data-drag-id="${id}"`:''} aria-pressed="${this.selectedHotbar===index}" aria-label="Ячейка ${index+1}: ${item?.name||'пусто'}" title="${item?.name||'Пустая ячейка'}"><kbd>${index+1}</kbd>${item?recipeIcon(id,48):'<span class="empty-slot-mark">+</span>'}${item?.count!==null&&item?`<b class="hotbar-count">${item.count}</b>`:''}</button>`;
+    }).join('')}</div>${this.selectedHotbar!==null&&this.state.hotbar[this.selectedHotbar]?`<button class="text-button clear-hotbar" data-action="hotbar-assign" data-index="${this.selectedHotbar}" data-id="">${icon('close',18)} Убрать из быстрого доступа</button>`:''}</section>`;
   }
   region(location, announce = false) {
     document.getElementById('location-name').textContent = location.name.toUpperCase();
@@ -173,7 +182,8 @@ export class UI {
   open(panel, category) {
     this.returnFocus = document.activeElement;
     if (this.panel !== panel) { this.search = ''; this.onlyAvailable = false; this.mapMarking=false; }
-    if(this.panel!==panel) this.selectedItem=null;
+    if(this.panel!==panel) {this.selectedItem=null;this.selectedHotbar=null;}
+    this.cancelInventoryDrag();
     this.panel = panel;
     if (category) this.category = category;
     document.getElementById('panel-backdrop').hidden = false; document.getElementById('panel').hidden = false;
@@ -183,7 +193,7 @@ export class UI {
     document.querySelector('#panel [data-action="close"]')?.focus();
   }
   close() {
-    this.panel = null; this.mapMarking=false; document.getElementById('panel-backdrop').hidden = true; document.getElementById('panel').hidden = true;
+    this.cancelInventoryDrag();this.selectedHotbar=null;this.panel = null; this.mapMarking=false; document.getElementById('panel-backdrop').hidden = true; document.getElementById('panel').hidden = true;
     this.actions('panel-close');
     if (this.returnFocus?.isConnected) this.returnFocus.focus({ preventScroll: true });
   }
@@ -259,9 +269,7 @@ export class UI {
     }
     if(this.panel==='architecture')body=`<div class="recipe-list">${Object.entries(STRUCTURES).map(([id,spec])=>`<article class="recipe-card"><div class="recipe-top">${recipeIcon('build-'+id,42)}<div><h3>${spec.name}</h3><p>${spec.desc}</p></div></div><div class="costs">${costHTML(state,spec.cost)}</div><button class="primary full-width" data-action="structure-select" data-id="${id}" >${id==='dismantle'?'Выбрать деталь':'Разместить'}</button></article>`).join('')}</div>`;
     if (this.panel === 'inventory') {
-      body = `<nav class="category-tabs inventory-tabs"><button data-action="inventory-tab" data-view="bag" class="${this.inventoryView !== 'hotbar' ? 'active' : ''}">${icon('bag',22)} Предметы</button><button data-action="inventory-tab" data-view="hotbar" class="${this.inventoryView === 'hotbar' ? 'active' : ''}">${icon('hotbar',22)} Хотбар</button></nav>`;
-      if(this.inventoryView === 'hotbar') body += this.hotbarEditor();
-      else body += this.inventoryWindow();
+      body = this.inventoryWindow();
     }
     if (this.panel === 'storage') {
       body = `<p class="panel-note">Целая техника: ${state.storedCargo.length} / ${cargoStorageCapacity(state)} мест</p><div class="storage-actions"><button class="primary" data-action="deposit">${icon('bag',22)} Сложить добычу</button><button class="secondary" data-action="inventory">${icon('bag',22)} Рюкзак</button></div>${this.itemGrid(inventoryItems(state,true),'storage-grid')}${this.itemDetails(true)}${this.haulSummary()}${this.packedOverview()}`;
@@ -322,22 +330,22 @@ export class UI {
   }
   inventoryWindow() {
     const state=this.state, items=inventoryItems(state), home=state.x>=-27&&state.x<=-6&&state.z>=5&&state.z<=27;
-    return `${this.foodSummary()}<div class="inventory-layout"><section class="equipment-column"><h3>Экипировка</h3><div class="equipment-grid">${Object.entries(EQUIPMENT_SLOTS).map(([slot,label])=>{
+    return `${this.inventoryHotbar()}${this.foodSummary()}<div class="inventory-layout"><section class="equipment-column"><h3>Экипировка</h3><div class="equipment-grid">${Object.entries(EQUIPMENT_SLOTS).map(([slot,label])=>{
       const id=state.equipment[slot], name=id==='pipe'?'Стальная труба':RECIPES.find(r=>r.id===id)?.name;
-      return `<button class="equipment-slot ${id?'filled':''} ${id&&this.selectedItem===id?'selected':''}" data-action="${id?'select-item':'inventory-tab'}" ${id?`data-id="${id}"`:'data-view="bag"'} aria-label="${label}: ${name||'не надето'}"><span>${label}</span>${id?recipeIcon(id,60):icon(({weapon:'sword',armor:'shield',bag:'bag',boots:'boots'})[slot],32)}<small>${name||'Свободно'}</small></button>`;
+      return `<button class="equipment-slot ${id?'filled':''} ${id&&this.selectedItem===id?'selected':''}" data-action="${id?'select-item':'clear-item'}" ${id?`data-id="${id}" data-drag-id="${id}"`:''} data-equip-slot="${slot}" title="${name||label}" aria-label="${label}: ${name||'не надето'}"><span>${label}</span>${id?recipeIcon(id,60):icon(({weapon:'sword',armor:'shield',bag:'bag',boots:'boots'})[slot],32)}<small>${name||'Свободно'}</small></button>`;
     }).join('')}</div><div class="equipment-summary"><span>${icon('sword',20)} ${weapon(state).damage} урона</span><span>${icon('shield',20)} ${Math.round((RECIPES.find(r=>r.id===state.equipment.armor)?.defense||0)*100)}% защиты</span><span>${icon('boots',20)} Скорость ${Math.round(gearProfile(state,RECIPES).speed*(state.equipment.boots==='boots'?1.18:1)*100)}%</span></div></section><section class="pack-column"><div class="inventory-weight"><h3>Рюкзак</h3><span>${Number(bagWeight(state).toFixed(2))} / ${capacity(state)}</span></div>${this.itemGrid(items,'inventory-grid')}${home?'<button class="secondary storage-link" data-action="storage">Открыть склад убежища →</button>':''}</section></div>${this.itemDetails(false)}`;
   }
   itemGrid(items,id) {
     const cells=Math.max(24,Math.ceil(items.length/6)*6);
     return `<div id="${id}" class="item-grid" role="group" aria-label="${id==='storage-grid'?'Ячейки склада':'Ячейки рюкзака'}">${Array.from({length:cells},(_,i)=>{
       const item=items[i];
-      return item?`<button class="item-cell ${this.selectedItem===item.id?'selected':''}" data-action="select-item" data-id="${item.id}" aria-label="${item.name}, ${item.count}" aria-pressed="${this.selectedItem===item.id}" title="${item.name}">${recipeIcon(item.art||item.id,58)}<b>${item.count}</b>${id==='inventory-grid'&&this.state.keepResources.includes(item.id)?`<span class="kept-resource" title="Оставлять при сдаче добычи">${icon('pin',16)}</span>`:''}</button>`:'<div class="item-cell empty" aria-hidden="true"></div>';
+      return item?`<button class="item-cell ${this.selectedItem===item.id?'selected':''}" data-action="select-item" data-id="${item.id}" ${id==='inventory-grid'&&hotbarItem(this.state,item.id)?`data-drag-id="${item.id}"`:''} aria-label="${item.name}, ${item.count}" aria-pressed="${this.selectedItem===item.id}" title="${item.name}">${recipeIcon(item.art||item.id,58)}${item.count>1?`<b>${item.count}</b>`:''}${id==='inventory-grid'&&this.state.hotbar.includes(item.id)?`<kbd class="shortcut-badge">${this.state.hotbar.indexOf(item.id)+1}</kbd>`:''}${id==='inventory-grid'&&this.state.keepResources.includes(item.id)?`<span class="kept-resource" title="Оставлять при сдаче добычи">${icon('pin',16)}</span>`:''}</button>`:'<div class="item-cell empty" aria-hidden="true"></div>';
     }).join('')}</div>`;
   }
   itemDetails(storage) {
     const state=this.state, equipped=Object.entries(state.equipment).find(([,id])=>id&&id===this.selectedItem);
-    const item=inventoryItems(state,storage).find(r=>r.id===this.selectedItem)||(!storage&&equipped?{...(this.selectedItem==='pipe'?{id:'pipe',name:'Стальная труба',desc:'Надёжное оружие ближнего боя.'}:RECIPES.find(r=>r.id===this.selectedItem)),kind:'gear',count:1}:null);
-    if(!item) return '<div class="item-details empty-details">Выбери предмет, чтобы увидеть описание и действия.</div>';
+    const item=inventoryItems(state,storage).find(r=>r.id===this.selectedItem)||(!storage&&this.selectedHotbar!==null?hotbarItem(state,this.selectedItem):null)||(!storage&&equipped?{...(this.selectedItem==='pipe'?{id:'pipe',name:'Стальная труба',desc:'Надёжное оружие ближнего боя.'}:RECIPES.find(r=>r.id===this.selectedItem)),kind:'gear',count:1}:null);
+    if(!item) return '';
     let actions='';
     if(item.kind==='cargo') actions=`<button class="primary" data-action="salvage-workbench">Разобрать · ${salvageDuration(state)} сек.</button>`;
     else if(storage&&item.kind==='find') actions=`<button class="secondary" data-action="withdraw-find" data-id="${item.id}" data-count="1">Взять в рюкзак</button><button class="primary" data-action="make" data-id="${item.id}">Поставить дома</button>`;
@@ -346,7 +354,7 @@ export class UI {
     else if(item.kind==='find') actions=`<button class="primary" data-action="make" data-id="${item.id}">Поставить дома</button>`;
     else if(equipped) actions=`<button class="secondary" data-action="unequip" data-slot="${equipped[0]}">Снять</button>`;
     else if(item.kind==='gear'&&item.slot!=='tool') actions=`<button class="primary" data-action="equip" data-id="${item.id}">Надеть</button>`;
-    else if(Object.hasOwn(SUPPLY_FIELDS,item.id)) actions=`<button class="primary" data-action="use-${item.id}" ${activeFood(state)?.id===item.id&&state.health>=100&&state.stamina>=100?'disabled':''}>${item.id==='tea'?'Выпить':item.id==='medkit'?'Применить':'Съесть'}</button>`;
+    else if(Object.hasOwn(SUPPLY_FIELDS,item.id)&&state[SUPPLY_FIELDS[item.id]]>0) actions=`<button class="primary" data-action="use-${item.id}" ${activeFood(state)?.id===item.id&&state.health>=100&&state.stamina>=100?'disabled':''}>${item.id==='tea'?'Выпить':item.id==='medkit'?'Применить':'Съесть'}</button>`;
     return `<section class="item-details"><div class="item-portrait">${recipeIcon(item.art||item.id,72)}</div><div><h3>${item.name}</h3><p>${item.desc||'Материал для создания и развития убежища.'}</p>${Object.hasOwn(FOOD_EFFECTS,item.id)&&activeFood(state)?`<p class="food-replacement">${activeFood(state).id===item.id?'Этот эффект уже действует.':'Заменит: '+activeFood(state).name+'.'}</p>`:''}${item.kind==='find'?`<small>Вес: ${FINDS[item.id].weight} · находка для дома</small>`:item.id==='pipe'?'<small>13 урона · 2.4 м</small>':''}<div class="item-actions">${actions}</div></div></section>${item.kind==='resource'?this.resourceUseList(item.id):''}`;
   }
   resourceUseList(id){

@@ -229,7 +229,7 @@ class QuietDistrict {
     if(action==='boat-land'){this.landBoat();return;}
     if (action === 'hud-change') { this.save(false); return; }
     if (action === 'hotbar-assign') {
-      if (assignHotbar(this.state, Number(data.index), data.id || null)) this.changed(); return;
+      if (assignHotbar(this.state, Number(data.index), data.id || null)) {this.ui.selectedItem=null;this.ui.selectedHotbar=null;this.changed();} return;
     }
     if (action === 'hotbar-use') { this.useHotbar(Number(data.index)); return; }
     if (action === 'craft-objective' || action==='craft-projects') { this.ui.open('craft',data.category||'shelter'); return; }
@@ -383,9 +383,12 @@ class QuietDistrict {
     if (!Number.isInteger(index) || index < 0 || index > 5 || this.ui.panel) return;
     if (this.build || this.fish) { this.ui.toast('Заверши строительство или смотай удочку, чтобы сменить предмет.'); return; }
     const item = hotbarItem(this.state, this.state.hotbar[index]);
-    if (!item) { this.ui.toast('Назначь предмет в эту ячейку через инвентарь.'); return; }
-    if (!item.available) { this.ui.toast(item.supply ? `${item.name}: запас закончился.` : `Сначала создай: ${item.name}.`); return; }
+    if (!item) { this.ui.open('inventory'); return; }
+    if (!item.available) { this.ui.toast(item.supply||item.inspect||item.find ? `${item.name}: в рюкзаке нет.` : `Сначала создай: ${item.name}.`); return; }
     if (item.supply) { this.action(`use-${item.id}`); return; }
+    if (item.inspect) { this.ui.open('inventory');this.ui.selectItem(item.id);return; }
+    if (item.find) { this.make(item.id);return; }
+    if (['armor','bag','boots'].includes(item.slot)) { this.action('equip',{id:item.id});return; }
     this.state.hotbarSelected = index;
     if (item.slot === 'weapon' || item.id === 'pipe') {
       this.state.equipment.weapon = item.id; this.world.updateEquipment();
