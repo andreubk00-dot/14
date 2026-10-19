@@ -1,3 +1,4 @@
+import {INDUSTRY_PLACES,INDUSTRY_ROADS} from './industry.js';
 import {discoverNearby} from './expedition-balance.js';
 import {roadSurfaces} from './roads.js';
 import {WORLD_BOUNDS,FLOOD_PLACES,FLOOD_PATHS} from './floodplain.js';
@@ -7,6 +8,7 @@ import {ORCHARD_PATHS} from './orchard.js';
 import {FRONTIER_LOCATIONS,FRONTIER_ROADS,QUARTERS} from './frontier.js';
 export const WORLD_LIMIT=OUTLAND_LIMIT;
 export const LOCATIONS=[
+ ...INDUSTRY_PLACES,
  ...OUTLAND_PLACES,...FLOOD_PLACES,
  ...FRONTIER_LOCATIONS,
  {id:'laundry',name:'Прачечная клиники',label:'Прачечная',subtitle:'Чистое бельё · медицинские запасы',x:-58,z:35,color:'#b5c5bf',radius:5,note:'Маленький двор за клиникой. Бельё сложено отдельно от разобранной машины; пустые корзины остались у двери.'},
@@ -33,6 +35,7 @@ export const LOCATIONS=[
 ];
 // Paths avoid foundations; the map and vegetation use the same rectangles.
 export const ROADS=[
+ ...INDUSTRY_ROADS,
  ...FRONTIER_ROADS,...ORCHARD_PATHS,...OUTLAND_PATHS,...FLOOD_PATHS,
  // Door approaches end outside foundations; service lanes join the main streets.
  {x:49,z:-15.2,w:2.4,d:10},{x:64,z:-27,w:2.4,d:38},{x:57.5,z:-43,w:13,d:2.4},

@@ -32,6 +32,7 @@ export const RESOURCES = {
   water: { name: 'Чистая вода', icon: 'water', color: '#84bfc7', weight: 0.5 },
 };
 export const RECIPES = [
+ {id:'workawning',name:'Навес ремонтной бригады',category:'shelter',desc:'Небольшой металлический навес во дворе. Под ним не идёт дождь; открытые стороны сохраняют проход.',cost:{wood:6,metal:8,cloth:3},placeable:true},
  {id:'stunner',name:'Дуговой разрядник',category:'weapons',desc:'Дальность 5 м · урон 6. Сбивает атаку тяжёлого противника, освобождая время для отхода. Быстро перегревается. Обычные энергозаряды.',cost:{metal:10,parts:5,wire:6,battery:1},schematic:'quarry-discharge',slot:'weapon',damage:6,range:5,cooldown:1.2},
  {id:'knife',name:'Походный клинок',category:'weapons',desc:'Урон 11 · дистанция 1,6 м · быстрый удар за 6 выносливости. Можно двигаться во время замаха; тяжёлые атаки не прерывает.',cost:{metal:4,cloth:2},slot:'weapon',damage:11,range:1.6,cooldown:.32},
  {id:'heavyaxe',name:'Тяжёлый боевой топор',category:'weapons',desc:'Урон 42 · дистанция 2,1 м · 24 выносливости. Долгий замах прерывает даже удар тяжёлого смотрителя.',cost:{wood:6,metal:12,parts:3,cloth:3},requires:'axe',slot:'weapon',damage:42,range:2.1,cooldown:1.05},
@@ -125,7 +126,7 @@ export function freshState() {
 function cleanFurniture(p,elapsed) {
  if(!p||typeof p!=='object'||!RECIPES.some(r=>r.id===p.id&&r.placeable)||!Number.isFinite(p.x)||!Number.isFinite(p.z)||p.x<-26||p.x>-6||p.z<6||p.z>26)return null;
  const item={id:p.id,x:p.x,z:p.z,rotation:Number.isFinite(p.rotation)?p.rotation:0,harvested:Number.isFinite(p.harvested)?Math.min(elapsed,Math.max(0,p.harvested)):elapsed};
- if(['lamp','foundlamp','desklamp','homeradio','recordplayer'].includes(p.id))item.enabled=['recordplayer','homeradio'].includes(p.id)?p.enabled===true:p.enabled!==false;
+ if(['lamp','foundlamp','desklamp','cagelamp','homeradio','recordplayer'].includes(p.id))item.enabled=['recordplayer','homeradio'].includes(p.id)?p.enabled===true:p.enabled!==false;
  if(p.id==='yardgate'){item.open=p.open===true;item.openSide=p.openSide===-1?-1:1;}
  if(p.id==='cropbed'){item.crop=Object.hasOwn(CROPS,p.crop)?p.crop:null;item.plantedAt=item.crop&&Number.isFinite(p.plantedAt)?Math.max(0,Math.min(elapsed,p.plantedAt)):null;if(Number.isFinite(p.rainGrowth)&&p.rainGrowth>0)item.rainGrowth=Math.min(p.rainGrowth,10000);}
  if(STATION_UPGRADES[p.id])item.upgrade=p.upgrade===1?1:0;
@@ -290,7 +291,7 @@ export function place(state, id, x, z, rotation = 0,obstacles=[]) {
   if(!placementAllowed({id,x,z,rotation},obstacles,state.placed,-1,state.construction))return false;
   if(!yardRouteClear(state,{id,x,z,rotation},obstacles))return false;
   if(recipe.foundOnly) {const stock=state.finds[id]>0?state.finds:state.storedFinds;stock[id]--;} else spend(state,recipe.cost);
-  state.placed.push({id,x,z,rotation,harvested:state.elapsed,...(['lamp','foundlamp','desklamp','homeradio','recordplayer'].includes(id)?{enabled:!['recordplayer','homeradio'].includes(id)}:{}),...(id==='cropbed'?{crop:null,plantedAt:null}:{})});
+  state.placed.push({id,x,z,rotation,harvested:state.elapsed,...(['lamp','foundlamp','desklamp','cagelamp','homeradio','recordplayer'].includes(id)?{enabled:!['recordplayer','homeradio'].includes(id)}:{}),...(id==='cropbed'?{crop:null,plantedAt:null}:{})});
   return true;
 }
 export function collect(state, loot) {
@@ -382,7 +383,7 @@ export function productionInfo(state,item) {
   const recipes = {
     seedbed: { interval: 120, loot: { herbs: 6 }, name: 'Собрать редкие травы' },
     garden: { interval: 90, loot: { herbs: 3 }, name: 'Собрать травы' },
-    purifier: { interval: 90, loot: { water: 3 }, name: 'Забрать чистую воду' },
+    purifier: { interval: 90, loot: { water: state.placed.some(p=>p.id==='pumpcontroller')?4:3 }, name: 'Забрать чистую воду' },
     recycler: { interval: 120, loot: { parts: 2, wire: 1 }, cost: { metal: 3 }, name: 'Переработать лом' },
   };
   const info = recipes[item.id]; if (!info) return null;

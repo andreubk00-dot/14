@@ -12,6 +12,10 @@ const shell = path('M12 40Q0 8 32 7Q64 8 52 40L40 56H24Z','#c6a4b8')+line(18,18,
 const station = c => rect(8,23,48,33,c,4)+rect(14,10,36,15,dark)+rect(19,15,26,5,steel)+rect(14,32,20,17,dark)+circle(24,40,5,gold)+rect(39,31,11,5,steel)+rect(39,42,11,5,steel)+rect(13,56,7,4,dark)+rect(44,56,7,4,dark);
 const bed = rect(8,31,48,20,wood)+rect(10,23,44,16,'#7daa8a',4)+rect(12,20,13,16,'#eae0c2',3)+path('M29 24H53V45H29Z','#9fbd91')+rect(8,49,5,9,dark)+rect(51,49,5,9,dark);
 const art = {
+ pumpcontroller:station('#75a99d')+line(42,13,42,23,gold,3),
+ cagelamp:rect(29,31,6,24,steel)+rect(18,54,28,6,dark)+rect(18,8,28,31,gold,8)+[20,27,35,42].map(x=>line(x,11,x,36,dark,2)).join('')+rect(16,6,32,5,steel)+rect(16,36,32,5,steel),
+ workawning:path('M5 23L16 9H49L59 23Z','#94b2a4')+rect(6,23,52,5,steel)+[11,49].map(x=>rect(x,28,4,31,dark)).join('')+line(19,12,15,22,gold,2)+line(44,12,49,22,gold,2),
+ steelwindow:rect(9,5,46,54,wood)+rect(15,12,34,38,'#9dc3c0')+line(32,12,32,50,dark,3)+line(15,31,49,31,dark,3)+rect(12,50,40,5,steel),
  cargorack:rect(7,8,5,50,steel)+rect(52,8,5,50,steel)+[15,35,54].map(y=>rect(8,y,48,4,wood)).join('')+rect(17,20,27,12,green)+rect(16,40,29,12,dark)+circle(29,46,5,gold),
  precisionbench:rect(7,22,50,8,wood)+rect(11,30,5,27,steel)+rect(48,30,5,27,steel)+rect(16,12,18,10,steel)+circle(42,17,7,gold)+line(40,8,46,25,dark),
  trailpack:pack(true)+rect(8,31,9,20,green)+rect(47,31,9,20,green)+rect(23,5,18,8,gold),

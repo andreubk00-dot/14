@@ -1,6 +1,7 @@
 // Geometry shared by movement, furnishing previews and district checks.
 import {gridPath} from './navigation.js';
 export const FURNITURE = {
+ pumpcontroller:[1.1,.7],cagelamp:[.8,.8],workawning:[2.8,1.8],
  salvagejig:[1.4,.8],packingdesk:[1.4,.8],estatepanel:[1.4,.15],
  cargorack:[1.8,.75],
  yardfence:[2,.2],yardgate:[2,.2],yardpath:[2,2],
@@ -15,6 +16,7 @@ export function footprint(item) {
 }
 export function solidFootprint(item) { const rect=footprint(item); return item.id==='lamp'?{...rect,w:.14,d:.14}:rect; }
 export function furnitureColliders(item){
+ if(item.id==='workawning'){const r=item.rotation||0,c=Math.cos(r),s=Math.sin(r);return [-1.25,1.25].flatMap(x=>[-.75,.75].map(z=>({x:item.x+x*c+z*s,z:item.z-x*s+z*c,w:.12,d:.12,rotation:r})));}
  if(['rug','yardpath','wallclock','wallshelf','fishtrophy','estatepanel'].includes(item.id))return [];
  if(item.id!=='yardgate'||!item.open)return [solidFootprint(item)];
  const c=Math.cos(item.rotation||0),s=Math.sin(item.rotation||0),rect=(x,z,w,d)=>({x:item.x+x*c+z*s,z:item.z-x*s+z*c,w,d,rotation:item.rotation||0});
@@ -54,6 +56,7 @@ export function placementStatus(item,obstacles,placed,ignore=-1,construction=[])
  const rect=footprint(item),c=Math.abs(Math.cos(rect.rotation)),s=Math.abs(Math.sin(rect.rotation));
  const ex=(rect.w*c+rect.d*s)/2,ez=(rect.w*s+rect.d*c)/2;
  if(rect.x-ex < -25 || rect.x+ex > -7 || rect.z-ez < 7 || rect.z+ez > (construction.length?25.5:25))return {ok:false,reason:'Вещь должна целиком помещаться в границы убежища'};
+ if(item.id==='workawning'&&(overlaps(rect,{x:-18,z:15,w:12,d:9},.2)||construction.some(p=>p.id==='floor'&&overlaps(rect,{...p,w:2,d:2},.05))))return {ok:false,reason:'Навес ставится во дворе, вне дома и пристройки'};
  if(item.id==='raincatcher'&&overlaps(rect,{x:-18,z:15,w:12,d:9},.1))return {ok:false,reason:'Накопителю нужен открытый участок двора'};
  const passages=[{x:-18,z:19.5,w:2.4,d:2.2},{x:-12,z:16,w:2.2,d:2.4},{x:-8.7,z:20,w:2,d:3},{x:-21,z:14.6,w:2.2,d:1},{x:-13.5,z:18.5,w:1.4,d:1},{x:-22,z:19,w:1.8,d:1}];
  const doors=construction.filter(p=>p.id==='door').map(p=>p.axis==='x'?{x:p.x,z:p.z,w:1.2,d:1.5}:{x:p.x,z:p.z,w:1.5,d:1.2});

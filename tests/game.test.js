@@ -343,7 +343,7 @@ test('Haul recap keeps the last positive delivery and expanded-world coordinates
 
 import { mapPoint } from '../src/district.js';
 test('Expanded map coordinates match the drawn bounds and outskirts are not clamped to the old district',()=>{
- assert.deepEqual(mapPoint(.5,.5),{x:(WORLD_BOUNDS.minX+WORLD_BOUNDS.maxX)/2,z:0});
+ assert.deepEqual(mapPoint(.5,.5),{x:(WORLD_BOUNDS.minX+WORLD_BOUNDS.maxX)/2,z:(WORLD_BOUNDS.minZ+WORLD_BOUNDS.maxZ)/2});
  const p=mapPoint((-49-WORLD_BOUNDS.minX+2)/(WORLD_BOUNDS.maxX-WORLD_BOUNDS.minX+4),(32-WORLD_BOUNDS.minZ+2)/(WORLD_BOUNDS.maxZ-WORLD_BOUNDS.minZ+4));assert.ok(Math.abs(p.x+49)<1e-9);assert.ok(Math.abs(p.z-32)<1e-9);
  assert.equal(validateSave({...freshState(),x:51,z:-44}).x,51);
 });
@@ -1043,9 +1043,9 @@ test('Every mainland road joins the district network and flood roads avoid build
  for(const r of FLOOD_STREETS)for(const b of FLOOD_BUILDINGS)assert.ok(Math.abs(r.x-b.x)>=(r.w+b.w)/2||Math.abs(r.z-b.z)>=(r.d+b.d)/2,`${b.id} intersects street`);
 });
 test('Restoration rechecks carried resources, tool, proximity and hull clearance atomically',()=>{
- for(const p of RESTORATIONS){const s=freshState();s.x=p.x;s.z=p.z;s.bag={...p.cost};const before=structuredClone(s);assert.equal(restoreRoute(s,p.id).ok,false);assert.deepEqual(s,before);s.owned.push('wrench');s.bag={};s.stash={...p.cost};assert.equal(restoreRoute(s,p.id).ok,false);s.bag={...p.cost};s.x+=10;assert.equal(restoreRoute(s,p.id).ok,false);s.x=p.x;
+ for(const p of RESTORATIONS){const s=freshState();if(p.requiresRoute)s.restoredRoutes.push(p.requiresRoute);s.x=p.x;s.z=p.z;s.bag={...p.cost};const before=structuredClone(s);assert.equal(restoreRoute(s,p.id).ok,false);assert.deepEqual(s,before);s.owned.push('wrench');s.bag={};s.stash={...p.cost};assert.equal(restoreRoute(s,p.id).ok,false);s.bag={...p.cost};s.x+=10;assert.equal(restoreRoute(s,p.id).ok,false);s.x=p.x;
  if(p.decks){Object.assign(s.boat,{x:p.decks[0].x,z:p.decks[0].z});assert.equal(restorationStatus(s,p.id).ok,false);Object.assign(s.boat,FLOOD_DOCKS[0].boat);}
- assert.equal(restorationStatus(s,p.id).ok,true);assert.deepEqual(s.bag,p.cost);assert.equal(restoreRoute(s,p.id).ok,true);assert.deepEqual(s.bag,Object.fromEntries(Object.keys(p.cost).map(k=>[k,0])));const after=structuredClone(s);assert.equal(restoreRoute(s,p.id).ok,false);assert.deepEqual(s,after);assert.deepEqual(validateSave(s).restoredRoutes,[p.id]);}
+ assert.equal(restorationStatus(s,p.id).ok,true);assert.deepEqual(s.bag,p.cost);assert.equal(restoreRoute(s,p.id).ok,true);assert.deepEqual(s.bag,Object.fromEntries(Object.keys(p.cost).map(k=>[k,0])));const after=structuredClone(s);assert.equal(restoreRoute(s,p.id).ok,false);assert.deepEqual(s,after);assert.deepEqual(validateSave(s).restoredRoutes,[...(p.requiresRoute?[p.requiresRoute]:[]),p.id]);}
  assert.deepEqual(cleanRestorations(['bad','camp-crossing','camp-crossing',null]),['camp-crossing']);assert.deepEqual(validateSave({...freshState(),restoredRoutes:null}).restoredRoutes,[]);
 });
 test('Repaired bridges join foot regions while all five docks remain reachable by boat',()=>{
@@ -1078,7 +1078,7 @@ test('Room stocks and visual themes follow intended use without changing content
 });
 test('Patrol routes avoid blocked waypoints, keep leashes and advance through actual route length',()=>{
  const blocked=(x,z)=>x===1&&z===0,origin={x:0,z:0},route=patrolRoute('unknown',origin,blocked);assert.ok(route.length>=3);assert.ok(route.every(p=>!blocked(p.x,p.z)&&Math.hypot(p.x,p.z)<9));
- const enemy={x:0,z:0,patrolIndex:0,patrolRoute:[{x:0,z:0},{x:1,z:0},{x:0,z:2}]};assert.equal(idlePatrolTarget(enemy,blocked),null);assert.equal(enemy.patrolIndex,1);assert.equal(idlePatrolTarget(enemy,blocked),null);assert.equal(enemy.patrolIndex,2);assert.deepEqual(idlePatrolTarget(enemy,blocked),{x:0,z:2});enemy.z=2;assert.equal(idlePatrolTarget(enemy,blocked),null);assert.equal(enemy.patrolIndex,0);assert.equal(Object.keys(PATROL_ROUTES).length,9);
+ const enemy={x:0,z:0,patrolIndex:0,patrolRoute:[{x:0,z:0},{x:1,z:0},{x:0,z:2}]};assert.equal(idlePatrolTarget(enemy,blocked),null);assert.equal(enemy.patrolIndex,1);assert.equal(idlePatrolTarget(enemy,blocked),null);assert.equal(enemy.patrolIndex,2);assert.deepEqual(idlePatrolTarget(enemy,blocked),{x:0,z:2});enemy.z=2;assert.equal(idlePatrolTarget(enemy,blocked),null);assert.equal(enemy.patrolIndex,0);assert.equal(Object.keys(PATROL_ROUTES).length,12);
 });
 
 import {chronicle} from '../src/chronicle.js';
@@ -1222,4 +1222,35 @@ test('Material inspection connects known unmade recipes, station upgrades, const
  s.notes.push('quarry-discharge');assert.ok(resourceUses(s,'battery').some(u=>u.id==='stunner'));s.owned.push('solar');assert.ok(!resourceUses(s,'battery').some(u=>u.key==='recipe:solar'));
  s.placed=[{id:'dryrack',x:-20,z:23,upgrade:0}];uses=resourceUses(s,'battery');assert.ok(uses.some(u=>u.key==='upgrade:dryrack'&&u.index===0&&u.action==='inspect-upgrade'));s.placed[0].upgrade=1;assert.ok(!resourceUses(s,'battery').some(u=>u.key==='upgrade:dryrack'));s.packedFurniture=[{...s.placed[0]}];s.placed=[];assert.ok(!resourceUses(s,'battery').some(u=>u.key==='upgrade:dryrack'));
  assert.ok(resourceUses(s,'stone').some(u=>u.key==='structure:floor'));assert.ok(resourceUses(s,'wood').some(u=>u.key==='order:timber'));assert.ok(!resourceUses(s,'pearl').some(u=>u.key==='order:pearl'));s.owned.push('radio');assert.ok(resourceUses(s,'pearl').some(u=>u.key==='order:pearl'));assert.deepEqual(resourceUses(s,'__proto__'),[]);
+});
+
+
+import {INDUSTRY_PROJECTS,INDUSTRY_WET,INDUSTRY_GATE,INDUSTRY_BUILDINGS,INDUSTRY_ROADS,industryBlocked} from '../src/industry.js';
+test('Northern power is a permanent prerequisite, projects spend the carried bag exactly once and survive old saves',()=>{
+ const s=freshState();s.owned.push('wrench');s.stash={metal:100,wire:100,parts:100,battery:100,pumpmodule:100};
+ for(const p of INDUSTRY_PROJECTS){s.x=p.x;s.z=p.z;s.bag={...p.cost};if(p.requiresRoute){const original=structuredClone(s);s.restoredRoutes=[];const before=structuredClone(s);assert.equal(restoreRoute(s,p.id).ok,false);assert.deepEqual(s,before);s.restoredRoutes=original.restoredRoutes;}
+  const stash=structuredClone(s.stash);assert.ok(restoreRoute(s,p.id).ok);assert.ok(Object.values(s.bag).every(n=>n===0));assert.deepEqual(s.stash,stash);const after=structuredClone(s);assert.equal(restoreRoute(s,p.id).ok,false);assert.deepEqual(s,after);assert.deepEqual(validateSave(s).restoredRoutes,s.restoredRoutes);
+ }
+ assert.ok(industryBlocked(INDUSTRY_WET.x,INDUSTRY_WET.z));assert.ok(industryBlocked(INDUSTRY_GATE.x,INDUSTRY_GATE.z));assert.equal(industryBlocked(-66,-304,.3,s.restoredRoutes),false);assert.equal(industryBlocked(0,-228,.3,s.restoredRoutes),false);
+ const old=validateSave({version:1,x:-16,z:16,bag:{},restoredRoutes:['camp-crossing'],owned:['generator'],stash:{parts:8}});assert.deepEqual(old.restoredRoutes,['camp-crossing']);assert.equal(old.stash.parts,8);assert.equal(old.z,16);assert.equal(validateSave({...s,z:-350}).z,-350);
+});
+test('Industrial roads stop at door faces and new buildings have distinct usable footprints',()=>{
+ assert.equal(INDUSTRY_BUILDINGS.length,8);assert.equal(new Set(INDUSTRY_BUILDINGS.map(b=>b.id)).size,8);
+ for(const r of INDUSTRY_ROADS)for(const b of INDUSTRY_BUILDINGS)assert.equal(overlaps(r,b,-.01),false,JSON.stringify({r,b:b.id}));
+});
+test('Recovered pump controller changes only purifier output, does not stack and packing removes its benefit',()=>{
+ const s=freshState(),p={id:'purifier',harvested:0};s.elapsed=90;assert.equal(productionInfo(s,p).loot.water,3);s.placed.push({id:'pumpcontroller',x:-10,z:10});assert.equal(productionInfo(s,p).loot.water,4);assert.equal(productionInfo(s,p).interval,90);s.placed.push({id:'pumpcontroller',x:-10,z:12});assert.equal(productionInfo(s,p).loot.water,4);assert.equal(productionInfo(s,{id:'garden',harvested:0}).loot.herbs,3);s.placed=[];s.packedFurniture=[{id:'pumpcontroller',x:-10,z:10}];assert.equal(productionInfo(s,p).loot.water,3);
+});
+test('Industrial glazing seals rooms, blocks walking and preserves save and replacement refunds',()=>{
+ const s=freshState();s.x=-20;s.z=23;s.stash={wood:80,stone:80,metal:80,cloth:80};const floor={id:'floor',x:-18,z:20.5};assert.ok(buildStructure(s,floor,[]).ok);
+ const west={id:'steelwindow',x:-19,z:20.5,axis:'z'};assert.ok(buildAllowed(s,west).ok);assert.ok(buildStructure(s,west,[]).ok);assert.ok(structureColliders(west).some(r=>circleHitsRect(-19,20.5,.3,r)));assert.ok(validateSave(s).construction.some(p=>p.id==='steelwindow'));assert.ok(buildStructure(s,{id:'wall',x:-17,z:20.5,axis:'z'}).ok);assert.ok(buildStructure(s,{id:'door',x:-18,z:21.5,axis:'x'}).ok);assert.equal(closedRooms(s.construction).length,1);const before={...s.stash};assert.ok(dismantleStructure(s,s.construction.find(p=>p.id==='steelwindow')).ok);assert.equal(s.stash.metal,before.metal+4);assert.equal(s.stash.wood,before.wood+2);assert.equal(closedRooms(s.construction).length,0);
+});
+
+test('Awning stays outside house and annex, and an annex cannot silently enclose an existing awning',()=>{
+ const awn={id:'workawning',x:-18,z:23,rotation:0};assert.ok(placementAllowed(awn,[],[]));assert.equal(placementAllowed({...awn,z:15},[],[]),false);assert.equal(placementAllowed(awn,[],[],-1,[{id:'floor',x:-18,z:22.5}]),false);
+ const s=freshState();s.stash={wood:100,stone:100};assert.ok(buildStructure(s,{id:'floor',x:-18,z:20.5}).ok);s.placed=[awn];assert.equal(buildAllowed(s,{id:'floor',x:-18,z:22.5}).ok,false);
+});
+
+test('Restoring the powered gate cannot trap the player in its parked leaves or spend parts on a rejected opening',()=>{
+ const s=freshState(),p=INDUSTRY_PROJECTS.find(p=>p.id==='grid-gate');s.owned.push('wrench');s.restoredRoutes=['grid-feed'];s.bag={...p.cost};s.x=3;s.z=-229.5;const before=structuredClone(s);assert.equal(restoreRoute(s,p.id).ok,false);assert.deepEqual(s,before);s.x=4.8;assert.ok(restoreRoute(s,p.id).ok);assert.ok(s.restoredRoutes.includes('grid-gate'));
 });

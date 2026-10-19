@@ -1,0 +1,106 @@
+{
+  "fixture": "Northern approach, wrench and equipped trailpack; no carried repair resources. Automated navigation knows the map.",
+  "phases": [
+    {
+      "phase": "feed",
+      "steps": 3540,
+      "legs": 8,
+      "minHealth": 100,
+      "clipped": false,
+      "stock": [
+        "node-388",
+        "node-389"
+      ],
+      "health": 100,
+      "bag": {
+        "wire": 10,
+        "parts": 6,
+        "battery": 1,
+        "metal": 8
+      },
+      "finds": {},
+      "stored": {},
+      "restored": [],
+      "kills": 0
+    },
+    {
+      "phase": "supplies",
+      "steps": 7444,
+      "legs": 18,
+      "minHealth": 100,
+      "clipped": false,
+      "stock": [
+        "node-391",
+        "node-400",
+        "node-395"
+      ],
+      "health": 100,
+      "bag": {
+        "wire": 9,
+        "parts": 11,
+        "battery": 0,
+        "metal": 4,
+        "pumpmodule": 1,
+        "filterunit": 2
+      },
+      "finds": {
+        "cagelamp": 1
+      },
+      "stored": {},
+      "restored": [
+        "grid-feed"
+      ],
+      "kills": 0
+    },
+    {
+      "phase": "gate",
+      "steps": 4357,
+      "legs": 9,
+      "minHealth": 100,
+      "clipped": false,
+      "stock": [
+        "node-399"
+      ],
+      "health": 100,
+      "bag": {
+        "wire": 7,
+        "parts": 7,
+        "battery": 0,
+        "metal": 4,
+        "pumpmodule": 0,
+        "filterunit": 2
+      },
+      "finds": {
+        "cagelamp": 1,
+        "pumpcontroller": 1
+      },
+      "stored": {},
+      "restored": [
+        "grid-feed",
+        "grid-drain"
+      ],
+      "kills": 0
+    },
+    {
+      "phase": "home",
+      "steps": 4970,
+      "legs": 11,
+      "minHealth": 100,
+      "clipped": false,
+      "stock": [],
+      "health": 100,
+      "bag": {},
+      "finds": {},
+      "stored": {
+        "cagelamp": 1,
+        "pumpcontroller": 1
+      },
+      "restored": [
+        "grid-feed",
+        "grid-drain",
+        "grid-gate"
+      ],
+      "kills": 0
+    }
+  ]
+}

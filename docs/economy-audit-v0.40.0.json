@@ -1,0 +1,153 @@
+{
+  "recipeCount": 74,
+  "materialUses": {
+    "stone": 4,
+    "filterunit": 1,
+    "pumpmodule": 5,
+    "battery": 7,
+    "medicine": 1,
+    "vegetables": 2,
+    "flowers": 1,
+    "seeds": 5,
+    "wood": 40,
+    "metal": 52,
+    "wire": 23,
+    "parts": 28,
+    "cloth": 27,
+    "herbs": 8,
+    "fish": 5,
+    "pearl": 5,
+    "water": 7
+  },
+  "coreCost": {
+    "cloth": 59,
+    "wood": 40,
+    "metal": 84,
+    "parts": 25,
+    "wire": 22,
+    "herbs": 2,
+    "pumpmodule": 1,
+    "battery": 1,
+    "fish": 3,
+    "water": 3
+  },
+  "islandLoad": {
+    "wood": 34,
+    "cloth": 6,
+    "metal": 10,
+    "parts": 6,
+    "wire": 6,
+    "pumpmodule": 1
+  },
+  "cooking": [
+    {
+      "id": "meal",
+      "cost": {
+        "fish": 1,
+        "herbs": 1,
+        "wood": 1
+      },
+      "homeOutput": 1,
+      "campOutput": 1
+    },
+    {
+      "id": "fishmeal",
+      "cost": {
+        "fish": 2,
+        "vegetables": 2,
+        "wood": 1
+      },
+      "homeOutput": 2,
+      "campOutput": 2
+    },
+    {
+      "id": "stew",
+      "cost": {
+        "vegetables": 2,
+        "water": 1,
+        "herbs": 1
+      },
+      "homeOutput": 1,
+      "campOutput": 1
+    },
+    {
+      "id": "tea",
+      "cost": {
+        "water": 1,
+        "herbs": 1
+      },
+      "homeOutput": 1,
+      "campOutput": 1
+    }
+  ],
+  "baseProduction": {
+    "garden": {
+      "interval": 90,
+      "loot": {
+        "herbs": 3
+      },
+      "cost": {}
+    },
+    "seedbed": {
+      "interval": 120,
+      "loot": {
+        "herbs": 6
+      },
+      "cost": {}
+    },
+    "purifier": {
+      "interval": 90,
+      "loot": {
+        "water": 3
+      },
+      "cost": {}
+    },
+    "recycler": {
+      "interval": 120,
+      "loot": {
+        "parts": 2,
+        "wire": 1
+      },
+      "cost": {
+        "metal": 3
+      }
+    }
+  },
+  "developedProduction": {
+    "garden": {
+      "interval": 50.625,
+      "loot": {
+        "herbs": 3
+      },
+      "cost": {}
+    },
+    "seedbed": {
+      "interval": 67.5,
+      "loot": {
+        "herbs": 6
+      },
+      "cost": {}
+    },
+    "purifier": {
+      "interval": 67.5,
+      "loot": {
+        "water": 3
+      },
+      "cost": {}
+    },
+    "recycler": {
+      "interval": 67.5,
+      "loot": {
+        "parts": 5,
+        "wire": 2
+      },
+      "cost": {
+        "metal": 3
+      }
+    }
+  },
+  "notes": [
+    "Costs unchanged; this is a data audit, not player retention evidence.",
+    "Field cooking uses the carried bag, never the home stash."
+  ]
+}

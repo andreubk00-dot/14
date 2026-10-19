@@ -36,7 +36,7 @@ test('Quarry loading cover stops a real bolt, preserves hits before cover and le
   g.state.z=108.6;g.motion.reset();g.visibilityPaused=false;let steps=0,clipped=false;
   for(const [x,z]of [[-149.3,108.6],[-149.3,112],[-154,112],[-155,104]]){g.navigate(x,z,false);if(!g.path.length&&Math.hypot(g.state.x-x,g.state.z-z)>1)throw Error('No cover bypass');while(g.path.length&&steps++<2000){g.tick(1/60);clipped||=w.blocked(g.state.x,g.state.z,.299);}if(Math.hypot(g.state.x-x,g.state.z-z)>1)throw Error('Cover route stuck');g.motion.reset();}
   g.visibilityPaused=true;return {roads:roads.length,buildings:buildings.length,nodes:nodes.length,covered,exposed,once,clipped,steps,count:w.nodes.length};
- });console.log('Quarry cover',JSON.stringify(report));expect(report).toMatchObject({roads:0,buildings:0,nodes:0,covered:true,exposed:true,once:true,clipped:false,count:388});
+ });console.log('Quarry cover',JSON.stringify(report));expect(report).toMatchObject({roads:0,buildings:0,nodes:0,covered:true,exposed:true,once:true,clipped:false,count:403});
 });
 test('Hit labels report interruption and retain the same DOM nodes across animation frames',async({page})=>{
  test.setTimeout(180000);await start(page,{owned:['knife','heavyaxe'],equipment:{weapon:'knife'}});

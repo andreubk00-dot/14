@@ -244,7 +244,7 @@ export class UI {
       if(isBuild)body+=this.packedOverview();
       if(isBuild&&state.placed.some(p=>['gearrack','toolcabinet'].includes(p.id)))body+='<button class="secondary full-width" data-action="loadouts">Открыть комплекты экипировки</button>';
       if (isBuild) body += this.productionOverview();
-      if(isBuild) body+=`<div class="furniture-controls">${state.placed.map((p,index)=>['lamp','foundlamp','desklamp','homeradio','recordplayer'].includes(p.id)?`<button class="secondary" data-action="toggle-furniture" data-index="${index}" ${!nearHome?'disabled':''}>${recipeIcon(p.id,26)} ${p.enabled?'Выключить':'Включить'} · ${RECIPES.find(r=>r.id===p.id).name}</button>`:'').join('')}</div>`;
+      if(isBuild) body+=`<div class="furniture-controls">${state.placed.map((p,index)=>['lamp','foundlamp','desklamp','cagelamp','homeradio','recordplayer'].includes(p.id)?`<button class="secondary" data-action="toggle-furniture" data-index="${index}" ${!nearHome?'disabled':''}>${recipeIcon(p.id,26)} ${p.enabled?'Выключить':'Включить'} · ${RECIPES.find(r=>r.id===p.id).name}</button>`:'').join('')}</div>`;
     }
     if(this.panel==='salvage'){
       const n=this.nodes.find(n=>n.id===this.salvageNode),status=salvageStatus(state,n);body=n?`<article class="recipe-card"><div class="recipe-top">${recipeIcon('cargo-'+n.machine,58)}<div><h3>${escape(n.name)}</h3><p>Быстрый разбор: ${rewardHTML(n.loot)}. Для перевозки: ${CARGO_WEIGHT[n.machine]} веса; на станции +${n.machine==='motor'?3:2} детали и 1 провод.</p></div></div><button class="secondary full-width" data-action="salvage-quick">Разобрать на месте</button><button class="primary full-width" data-action="salvage-take" ${status.ok?'':'disabled'}>Забрать целиком</button>${status.ok?'':`<p>${status.reason}</p>`}</article>`:'<p>Техника уже забрана.</p>';
@@ -399,7 +399,7 @@ export class UI {
   }
   mapView(large){
     const zoom=large?(this.mapZoom||1):1,width=large?(WORLD_BOUNDS.maxX-WORLD_BOUNDS.minX+4)/zoom:100,height=large?(WORLD_BOUNDS.maxZ-WORLD_BOUNDS.minZ+4)/zoom:100;
-    return {width,height,cx:large&&zoom===1?(WORLD_BOUNDS.minX+WORLD_BOUNDS.maxX)/2:this.state.x,cz:large&&zoom===1?0:this.state.z};
+    return {width,height,cx:large&&zoom===1?(WORLD_BOUNDS.minX+WORLD_BOUNDS.maxX)/2:this.state.x,cz:large&&zoom===1?(WORLD_BOUNDS.minZ+WORLD_BOUNDS.maxZ)/2:this.state.z};
   }
   renderMap(canvas, large = false) {
     const ctx = canvas.getContext('2d'), w = canvas.width, h = canvas.height;

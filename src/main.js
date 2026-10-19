@@ -251,7 +251,7 @@ class QuietDistrict {
       const item=this.state.placed[Number(data.index)];if(!item||!this.atHome()||Math.hypot(item.x-this.state.x,item.z-this.state.z)>3) {this.ui.toast('Подойди к грядке.');return;}
       const result=action==='plant-crop'?plantCrop(this.state,item,data.id):harvestProduction(this.state,item);if(!result.ok)this.ui.toast(result.reason);else {this.audio.collect();this.world.renderDirty=true;}this.changed();return;
     }
-    if(action==='toggle-furniture') {const p=this.state.placed[Number(data.index)];if(!p||!this.atHome()||!['lamp','foundlamp','desklamp','homeradio','recordplayer'].includes(p.id))return;p.enabled=!p.enabled;this.world.renderDirty=true;this.world.syncFurniture();this.changed();return;}
+    if(action==='toggle-furniture') {const p=this.state.placed[Number(data.index)];if(!p||!this.atHome()||!['lamp','foundlamp','desklamp','cagelamp','homeradio','recordplayer'].includes(p.id))return;p.enabled=!p.enabled;this.world.renderDirty=true;this.world.syncFurniture();this.changed();return;}
     if(action==='structure-select'){if(!this.atHome())return;const recipe=STRUCTURES[data.id];if(!recipe)return;this.cancelBuild();this.ui.close();this.build={recipe:{...recipe,id:data.id,structural:true},rotation:0,valid:false};this.world.createStructureGhost(data.id);this.updateBuildPreview();return;}
     if(action==='station-details'){if(!this.atHome())return;this.ui.stationIndex=Number(data.index);this.ui.open('station');return;}
     if(action==='upgrade-station'||action==='harvest-station'){
@@ -455,7 +455,7 @@ class QuietDistrict {
       const item = this.state.placed[b.movingIndex], group = this.world.placedGroups[b.movingIndex].group;
       item.x = b.x; item.z = b.z; item.rotation = b.rotation;
       group.position.set(b.x, this.world.furnitureElevation(b.x,b.z), b.z); group.rotation.y = b.rotation;
-      this.world.refreshConstructionLighting();this.cancelBuild(); this.audio.craft(); this.changed(); return;
+      this.world.rainShelterX=undefined;this.world.refreshConstructionLighting();this.cancelBuild(); this.audio.craft(); this.changed(); return;
     }
     if(b.packedIndex!==undefined) {
       if(unpackFurniture(this.state,b.packedIndex,b.x,b.z,b.rotation,this.world.colliders)){this.world.addPlaced(this.state.placed.at(-1));this.audio.craft();this.cancelBuild();this.changed();}else this.ui.toast('Не удалось разместить вещь. Она осталась на складе.');return;
@@ -503,7 +503,7 @@ class QuietDistrict {
       if(p.id==='dryrack')add('dryer',p.x,p.z,'Сушилка для улова',info.needsLoading?'Загрузить рыбу':info.remaining?`До готовности: ${Math.ceil(info.remaining)} сек.`:'Еда готова',p);
       if(['gearrack','toolcabinet'].includes(p.id))add('loadouts',p.x,p.z,p.id==='toolcabinet'?'Инструментальный шкаф':'Стеллаж комплектов','Выбрать снаряжение',p);
       if(p.id==='cropbed') add('garden',p.x,p.z,'Посадочная грядка',info?info.remaining?`Растёт: ${Math.ceil(info.remaining)} сек.`:'Урожай готов':'Выбрать посадки',p);
-      if(['lamp','foundlamp','desklamp','homeradio','recordplayer'].includes(p.id)) add('furniture-toggle',p.x,p.z,['recordplayer','homeradio'].includes(p.id)?(p.enabled?'Выключить ':'Включить ')+(p.id==='homeradio'?'приёмник':'проигрыватель'):(p.enabled?'Погасить свет':'Включить свет'),'Обустройство убежища',p);
+      if(['lamp','foundlamp','desklamp','cagelamp','homeradio','recordplayer'].includes(p.id)) add('furniture-toggle',p.x,p.z,['recordplayer','homeradio'].includes(p.id)?(p.enabled?'Выключить ':'Включить ')+(p.id==='homeradio'?'приёмник':'проигрыватель'):(p.enabled?'Погасить свет':'Включить свет'),'Обустройство убежища',p);
       if (info&&!['cropbed','dryrack'].includes(p.id)) add('production', p.x, p.z, RECIPES.find(r => r.id === p.id).name, info.waitingForRain?'Ожидает дождь':info.remaining ? `До готовности: ${Math.ceil(info.remaining)} сек.` : info.name, p);
       if (p.id === 'bed') add('bed', p.x, p.z, 'Отдохнуть', 'Восстановить здоровье полностью', p);
       if (p.id === 'chest') add('storage', p.x, p.z, 'Открыть хранилище', 'Склад убежища', p);
@@ -590,7 +590,7 @@ class QuietDistrict {
   finishJob() {
     const job = this.job; this.job = null; this.ui.progress(null);
     if(job.type==='vent'){this.state.gunHeat[job.weaponId]=0;this.state.gunLocked[job.weaponId]=false;this.audio.playSample('metal_click',.25);this.changed();return;}
-    if(job.type==='restore-route'){const result=restoreRoute(this.state,job.projectId);if(result.ok){this.world.syncNodes();this.world.flood.restorations.sync();this.world.renderDirty=true;this.audio.craft();this.ui.toast(job.projectId==='quarry-workshop'?'Мастерская разреза готова. Заряды и аптечки можно делать здесь.':job.projectId==='drain-works'?'Ремонтный зал осушен. Сквозной выход открыт.':'Мостки восстановлены. Можно идти пешком.','success');this.changed();}else this.ui.toast(result.reason);return;}
+    if(job.type==='restore-route'){const result=restoreRoute(this.state,job.projectId);if(result.ok){this.world.syncNodes();this.world.flood.restorations.sync();this.world.industry.sync(true);this.world.renderDirty=true;this.audio.craft();this.ui.toast(RESTORATIONS.find(p=>p.id===job.projectId)?.success||(job.projectId==='quarry-workshop'?'Мастерская разреза готова. Заряды и аптечки можно делать здесь.':job.projectId==='drain-works'?'Ремонтный зал осушен. Сквозной выход открыт.':'Мостки восстановлены. Можно идти пешком.'),'success');this.changed();}else this.ui.toast(result.reason);return;}
     if (job.type === 'rest') { this.state.health = Math.max(this.state.health, job.max); this.state.stamina = 100; this.ui.toast('Силы вернулись. Дом ждёт новых находок.', 'success'); this.changed(); return; }
     if(job.type==='gate'){const result=openGate(this.state,job.gate.id);if(result.ok){this.world.syncGates();if(result.received)this.showLoot(result.received,job.gate.x,job.gate.z);this.audio.craft();this.ui.toast('Проход открыт.','success');this.changed();}else this.ui.toast(result.reason);return;}
     if(job.type==='process-salvage'){const list=job.stored?this.state.storedCargo:this.state.cargo;if(list[job.index]!==job.cargo)return;const result=processSalvage(this.state,job.index,job.stored);if(result.ok){this.audio.craft();this.ui.selectedItem=null;this.changed();if(job.queue?.length&&nearFoundStation(this.state,'salvagejig')){this.beginSalvageQueue(job.queue);return;}this.ui.toast('Техника разобрана. Материалы на складе.','success');this.ui.open('salvage-workbench');}else this.ui.toast(result.reason);return;}

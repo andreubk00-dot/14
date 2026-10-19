@@ -1,6 +1,6 @@
 import {restoredDecks,inDeck,joinedRegion,onRestoredDeck} from './restoration.js';
 // Shared layout: navigation, map, save validation and streamed scenery agree.
-export const WORLD_BOUNDS={minX:-208,maxX:392,minZ:-208,maxZ:208};
+export const WORLD_BOUNDS={minX:-208,maxX:392,minZ:-376,maxZ:208};
 export const FLOOD_WATER={x:309,z:10,w:166,d:204};
 export const FLOOD_ISLANDS=[
  {id:'reedcamp',name:'Камышовая стоянка',x:286,z:64,w:42,d:40,subtitle:'Стоянка · сухие запасы · рыбалка'},

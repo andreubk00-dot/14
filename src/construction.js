@@ -2,6 +2,7 @@ import {overlaps,circleHitsRect,footprint} from './layout.js';
 export const STRUCTURES={
  floor:{name:'Деревянный пол',desc:'Модуль 2 × 2 м. Начало пристройки у входа в дом; следующие полы соединяются с ним.',cost:{wood:4,stone:2}},
  wall:{name:'Деревянная стена',desc:'Закрывает край пола. Крыша включена в закрытый контур помещения.',cost:{wood:3,stone:1}},
+ steelwindow:{name:'Промышленное окно',desc:'Стена с металлическим переплётом и четырьмя стёклами. Для закрытой пристройки; крыша включена в контур.',cost:{wood:2,metal:4}},
  window:{name:'Стена с окном',desc:'Окно с деревянной рамой и подоконником.',cost:{wood:3,metal:1,cloth:1}},
  door:{name:'Дверной проём',desc:'Проход шириной 1,2 м. Сохраняет доступ в комнату.',cost:{wood:3,metal:2}},
  dismantle:{name:'Разобрать конструкцию',desc:'Выбери деталь в мире. Материалы возвращаются на домашний склад.',cost:{}},
@@ -25,7 +26,7 @@ export function snapStructure(id,x,z,parts,axis=null){
 }
 export function connectedFloor(parts){
  const tiles=floors(parts),root=tiles.find(t=>t.x===-18&&t.z===20.5);if(!tiles.length)return true;if(!root)return false;
- const walls=parts.filter(p=>p.id==='wall'||p.id==='window'),seen=new Set([partKey(root)]),queue=[root];
+ const walls=parts.filter(p=>p.id==='wall'||p.id==='window'||p.id==='steelwindow'),seen=new Set([partKey(root)]),queue=[root];
  for(let i=0;i<queue.length;i++)for(const n of tiles){if(seen.has(partKey(n))||!neighbours(queue[i],n))continue;const edge={x:(n.x+queue[i].x)/2,z:(n.z+queue[i].z)/2,axis:n.x===queue[i].x?'x':'z'};if(walls.some(w=>matching(w,edge)))continue;seen.add(partKey(n));queue.push(n);}
  return seen.size===tiles.length;
 }
@@ -49,6 +50,7 @@ export function buildAllowed(state,part,obstacles=[]){
  const parts=state.construction||[],tiles=floors(parts);if(parts.length>=120)return {ok:false,reason:'Достигнут предел конструкций'};
  if(parts.some(p=>partKey(p)===partKey(part)))return {ok:false,reason:'Здесь уже есть конструкция'};
  if(part.id==='floor'){
+  if(state.placed.some(p=>p.id==='workawning'&&overlaps({...part,w:2,d:2},footprint(p),.05)))return {ok:false,reason:'Сначала переставь навес с места пристройки'};
   if(part.x<-24||part.x>-10||part.z<20.5||part.z>24.5||!Number.isInteger((part.x+18)/2)||!Number.isInteger((part.z-20.5)/2))return {ok:false,reason:'Выбери место для пристройки во дворе'};
   if(tiles.length&&!tiles.some(t=>neighbours(t,part))||!tiles.length&&(part.x!==-18||part.z!==20.5))return {ok:false,reason:'Пол должен соединяться с входом или другим полом'};
   if(obstacles.some(o=>!o.disabled&&!o.construction&&overlaps({...part,w:1.6,d:1.6},o,.02)))return {ok:false,reason:'Здесь мешает существующий объект'};
@@ -75,7 +77,7 @@ export function dismantleAllowed(state,part){
  return {ok:true};
 }
 export function cleanConstruction(input){
- const result=[];for(const p of Array.isArray(input)?input.slice(0,120):[]){if(!p||!['floor','wall','window','door'].includes(p.id)||!Number.isFinite(p.x)||!Number.isFinite(p.z))continue;const snapped=snapStructure(p.id,p.x,p.z,result,p.axis);if(!snapped||snapped.x!==p.x||snapped.z!==p.z||p.id!=='floor'&&snapped.axis!==p.axis)continue;const state={construction:result,placed:[],x:-16,z:16};if(buildAllowed(state,snapped).ok)result.push(snapped);}
+ const result=[];for(const p of Array.isArray(input)?input.slice(0,120):[]){if(!p||!['floor','wall','window','steelwindow','door'].includes(p.id)||!Number.isFinite(p.x)||!Number.isFinite(p.z))continue;const snapped=snapStructure(p.id,p.x,p.z,result,p.axis);if(!snapped||snapped.x!==p.x||snapped.z!==p.z||p.id!=='floor'&&snapped.axis!==p.axis)continue;const state={construction:result,placed:[],x:-16,z:16};if(buildAllowed(state,snapped).ok)result.push(snapped);}
  return result;
 }
 
