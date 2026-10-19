@@ -51,3 +51,10 @@ export function beginDodge(state,dx,dz){
  state.stamina-=DODGE.cost;state.dodgeReadyAt=state.elapsed+DODGE.cooldown;return {dx:dx/d,dz:dz/d,remaining:DODGE.duration};
 }
 export function advanceDodge(dodge,dt,move){const time=Math.min(Math.max(0,dt),dodge.remaining),steps=Math.ceil(DODGE.speed*time/.1);for(let i=0;i<steps;i++)move(dodge.dx*DODGE.speed*time/steps,dodge.dz*DODGE.speed*time/steps);dodge.remaining=Math.max(0,dodge.remaining-time);return dodge.remaining>1e-9;}
+
+// One pass keeps nearest-target behaviour without sorting or transient arrays.
+export function nearestCombatTarget(player,range,enemies,world){
+ let nearest=null,best=range*range;
+ for(const e of enemies){if(e.health<=0)continue;const d=(e.x-player.x)**2+(e.z-player.z)**2;if(d<=best&&world.canSee(player.x,player.z,e.x,e.z)){if(nearest&&d===best)continue;nearest=e;best=d;}}
+ return nearest;
+}

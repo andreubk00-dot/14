@@ -864,7 +864,7 @@ test('Heavy attacks lock a visible aim point, allow dodging and recover before t
  const e=hostile('warden'),p={x:0,z:2};assert.equal(beginEnemyAttack(e,p,false),false);assert.equal(beginEnemyAttack(e,{x:0,z:3},true),false);
  assert.equal(beginEnemyAttack(e,p,true),true);p.x=5;assert.equal(advanceEnemyAttack(e,.8,()=>false),null);
  const hit=advanceEnemyAttack(e,.35,()=>false);assert.equal(hit.kind,'slam');assert.deepEqual([hit.x,hit.z],[0,2]);assert.ok(Math.hypot(p.x-hit.x,p.z-hit.z)>hit.radius);
- assert.equal(beginEnemyAttack(e,{x:0,z:1},true),false);e.cooldown=0;assert.equal(beginEnemyAttack(e,{x:0,z:1},true),true);
+ assert.equal(beginEnemyAttack(e,{x:0,z:1},true),false);e.cooldown=0;assert.equal(beginEnemyAttack(e,{x:0,z:1},true),false);e.recover=0;assert.equal(beginEnemyAttack(e,{x:0,z:1},true),true);
  interruptHostile(e,{x:0,z:1});assert.equal(e.attack,null);assert.equal(e.windup,0);
 });
 test('Runner telegraphs, charges at the original target, stops on obstacles and hits only once',()=>{
@@ -1173,4 +1173,37 @@ test('Quarry district has distinct diagram, local restoration and reversible ene
  const s=freshState();s.ammo=4;assert.ok(QUARRY_MEMORIES.every(n=>n.wall));assert.deepEqual(QUARRY_FIELD_RECIPES,['ammo','medkit','dressing']);
  const e={kind:'warden',x:0,z:0,originX:0,originZ:0,windup:.8,attack:{kind:'slam'}};assert.equal(fireCharge(s,'stunner').ok,true);reactToHit(e,{x:0,z:2},{power:GUNS.stunner.power});assert.equal(e.attack,null);assert.equal(e.stagger,.65);assert.equal(fireCharge(s,'stunner').ok,true);assert.equal(s.gunLocked.stunner,true);assert.equal(s.ammo,2);assert.equal(fireCharge(s,'stunner').ok,false);coolWeapons(s,4.5);assert.equal(s.gunLocked.stunner,false);assert.equal(validateSave(s).ammo,2);
  const old=validateSave({...freshState(),gunHeat:{pistol:.5,carbine:.7},gunLocked:{pistol:false,carbine:false}});assert.equal(old.gunHeat.pistol,.5);assert.equal(old.gunHeat.carbine,.7);assert.equal(old.gunHeat.stunner,0);
+});
+
+import {advanceEnemyBolt} from '../src/enemy-combat.js';
+import {nearestCombatTarget} from '../src/combat.js';
+test('Runner sweep cannot tunnel through a thin wall at 30 Hz or after a delayed step',()=>{
+ const run=dt=>{const e=hostile('runner');beginEnemyAttack(e,{x:0,z:3},true);advanceEnemyAttack(e,.65,()=>false);let event;while(e.attack){event=advanceEnemyAttack(e,dt,(x,z,r)=>Math.abs(z-1)<r+.025);}assert.ok(e.z<.65&&e.z>.5);assert.equal(e.recover,.4);assert.ok(event.bz<1);return e.z;};
+ assert.ok(Math.abs(run(1/30)-run(.3))<.08);
+});
+test('Swept enemy bolts resolve the first player or cover contact and never hit twice',()=>{
+ const wall={x:0,z:2,w:4,d:.05},world={canSee:(ax,az,bx,bz)=>!segmentHitsRect(ax,az,bx,bz,wall),blocked:()=>false};
+ const bolt=()=>({x:0,z:0,dx:0,dz:1,remaining:9});
+ let b=bolt();assert.equal(advanceEnemyBolt(b,.5,{x:0,z:1},world),true);assert.ok(b.z<1);assert.equal(b.remaining,0);assert.equal(advanceEnemyBolt(b,.5,{x:0,z:1},world),false);
+ b=bolt();assert.equal(advanceEnemyBolt(b,.5,{x:0,z:3},world),false);assert.ok(b.z<2);assert.equal(b.remaining,0);
+ const open={canSee:()=>true,blocked:()=>false};b=bolt();assert.equal(advanceEnemyBolt(b,.5,{x:1,z:1},open),false);assert.equal(b.remaining,3);assert.equal(b.z,6);
+});
+test('Nearest attack target is stable, ignores dead actors and cover and respects reach',()=>{
+ const player={x:0,z:0},near={x:0,z:1,health:10},equal={x:1,z:0,health:10},far={x:0,z:3,health:10},dead={x:0,z:.1,health:0};
+ const world={canSee:(ax,az,bx,bz)=>bz!==1};assert.equal(nearestCombatTarget(player,3,[near,dead,far],world),far);assert.equal(nearestCombatTarget(player,2,[near,dead,far],world),null);world.canSee=()=>true;assert.equal(nearestCombatTarget(player,3,[near,equal,far],world),near);
+});
+test('Sustained weapon cadence keeps distinct heat budgets and charges every shot',()=>{
+ const burst=id=>{const s=freshState();s.ammo=30;const r=RECIPES.find(r=>r.id===id);let shots=0;while(!s.gunLocked[id]&&shots<30){assert.ok(fireCharge(s,id).ok);shots++;if(!s.gunLocked[id])coolWeapons(s,r.cooldown);}assert.equal(s.ammo,30-shots);assert.equal(fireCharge(s,id).ok,false);return shots;};
+ assert.equal(burst('pistol'),7);assert.equal(burst('carbine'),4);assert.equal(burst('stunner'),2);
+
+});
+
+import {createEnemyWarning,updateEnemyWarning} from '../src/enemy-signals.js';
+test('Attack warnings stay above indoor floors, restored bridges and dock planks using shared geometry',()=>{
+ const world={state:{restoredRoutes:[]},canSee:()=>true,furnitureElevation:()=>.025},e={...hostile('gunner'),x:301,z:42,windup:.3,warning:createEnemyWarning(),attack:{kind:'shot',x:301,z:44,elapsed:.3}};
+ updateEnemyWarning(e,world,true);assert.ok(e.warning.position.y<.2);const geometry=e.warning.geometry;
+ world.state.restoredRoutes=['camp-crossing'];updateEnemyWarning(e,world,true);assert.ok(e.warning.position.y>.205);assert.equal(e.warning.geometry,geometry);
+ world.state.restoredRoutes=[];e.x=317;e.z=24;e.attack.x=318;e.attack.z=24;updateEnemyWarning(e,world,true);assert.ok(e.warning.position.y>.2);
+ e.x=0;e.z=0;e.attack.x=0;e.attack.z=2;world.furnitureElevation=()=>.205;updateEnemyWarning(e,world,true);assert.ok(e.warning.position.y>.205);
+ const second={...e,warning:createEnemyWarning()};updateEnemyWarning(second,world,true);assert.equal(second.warning.geometry,e.warning.geometry);e.warning.material.dispose();second.warning.material.dispose();
 });

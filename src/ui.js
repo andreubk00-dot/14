@@ -452,11 +452,11 @@ export class UI {
     if (recipe) element.innerHTML = `${icon('build', 20)}<div><strong>${recipe.name}</strong><span>${!valid&&reason?escape(reason):['wallclock','fishtrophy','wallshelf','estatepanel'].includes(recipe.id)?(valid?'Нажми, чтобы закрепить на стене':'Выбери стену внутри убежища'):valid?'Нажми на землю, чтобы разместить':'Выбери свободное место в убежище'}</span></div>${['wallclock','fishtrophy','wallshelf','estatepanel'].includes(recipe.id)||recipe.structural&&['floor','dismantle'].includes(recipe.id)?'':`<button data-action="rotate-build">${icon('rotate',17)} ${Math.round(rotation*180/Math.PI)}°</button>`}<button data-action="cancel-build" aria-label="Отменить строительство">${icon('close', 17)}</button>`;
   }
   floating(items, world) {
-    const root = document.getElementById('floating-text'); root.replaceChildren();
-    for (const item of items) {
-      const p = world.screenPosition(item.x, item.y, item.z);
-      const div = document.createElement('div'); div.className = 'float-label'; div.innerHTML = `${(item.icons || []).map(id => resourceIcon(id, 22)).join('')}<span>${escape(item.text)}</span>`;
-      div.style.cssText = `left:${p.x}px;top:${p.y}px;color:${item.color};opacity:${Math.min(1, item.life)};`; root.appendChild(div);
+    const root=document.getElementById('floating-text'),elements=this.floatElements??=new Map(),point=this.floatPoint??={};
+    for(const [item,element]of elements)if(!items.includes(item)){element.remove();elements.delete(item);}
+    for(const item of items){
+      let div=elements.get(item);if(!div){div=document.createElement('div');div.className='float-label';div.innerHTML=`${(item.icons||[]).map(id=>resourceIcon(id,22)).join('')}<span>${escape(item.text)}</span>`;div.style.color=item.color;elements.set(item,div);root.appendChild(div);}
+      world.screenPosition(item.x,item.y,item.z,point);div.style.left=point.x+'px';div.style.top=point.y+'px';div.style.opacity=Math.min(1,item.life);
     }
   }
   damage() { const el = document.getElementById('damage-flash'); el.classList.remove('hit'); void el.offsetWidth; el.classList.add('hit'); }

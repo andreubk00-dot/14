@@ -5,14 +5,14 @@ import {idlePatrolTarget} from './patrols.js';
 import {RESTORATIONS,restorationStatus,restoreRoute,drainBlocked} from './restoration.js';
 import {FLOOD_DOCKS,CAMP,dockNearBoat,rowBoat,inWorld} from './floodplain.js';
 import {repairField,atCamp,transferCamp,cookCamp} from './game.js';
-import {beginEnemyAttack,advanceEnemyAttack,segmentDistance} from './enemy-combat.js';
+import {beginEnemyAttack,advanceEnemyAttack,advanceEnemyBolt,segmentDistance} from './enemy-combat.js';
 import {addMapMark} from './map-marks.js';
 import {harvestTimeline,advanceHarvest} from './harvesting.js';
 import {salvageDuration} from './salvage.js';
 import {toggleYardGate} from './game.js';
 import {salvageStatus,takeSalvage,processSalvage,recoverCargo} from './game.js';
 import {COOKING_RECIPES,atCookingStove} from './game.js';
-import {swingProfile,selectMeleeTarget,advanceSwing,GUNS,coolWeapons,fireCharge,shotSpread,traceShot,beginDodge,advanceDodge} from './combat.js';
+import {swingProfile,selectMeleeTarget,advanceSwing,GUNS,coolWeapons,fireCharge,shotSpread,traceShot,beginDodge,advanceDodge,nearestCombatTarget} from './combat.js';
 import {DRONE_TYPES,gearProfile,droneSees,attackCharge,updateAwareness,reactToHit} from './survival.js';
 import {STRUCTURES,snapStructure,dismantleAllowed} from './construction.js';
 import {buildStructure,dismantleStructure} from './game.js';
@@ -635,7 +635,7 @@ class QuietDistrict {
   attack(target) {
     if(this.state.boat.aboard||this.ui.panel||this.build||this.job||this.swing||this.dodging||this.attackCooldown>0)return;
     const s=this.state,w=weapon(s),ranged=!!GUNS[w.id],manual=ranged&&this.aiming&&this.aimPoint;
-    if(!manual)target ||= this.world.enemies.filter(e=>e.health>0&&Math.hypot(e.x-s.x,e.z-s.z)<=w.range&&this.world.canSee(s.x,s.z,e.x,e.z)).sort((a,b)=>Math.hypot(a.x-s.x,a.z-s.z)-Math.hypot(b.x-s.x,b.z-s.z))[0];
+    if(!manual)target ||= nearestCombatTarget(s,w.range,this.world.enemies,this.world);
     if(!manual&&target?.health<=0)return;
     if(!manual&&target&&(Math.hypot(target.x-s.x,target.z-s.z)>w.range||!this.world.canSee(s.x,s.z,target.x,target.z))){this.ui.toast('Укрытие или расстояние мешает удару.');return;}
     if(ranged&&!target&&!manual){this.ui.toast('В пределах досягаемости нет противника.');return;}
@@ -661,7 +661,7 @@ class QuietDistrict {
     if(swing.elapsed>=swing.profile.duration)this.swing=null;
   }
   damageEnemy(target,w) {
-    const s=this.state;reactToHit(target,s,{power:GUNS[w.id]?(GUNS[w.id].power||1):swingProfile(w.id).power});target.health=Math.max(0,target.health-w.damage);this.world.floatingText(`−${w.damage}`,target.x,target.z,'#edbf87');this.world.enemyImpact(target,w.id);
+    const s=this.state,winding=target.windup>0,interrupted=reactToHit(target,s,{power:GUNS[w.id]?(GUNS[w.id].power||1):swingProfile(w.id).power});target.health=Math.max(0,target.health-w.damage);this.world.floatingText(`−${w.damage}${winding?interrupted?' · Атака сбита':' · Атака не сбита':''}`,target.x,target.z,winding&&interrupted?'#a5e5df':'#edbf87');this.world.enemyImpact(target,w.id);
     if(!GUNS[w.id]){
       const d=Math.hypot(target.x-s.x,target.z-s.z)||1,push=swingProfile(w.id).push,x=target.x+(target.x-s.x)/d*push,z=target.z+(target.z-s.z)/d*push;
       if(!this.world.blocked(x,z,.4)) {target.x=x;target.z=z;}
@@ -674,28 +674,29 @@ class QuietDistrict {
   enemyDamage(amount){this.ui.damage();this.audio.hit();if(takeDamage(this.state,amount)){this.die();return true;}return false;}
   updateEnemyBolts(dt){
     if(!this.enemyBolts?.length)return false;
-    for(const bolt of this.enemyBolts||[]){
-      const ox=bolt.x,oz=bolt.z,step=Math.min(bolt.remaining,12*dt),x=ox+bolt.dx*step,z=oz+bolt.dz*step;bolt.remaining-=step;
-      if(!this.world.canSee(ox,oz,x,z)||this.world.blocked(x,z,.08))bolt.remaining=0;
-      else if(segmentDistance(this.state.x,this.state.z,ox,oz,x,z)<.45){bolt.remaining=0;if(this.enemyDamage(bolt.damage))return true;}
-      bolt.x=x;bolt.z=z;bolt.mesh.position.set(x,1.1,z);
+    const bolts=this.enemyBolts;let kept=0;
+    for(const bolt of bolts){
+      const hit=advanceEnemyBolt(bolt,dt,this.state,this.world);bolt.mesh.position.set(bolt.x,1.1,bolt.z);
+      if(hit&&this.enemyDamage(bolt.damage))return true;
+      if(bolt.remaining>0)bolts[kept++]=bolt;else this.world.scene.remove(bolt.mesh);
     }
-    this.enemyBolts=(this.enemyBolts||[]).filter(b=>{if(b.remaining>0)return true;this.world.scene.remove(b.mesh);return false;});return false;
+    bolts.length=kept;return false;
   }
+
   updateEnemies(dt) {
     if(this.updateEnemyBolts(dt))return;
     const visibility=gearProfile(this.state,RECIPES).visibility;
     for(const e of this.world.enemies){
       const type=DRONE_TYPES[e.kind]||DRONE_TYPES.guardian;
-      if(e.health<=0){e.windup=0;e.attack=null;if(this.state.elapsed-e.deadAt>180){e.health=e.maxHealth;e.x=e.originX;e.z=e.originZ;e.alert=0;e.suspicion=0;e.route=null;e.routeAt=-Infinity;e.courseAt=-Infinity;e.patrolIndex=0;e.stagger=0;e.cooldown=0;delete this.state.droneDeaths[e.id];}continue;}
-      e.cooldown=Math.max(0,e.cooldown-dt);const distance=Math.hypot(e.x-this.state.x,e.z-this.state.z),leash=Math.hypot(e.x-e.originX,e.z-e.originZ);
+      if(e.health<=0){e.windup=0;e.attack=null;if(this.state.elapsed-e.deadAt>180){e.health=e.maxHealth;e.x=e.originX;e.z=e.originZ;e.alert=0;e.suspicion=0;e.route=null;e.routeAt=-Infinity;e.courseAt=-Infinity;e.patrolIndex=0;e.stagger=0;e.cooldown=0;e.recover=0;delete this.state.droneDeaths[e.id];}continue;}
+      e.cooldown=Math.max(0,e.cooldown-dt);const recovering=(e.recover||0)>0;e.recover=Math.max(0,(e.recover||0)-dt);const distance=Math.hypot(e.x-this.state.x,e.z-this.state.z),leash=Math.hypot(e.x-e.originX,e.z-e.originZ);
       if(distance>30&&e.alert<=0&&!e.attack){e.suspicion=0;e.windup=0;continue;}
       const sight=distance<type.vision*visibility&&this.world.canSee(e.x,e.z,this.state.x,this.state.z),seen=leash<10&&droneSees(e,this.state,sight,visibility);
       updateAwareness(e,dt,seen,this.state,distance);
-      if(e.stagger>0){e.stagger=Math.max(0,e.stagger-dt);e.windup=0;continue;}
+      const staggered=e.stagger>0;e.stagger=Math.max(0,(e.stagger||0)-dt);if(recovering||staggered){e.windup=0;continue;}
       if(type.attack){
         if(beginEnemyAttack(e,this.state,sight&&leash<10))this.audio.playSample('enemy_attack',.35,e.kind==='warden'?.7:1,{x:e.x,z:e.z});
-        const event=advanceEnemyAttack(e,dt,(x,z,r)=>this.world.blocked(x,z,r));
+        const event=e.attack?advanceEnemyAttack(e,dt,(x,z,r)=>this.world.blocked(x,z,r)):null;
         if(event?.kind==='slam'){
           this.world.impact(event.x,.25,event.z,'#e8af7b',1.7);this.audio.resourceHit('quarry',event.x,event.z,true);
           if(Math.hypot(this.state.x-event.x,this.state.z-event.z)<=event.radius&&Math.hypot(e.x-this.state.x,e.z-this.state.z)<3.5&&this.world.canSee(e.x,e.z,this.state.x,this.state.z)&&this.enemyDamage(event.damage))return;
@@ -706,7 +707,7 @@ class QuietDistrict {
           const bolt={x:e.x,z:e.z,dx:dx/d,dz:dz/d,remaining:9,damage:event.damage};
           if((this.enemyBolts||[]).length<12){bolt.mesh=this.world.enemyBolt(bolt);(this.enemyBolts??=[]).push(bolt);this.audio.playSample('blaster',.3,1,{x:e.x,z:e.z});}
         }
-        if(e.attack||event)continue;
+        if(e.attack||event||e.recover>0)continue;
       }else if(attackCharge(e,dt,distance<1.7,sight&&leash<10&&e.alert>0)&&this.enemyDamage(type.damage))return;
       let target;
       if(e.alert>0&&leash<10){
@@ -726,7 +727,7 @@ class QuietDistrict {
   }
   die() {
     for(const b of this.enemyBolts||[])this.world.scene.remove(b.mesh);this.enemyBolts=[];
-    for(const e of this.world.enemies){e.attack=null;e.windup=0;e.alert=0;e.suspicion=0;}
+    for(const e of this.world.enemies){e.attack=null;e.windup=0;e.alert=0;e.suspicion=0;e.recover=0;}
     this.aiming=false;this.aimPoint=null;this.dodging=null;this.swing=null;this.world.clearWeaponEffect();
     this.motion.reset(); this.keys.clear(); this.touchMovement = { x: 0, z: 0 };
     const wasAboard=this.state.boat.aboard;respawn(this.state); this.path = []; this.target = null; this.job = null; this.cancelFishing(); this.cancelBuild();
@@ -847,7 +848,7 @@ class QuietDistrict {
       this.state.elapsed += dt;coolWeapons(this.state,dt);if(this.state.boat.aboard||!GUNS[weapon(this.state).id]){this.aiming=false;this.aimPoint=null;}this.updateAim();this.ui.aiming=this.aiming;updateRainCrops(this.state,dt,(x,z)=>this.world.sheltered(x,z));
       this.audio.rain(weatherAt(this.state.elapsed).rain,this.world.sheltered(this.state.x,this.state.z));this.audio.environment(this.world.ambience(),this.world.sheltered(this.state.x,this.state.z),this.state.elapsed);
       if (updateHelper(this.state)) this.ui.update(); this.attackCooldown = Math.max(0, this.attackCooldown - dt);
-      this.audio.setListener(this.state.x,this.state.z);moving = this.movement(dt);this.updateSwing(dt); this.updateEnemies(dt); this.audio.tick(this.state.elapsed);const music=this.state.placed.filter(p=>p.id==='recordplayer'&&p.enabled).map(p=>Math.hypot(p.x-this.state.x,p.z-this.state.z));this.audio.record(this.state.elapsed,music.length?Math.min(...music):Infinity);const radios=this.state.placed.filter(p=>p.id==='homeradio'&&p.enabled).map(p=>Math.hypot(p.x-this.state.x,p.z-this.state.z));this.audio.radio(this.state.elapsed,radios.length?Math.min(...radios):Infinity);
+      this.audio.setListener(this.state.x,this.state.z);moving = this.movement(dt);this.updateSwing(dt); this.updateEnemies(dt); this.audio.tick(this.state.elapsed);let musicDistance=Infinity,radioDistance=Infinity;for(const p of this.state.placed)if(p.enabled){if(p.id==='recordplayer')musicDistance=Math.min(musicDistance,Math.hypot(p.x-this.state.x,p.z-this.state.z));else if(p.id==='homeradio')radioDistance=Math.min(radioDistance,Math.hypot(p.x-this.state.x,p.z-this.state.z));}this.audio.record(this.state.elapsed,musicDistance);this.audio.radio(this.state.elapsed,radioDistance);
       if (this.target) {
         const target = this.target, range = target.type === 'enemy' ? weapon(this.state).range : 2;
         if (Math.hypot(target.entity.x - this.state.x, target.entity.z - this.state.z) <= range&&(target.type!=='node'||this.world.canSee(this.state.x,this.state.z,target.entity.x,target.entity.z,target.entity.collider,true))) {
