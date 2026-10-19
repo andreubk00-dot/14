@@ -278,6 +278,13 @@ class QuietDistrict {
     if(action==='bait-menu') {this.cancelFishing();this.ui.open('fishing');return;}
     if(action==='select-bait') {if(Object.hasOwn(BAITS,data.id))this.state.fishingBait=data.id;this.changed();return;}
     if(action==='cast-selected') {this.ui.close();this.startFishing();return;}
+    if(action==='inspect-recipe'){
+      const r=RECIPES.find(r=>r.id===data.id);if(!r||r.schematic&&!this.state.notes.includes(r.schematic))return;
+      this.ui.open(r.placeable?'build':'craft',r.category);this.ui.buildView=['yardfence','yardgate','yardpath','lamp','planter','raincatcher'].includes(r.id)?'yard':'home';this.ui.search=r.name;this.ui.onlyAvailable=false;this.ui.renderPanel(true);return;
+    }
+    if(action==='inspect-upgrade'){
+      const item=this.state.placed[Number(data.index)];if(!item||item.id!==data.id)return;this.ui.stationIndex=Number(data.index);this.ui.open('station');return;
+    }
     if (action === 'make') { this.make(data.id); return; }
     if (action === 'move-furniture') {
       const index = Number(data.index), item = this.state.placed[index];

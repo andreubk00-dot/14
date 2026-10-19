@@ -49,19 +49,19 @@ export const RECIPES = [
  {id:'gearrack',name:'Стеллаж комплектов',category:'shelter',desc:'Сохрани два комплекта экипировки и быстро меняй их дома.',cost:{wood:8,metal:3},placeable:true},
  {id:'dressing',name:'Аптечка из медицинских запасов',category:'supplies',desc:'Аптечка из уцелевших материалов клиники. Восстанавливает 45 здоровья; использование Q.',cost:{medicine:1,cloth:1},repeatable:true},
  {id:'lure',name:'Многоразовая блесна',category:'tools',desc:'Привлекает форель. Выбирается у воды; не расходуется.',cost:{metal:3,wire:2,pearl:1},requires:'rod',slot:'tool'},
- {id:'fishmeal',name:'Рыба, запечённая с овощами',category:'supplies',desc:'Выход: 2 порции. Каждая: +30 здоровья, полная выносливость. На 8 минут: бег расходует на 30% меньше выносливости. Заменяет эффект другого блюда.',cost:{fish:2,vegetables:2,wood:1},repeatable:true},
+ {id:'fishmeal',output:2,name:'Рыба, запечённая с овощами',category:'supplies',desc:'Выход: 2 порции. Каждая: +30 здоровья, полная выносливость. На 8 минут: бег расходует на 30% меньше выносливости. Заменяет эффект другого блюда.',cost:{fish:2,vegetables:2,wood:1},repeatable:true},
  {id:'fishtrophy',name:'Панно «Лунная форель»',category:'shelter',desc:'Память о редком улове. Крепится на стену после первой пойманной форели.',cost:{wood:4,fish:3,pearl:1},placeable:true},
   ...Object.entries(FINDS).map(([id,f])=>({id,name:f.name,category:'shelter',desc:f.desc|| (id==='wallclock'?'Крепятся на стену внутри убежища.':id==='recordplayer'?'Уцелевшая пластинка. Включается рядом с проигрывателем.':id==='foundlamp'?'Работает от уцелевшего аккумулятора. Свет можно включать и выключать.':'Удобное кресло. Найденную вещь можно поставить дома.'),cost:{},placeable:true,foundOnly:true})),
-  {id:'wrench',name:'Набор ключей',category:'tools',desc:'Ускоряет разбор двигателей и бытовой техники вдвое.',cost:{metal:5,parts:2},slot:'tool'},
+  {id:'wrench',name:'Набор ключей',category:'tools',desc:'Ускоряет разбор двигателей и бытовой техники вдвое. Открывает ремонтные проходы и доступ к механизмам.',cost:{metal:5,parts:2},slot:'tool'},
   {id:'cropbed',name:'Посадочная грядка',category:'shelter',desc:'Травы, овощи или цветы. После ручного сбора нужна новая посадка.',cost:{wood:6,metal:2},placeable:true},
   {id:'stew',name:'Овощной паёк',category:'supplies',desc:'1 порция. +30 здоровья, полная выносливость. На 8 минут: восстановление выносливости вне бега на 40% быстрее. Заменяет эффект другого блюда.',cost:{vegetables:2,water:1,herbs:1},repeatable:true},
   {id:'bouquet',name:'Букет в деревянной вазе',category:'shelter',desc:'Свежие цветы из своего огорода. Можно поставить дома.',cost:{flowers:3,wood:1},placeable:true},
-  {id:'tooling',name:'Точная оснастка',category:'shelter',desc:'Переработчик даёт 3 детали и 1 провод вместо 2 деталей. Установлена на верстаке.',cost:{metal:14,parts:6,wood:8},requires:'generator',fixed:true},
+  {id:'tooling',name:'Точная оснастка',category:'shelter',desc:'Переработчик даёт на 1 деталь больше за цикл. Работает вместе с улучшением переработчика.',cost:{metal:14,parts:6,wood:8},requires:'generator',fixed:true},
   {id:'receiver',name:'Складской приёмник',category:'shelter',desc:'При ручном сборе продукция отправляется прямо на склад, оставляя рюкзак свободным.',cost:{wood:12,metal:8,wire:4,parts:3},requires:'generator',fixed:true},
   { id: 'helper', name: 'Пригласить садовницу Ладу', category: 'shelter', desc: 'Нужны радиостанция и удобная кровать. Лада собирает готовую продукцию выбранного типа на склад.', cost: { cloth: 6, fish: 3, water: 3 }, requires: 'radio', fixed: true },
   { id: 'seedbed', name: 'Питомник редких трав', category: 'shelter', desc: 'Семена из заброшенного сада дают 6 трав за 120 секунд. Полив и солнечные панели ускоряют рост.', cost: { seeds: 4, wood: 10, water: 3 }, requires: 'pump', placeable: true },
   { id: 'axe', name: 'Походный топор', category: 'tools', desc: 'Позволяет рубить деревья. Больше дерева с каждой вылазки.', cost: { wood: 3, metal: 4 }, slot: 'tool', icon: '⚒' },
-  { id: 'pick', name: 'Шахтёрская кирка', category: 'tools', desc: 'Разбивает залежи металла у старого депо.', cost: { wood: 4, metal: 6 }, slot: 'tool', icon: '⚒' },
+  { id: 'pick', name: 'Шахтёрская кирка', category: 'tools', desc: 'Добывает камень из валунов и металл из залежей.', cost: { wood: 4, metal: 6 }, slot: 'tool', icon: '⚒' },
   { id: 'cutter', name: 'Болторез', category: 'tools', desc: 'Открывает запертые технические контейнеры.', cost: { metal: 10, parts: 3 }, slot: 'tool', icon: '✂' },
   { id: 'rod', name: 'Удочка из орешника', category: 'tools', desc: 'Рыбалка у затопленного причала. Забрось и дождись поклёвки.', cost: { wood: 5, cloth: 2, wire: 1 }, slot: 'tool', icon: '≈' },
   { id: 'rod2', name: 'Удочка «Глубина»', category: 'tools', desc: 'Шире зона подсечки. Повышает шанс редких находок.', cost: { wood: 6, metal: 5, parts: 3, pearl: 2 }, requires: 'rod', slot: 'tool', icon: '≈' },
@@ -86,7 +86,7 @@ export const RECIPES = [
   { id: 'sofa', name: 'Диван из старого мира', category: 'shelter', desc: 'Уютный уголок с тканевой обивкой.', cost: { wood: 7, cloth: 6 }, placeable: true, icon: '▱' },
   { id: 'planter', name: 'Кашпо с папоротником', category: 'shelter', desc: 'Немного живой зелени в восстановленном доме.', cost: { wood: 3, herbs: 2 }, placeable: true, icon: '❧' },
   { id: 'rug', name: 'Тканый ковёр', category: 'shelter', desc: 'Тёплый акцент для жилой комнаты.', cost: { cloth: 4 }, placeable: true, icon: '▧' },
-  { id: 'radio', name: 'Восстановить радиостанцию', category: 'shelter', desc: 'Связь с соседями. Позволяет пригласить Ладу для сбора домашней продукции.', cost: { metal: 8, wire: 6, parts: 6 }, requires: 'generator', fixed: true, icon: '◉' },
+  { id: 'radio', name: 'Восстановить радиостанцию', category: 'shelter', desc: 'Открывает обмен перламутра и семян у соседей. Позволяет пригласить Ладу для сбора домашней продукции.', cost: { metal: 8, wire: 6, parts: 6 }, requires: 'generator', fixed: true, icon: '◉' },
   { id: 'pump', name: 'Наладить водоснабжение', category: 'shelter', desc: 'Запускает насос у водонапорной башни. Нужен насосный узел из насосной или ремонтной мастерской. Время роста грядок −25%.', cost: { metal: 12, wire: 4, parts: 3, pumpmodule: 1 }, requires: 'generator', fixed: true },
   { id: 'purifier', name: 'Станция очистки воды', category: 'shelter', desc: 'Производит 3 воды за 90 секунд. Урожай забирается дома.', cost: { metal: 8, wood: 4, cloth: 3 }, requires: 'pump', placeable: true },
   { id: 'recycler', name: 'Переработчик лома', category: 'shelter', desc: 'Перерабатывает 3 металла в 2 детали и 1 провод за цикл.', cost: { metal: 12, parts: 4, wire: 3 }, requires: 'generator', placeable: true },
@@ -274,7 +274,7 @@ export function craft(state, id) {
     if (id === 'meal') state.meals++;
     if(id==='stew')state.stews++;
     if (id === 'tea') state.teas++;
-    if(id==='fishmeal')state.fishmeals+=2;
+    if(id==='fishmeal')state.fishmeals+=recipe.output;
   } else {
     state.owned.push(id);
     state.ammo += recipe.starterAmmo || 0;
@@ -578,7 +578,7 @@ export function transferCamp(state,id,direction,count=1){
 export function cookCamp(state,id){
  if(!atCamp(state)||!COOKING_RECIPES.includes(id))return {ok:false,reason:'Подойди к печи стоянки'};
  const recipe=RECIPES.find(r=>r.id===id);if(!fieldCost(state,recipe.cost))return {ok:false,reason:'Ингредиенты должны быть в рюкзаке'};
- for(const [key,n]of Object.entries(recipe.cost))state.bag[key]-=n;state[SUPPLY_FIELDS[id]]++;return {ok:true};
+ for(const [key,n]of Object.entries(recipe.cost))state.bag[key]-=n;const output=recipe.output||1;state[SUPPLY_FIELDS[id]]+=output;return {ok:true,output};
 }
 
 // Found workstations enable conveniences, never free supplies or faster production.

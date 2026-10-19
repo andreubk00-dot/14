@@ -1207,3 +1207,19 @@ test('Attack warnings stay above indoor floors, restored bridges and dock planks
  e.x=0;e.z=0;e.attack.x=0;e.attack.z=2;world.furnitureElevation=()=>.205;updateEnemyWarning(e,world,true);assert.ok(e.warning.position.y>.205);
  const second={...e,warning:createEnemyWarning()};updateEnemyWarning(second,world,true);assert.equal(second.warning.geometry,e.warning.geometry);e.warning.material.dispose();second.warning.material.dispose();
 });
+
+import {resourceUses} from '../src/resource-uses.js';
+import {SUPPLY_FIELDS} from '../src/food.js';
+test('A recipe yields the same cooked supplies at home and at the remote camp, using only the carried camp ingredients',()=>{
+ for(const id of COOKING_RECIPES){
+  const r=RECIPES.find(r=>r.id===id),home=freshState(),camp=freshState(),field=SUPPLY_FIELDS[id];home.stash={...r.cost};home.bag={};camp.x=CAMP.x;camp.z=CAMP.z;camp.camp.ready=true;camp.bag={...r.cost};camp.stash={fish:100,vegetables:100,wood:100,water:100,herbs:100};
+  const before=home[field];assert.ok(craft(home,id).ok);const result=cookCamp(camp,id);assert.ok(result.ok);assert.equal(camp[field]-before,home[field]-before);assert.equal(result.output,id==='fishmeal'?2:1);assert.deepEqual(camp.stash,{fish:100,vegetables:100,wood:100,water:100,herbs:100});assert.ok(Object.values(camp.bag).every(n=>n===0));assert.equal(cookCamp(camp,id).ok,false);assert.equal(validateSave(camp)[field],camp[field]);
+ }
+});
+test('Material inspection connects known unmade recipes, station upgrades, construction and unlocked exchanges without changing state',()=>{
+ const s=freshState();s.stash={battery:2,wood:30,stone:10,metal:20,wire:20,parts:20};const snapshot=structuredClone(s);
+ let uses=resourceUses(s,'battery');assert.ok(uses.some(u=>u.id==='solar'));assert.ok(!uses.some(u=>u.id==='stunner'));assert.ok(uses.some(u=>u.key==='upgrade:dryrack'&&u.action==='inspect-recipe'));assert.deepEqual(s,snapshot);
+ s.notes.push('quarry-discharge');assert.ok(resourceUses(s,'battery').some(u=>u.id==='stunner'));s.owned.push('solar');assert.ok(!resourceUses(s,'battery').some(u=>u.key==='recipe:solar'));
+ s.placed=[{id:'dryrack',x:-20,z:23,upgrade:0}];uses=resourceUses(s,'battery');assert.ok(uses.some(u=>u.key==='upgrade:dryrack'&&u.index===0&&u.action==='inspect-upgrade'));s.placed[0].upgrade=1;assert.ok(!resourceUses(s,'battery').some(u=>u.key==='upgrade:dryrack'));s.packedFurniture=[{...s.placed[0]}];s.placed=[];assert.ok(!resourceUses(s,'battery').some(u=>u.key==='upgrade:dryrack'));
+ assert.ok(resourceUses(s,'stone').some(u=>u.key==='structure:floor'));assert.ok(resourceUses(s,'wood').some(u=>u.key==='order:timber'));assert.ok(!resourceUses(s,'pearl').some(u=>u.key==='order:pearl'));s.owned.push('radio');assert.ok(resourceUses(s,'pearl').some(u=>u.key==='order:pearl'));assert.deepEqual(resourceUses(s,'__proto__'),[]);
+});

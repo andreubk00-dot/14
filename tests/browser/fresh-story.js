@@ -47,7 +47,7 @@ export async function freshStory(g){
 
  // Prepare one actual carried load for the whole island expedition.
  const {FLOOD_DOCKS,CAMP,BOAT_REPAIR}=await import('/src/floodplain.js'),{RESTORATIONS}=await import('/src/restoration.js'),{withdrawResource}=await import('/src/inventory.js');
- const costs=[BOAT_REPAIR,CAMP.cost,...RESTORATIONS.map(p=>p.cost)],load={};for(const cost of costs)for(const [id,n]of Object.entries(cost))load[id]=(load[id]||0)+n;
+ const costs=[BOAT_REPAIR,CAMP.cost,...RESTORATIONS.filter(p=>['camp-crossing','garden-crossing','drain-works'].includes(p.id)).map(p=>p.cost)],load={};for(const cost of costs)for(const [id,n]of Object.entries(cost))load[id]=(load[id]||0)+n;
  obtain(load);for(const [id,n]of Object.entries(load))if(!withdrawResource(s,id,n).ok)throw Error('Packing failed '+id);
  const dock=id=>FLOOD_DOCKS.find(d=>d.id===id);
  const land=id=>{const d=dock(id);go(d.boat.x,d.boat.z);g.landBoat();if(s.boat.aboard)throw Error('Cannot land '+id);w.flood.update(true);};
