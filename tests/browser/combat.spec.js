@@ -8,7 +8,7 @@ async function start(page,patch={}){
 }
 test('Combat recipes equip ready CC0 models, expose coloured icons and preserve weapon choices',async({page})=>{
  test.setTimeout(240000);await start(page,{x:-19,z:14,owned:['axe'],stash:{wood:100,metal:100,parts:100,cloth:100}});
- await page.keyboard.press('KeyC');await page.locator('[data-action="category"][data-category="weapons"]').click();await page.locator('[data-action="make"][data-id="knife"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.equipment.weapon)).toBe('knife');await page.locator('[data-action="make"][data-id="heavyaxe"]').click();
+ await page.keyboard.press('KeyC');await page.locator('#recipe-category').selectOption('weapons');await page.locator('[data-action="make"][data-id="knife"]').click();expect(await page.evaluate(()=>window.__quietDistrict.state.equipment.weapon)).toBe('knife');await page.locator('[data-action="make"][data-id="heavyaxe"]').click();
  const audit=await page.evaluate(()=>{const g=window.__quietDistrict,w=g.world;return {equipped:g.state.equipment.weapon,assets:Object.keys(w.assets).length,ready:!!w.assets.knife?.scene&&!!w.assets.heavyaxe?.scene,loaded:w.weaponRoot.children.some(c=>c.isObject3D&&!c.userData.generatedHandItem),finite:w.weaponRoot.children.every(c=>Number.isFinite(c.scale.x)),metal:g.state.stash.metal,cloth:g.state.stash.cloth};});expect(audit).toEqual({equipped:'heavyaxe',assets:10,ready:true,loaded:true,finite:true,metal:84,cloth:95});
  await expect(page.locator('[data-id="heavyaxe"] .item-icon')).toHaveCount(0); // recipe icon is outside the action button
  await expect(page.locator('.recipe-card').filter({has:page.locator('[data-id="heavyaxe"]')}).locator('.item-icon')).toHaveCount(1);

@@ -1270,3 +1270,26 @@ test('Save normalization removes duplicate shortcuts while retaining legitimate 
  const r=validateSave(s);assert.deepEqual(r.hotbar,['wood',null,'armor','medkit',null,'pipe']);
  assert.equal(hotbarItem(r,'wood').available,false);assert.equal(r.medkits,1);
 });
+
+import {transferInventory,inventoryTransferStatus} from '../src/inventory.js';
+test('Container transfers conserve resources, fit available weight, and leave pinned bulk deposits separate',()=>{
+ const s=freshState();s.bag={wood:24};s.stash={metal:7,wood:3};s.keepResources=['wood'];
+ const result=transferInventory(s,{id:'metal',from:'storage'});assert.equal(result.ok,true);assert.equal(result.moved,2);assert.equal(s.bag.metal,2);assert.equal(s.stash.metal,5);
+ const before=structuredClone(s);assert.equal(transferInventory(s,{id:'metal',from:'storage',count:1}).ok,false);assert.deepEqual(s,before);
+ assert.equal(transferInventory(s,{id:'wood',from:'bag',count:1}).moved,1);assert.equal(s.bag.wood,23);assert.equal(s.stash.wood,4);assert.deepEqual(s.keepResources,['wood']);
+ const copy=validateSave(JSON.parse(JSON.stringify(s)));assert.deepEqual(copy.bag,s.bag);assert.deepEqual(copy.stash,s.stash);
+});
+test('Finds and whole cargo transfer without duplicating, losing identity or bypassing storage and bag limits',()=>{
+ const s=freshState();s.finds={armchair:1};assert.equal(transferInventory(s,{id:'armchair',from:'bag'}).ok,true);assert.equal(s.storedFinds.armchair,1);assert.equal(s.finds.armchair,0);
+ s.bag={wood:25};const before=structuredClone(s);assert.equal(transferInventory(s,{id:'armchair',from:'storage'}).ok,false);assert.deepEqual(s,before);
+ s.bag={};s.cargo=[{machine:'motor',node:'node-1',loot:{metal:4}}];assert.equal(transferInventory(s,{id:'cargo-0',from:'bag',node:'node-2'}).ok,false);
+ assert.equal(transferInventory(s,{id:'cargo-0',from:'bag',node:'node-1'}).ok,true);assert.equal(s.cargo.length,0);assert.equal(s.storedCargo[0].node,'node-1');
+ assert.equal(transferInventory(s,{id:'cargo-0',from:'storage',node:'node-1'}).ok,true);assert.equal(s.storedCargo.length,0);assert.equal(s.cargo[0].loot.metal,4);
+ s.storedCargo=Array.from({length:4},(_,i)=>({machine:'motor',node:'node-'+(i+2),loot:{metal:1}}));assert.equal(transferInventory(s,{id:'cargo-0',from:'bag',node:'node-1'}).ok,false);assert.equal(s.cargo.length,1);
+});
+test('Container transfers reject distant access, invalid amounts and overflow that a save would truncate',()=>{
+ const s=freshState();s.bag={wood:2};s.stash={wood:99999};assert.equal(transferInventory(s,{id:'wood',from:'bag'}).moved,1);assert.equal(s.stash.wood,100000);assert.equal(s.bag.wood,1);
+ for(const count of [0,-1,1.5,NaN,'bad']){const before=structuredClone(s);assert.equal(transferInventory(s,{id:'wood',from:'bag',count}).ok,false);assert.deepEqual(s,before);}
+ s.x=50;const before=structuredClone(s);assert.equal(transferInventory(s,{id:'wood',from:'storage'}).ok,false);assert.deepEqual(s,before);
+ assert.equal(inventoryTransferStatus(s,{id:'pipe',from:'bag'}).ok,false);
+});

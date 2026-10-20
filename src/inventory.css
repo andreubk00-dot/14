@@ -114,3 +114,87 @@
 .panel-title { padding-right: 56px; }
 .panel-title-icon { flex-shrink: 0; }
 .panel-title h2 { min-width: 0; line-height: 1.2; }
+
+/* Containers share one workspace; their grids scroll independently of actions. */
+.panel:has(.inventory-body) { width: min(1040px,100vw); }
+.panel-body.inventory-body { display:flex; flex-direction:column; gap:12px; padding:16px 22px 8px; overflow:hidden; min-height:0; }
+.equipment-strip { display:flex; align-items:center; gap:16px; flex-shrink:0; }
+.equipment-strip .equipment-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); flex:1; gap:8px; }
+.equipment-strip .equipment-slot { flex-direction:row; min-height:64px; padding:7px 10px; gap:8px; }
+.equipment-strip .equipment-slot > .item-icon { width:42px; height:42px; }
+.equipment-strip .equipment-slot > span { font-size:16px; }
+.equipment-strip .equipment-summary { margin:0; gap:6px; font-size:16px; }
+.inventory-split { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; flex:1; min-height:150px; }
+.inventory-split.with-storage { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.inventory-pane { display:flex; flex-direction:column; min-height:0; min-width:0; border:1px solid #a9c2a52d; border-radius:10px; overflow:hidden; background:#10271f88; }
+.inventory-pane > header { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; border-bottom:1px solid var(--border); flex-shrink:0; min-height:60px; }
+.inventory-pane h3 { display:flex; align-items:center; gap:8px; margin:0; white-space:nowrap; }
+.inventory-pane header > span { font-size:16px; white-space:nowrap; }
+.inventory-pane header .secondary { display:flex; align-items:center; gap:6px; font-size:16px; min-height:40px; padding:6px 9px; }
+.inventory-scroll { overflow-y:auto; min-height:0; padding:10px; flex:1; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:#7d927341 transparent; }
+.inventory-scroll .item-grid, .inventory-scroll #storage-grid { grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px; }
+.inventory-scroll .item-cell { scroll-margin:8px; }
+.inventory-scroll .item-cell > b { font-size:16px; }
+.inventory-transfer-hint { font-size:16px; color:var(--muted); flex-shrink:0; }
+.cargo-capacity { padding:5px 12px; border-top:1px solid var(--border); color:var(--muted); }
+.panel-inspector { flex-shrink:0; max-height:29dvh; overflow-y:auto; padding:0 22px; background:#142b22; scrollbar-width:thin; }
+.panel-inspector:empty { display:none; }
+.panel-inspector .item-details { margin:0; padding:12px 0; gap:12px; border-top:1px solid var(--border); }
+.panel-inspector .item-portrait { width:64px; height:64px; }
+.panel-inspector .item-portrait .item-icon { width:58px; height:58px; }
+.panel-inspector .item-details h3 { margin:0 0 4px; }
+.panel-inspector .item-details p { font-size:16px; line-height:1.4; margin:0; }
+.panel-inspector .item-actions { gap:8px; margin-top:9px; }
+.panel-inspector .item-actions button { font-size:16px; min-height:42px; display:flex; align-items:center; gap:6px; }
+.panel-inspector .resource-uses { margin:0 0 10px; }
+.panel-quickbar { padding:10px 22px; flex-shrink:0; border-top:1px solid var(--border); }
+.panel-quickbar .inventory-hotbar { position:static; padding:0; margin:0; border:0; background:transparent; }
+.panel-quickbar .inventory-bar-title { margin-bottom:7px; }
+.panel-quickbar .inventory-hotbar .hotbar-slot { height:58px; }
+.panel-quickbar .clear-hotbar { margin:4px 0 0 auto; }
+.inventory-preparation { flex-shrink:0; }
+.inventory-preparation summary, .stored-furniture summary { cursor:pointer; color:#d8c898; font-size:16px; }
+.inventory-preparation .storage-actions { margin:10px 0 0; }
+.inventory-body .food-summary { margin:0; padding:6px 10px; font-size:16px; flex-shrink:0; }
+.panel-back.text-button { margin:0 0 8px; font-size:16px; min-height:32px; }
+@media(max-width:760px) {
+ .panel-body.inventory-body { padding:10px 12px 6px; gap:8px; }
+ .equipment-strip { gap:8px; }
+ .equipment-strip .equipment-grid { gap:5px; }
+ .equipment-strip .equipment-slot { flex-direction:column; min-height:68px; gap:2px; padding:3px; }
+ .equipment-strip .equipment-slot > .item-icon { width:38px; height:38px; }
+ .equipment-strip .equipment-summary { display:none; }
+ .inventory-split.with-storage { grid-template-columns:1fr; grid-template-rows:repeat(2,minmax(0,1fr)); gap:8px; min-height:190px; }
+ .inventory-pane > header { padding:5px 8px; min-height:48px; }
+ .inventory-pane header .secondary { font-size:16px; min-height:36px; padding:4px 7px; }
+ .inventory-pane h3 { font-size:18px; gap:5px; }
+ .inventory-scroll { padding:6px; }
+ .inventory-scroll .item-grid, .inventory-scroll #storage-grid { grid-template-columns:repeat(5,minmax(0,1fr)); gap:5px; }
+ .inventory-transfer-hint { display:none; }
+ .cargo-capacity { font-size:16px; padding:3px 8px; }
+ .panel-inspector { padding:0 12px; max-height:25dvh; }
+ .panel-inspector .item-portrait { display:none; }
+ .panel-inspector .item-details { padding:8px 0; }
+ .panel-quickbar { padding:7px 12px; }
+ .panel-quickbar .inventory-bar-title h3 { font-size:18px; }
+ .panel-quickbar .inventory-bar-title small { display:none; }
+ .panel-quickbar .inventory-hotbar .hotbar-slot { height:50px; }
+ .panel-quickbar .inventory-hotbar .hotbar-slot > .item-icon { width:36px; height:36px; }
+}
+@media(max-height:540px) {
+ .panel-body.inventory-body { overflow:auto; flex:1; }
+ .inventory-split,.inventory-split.with-storage { flex:none; min-height:220px; }
+ .equipment-strip { display:none; }
+ .panel-quickbar .inventory-bar-title { display:none; }
+ .panel-quickbar .inventory-hotbar .hotbar-slot { height:44px; }
+ .panel-inspector { max-height:25dvh; }
+}
+.catalog-filter { display:flex; align-items:center; gap:12px; margin:0 0 12px; color:var(--muted); font-size:16px; }
+.catalog-filter select { flex:1; min-width:0; font-size:18px; min-height:44px; padding:8px 12px; color:#e9e3ca; background:#142b22; border:1px solid var(--border); border-radius:8px; }
+.structure-recipes { margin-top:12px; }
+.placed-overview { border-top:1px solid var(--border); margin-top:20px; padding-top:16px; }
+.placed-overview summary { cursor:pointer; font-size:18px; color:#d8c898; margin-bottom:12px; }
+
+.container-process { margin:6px 8px; flex-shrink:0; font-size:16px; min-height:40px; }
+
+.panel:has(.inventory-split:not(.with-storage)) { width:min(760px,100vw); }

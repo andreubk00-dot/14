@@ -1,0 +1,49 @@
+import {test,expect} from '@playwright/test';
+const saved=p=>p.evaluate(()=>JSON.parse(localStorage.getItem('quiet-district-save-v1')));
+async function start(page,patch={}){
+ await page.addInitScript(p=>localStorage.setItem('quiet-district-save-v1',JSON.stringify({version:1,x:-20,z:14,health:80,stamina:100,bag:{wood:4,metal:3},stash:{wood:9,metal:5,herbs:3},finds:{armchair:1},storedFinds:{recordplayer:1},owned:['axe','armor','pistol'],ammo:8,medkits:2,settings:{sound:false,quality:'low'},tutorial:false,...p})),patch);
+ await page.goto('/');await expect(page.locator('[data-action="start"]')).toBeEnabled({timeout:90000});await page.locator('[data-action="start"]').click();await page.evaluate(()=>window.__quietDistrict.visibilityPaused=true);
+}
+function errors(page,list){page.on('pageerror',e=>list.push(e.message));page.on('console',m=>{if(m.type()==='error')list.push(m.text());});}
+async function drag(page,from,to){await from.scrollIntoViewIfNeeded();const a=await from.boundingBox(),b=await to.boundingBox();await page.mouse.move(a.x+a.width/2,a.y+a.height/2);await page.mouse.down();await page.mouse.move(b.x+b.width/2,b.y+b.height/2,{steps:10});await page.mouse.up();}
+test('One workspace transfers between both containers, distinguishes identical IDs, keeps hotbar and reloads',async({page,context})=>{
+ test.setTimeout(240000);const e=[];errors(page,e);await start(page);await page.keyboard.press('KeyI');
+ await expect(page.locator('#inventory-grid')).toBeVisible();await expect(page.locator('#storage-grid')).toBeVisible();await expect(page.locator('#panel [data-action="storage"]')).toHaveCount(0);
+ const from=page.locator('#inventory-grid [data-id="wood"]');await from.click();await expect(page.locator('.item-details [data-from="bag"][data-count="all"]')).toBeVisible();
+ await page.locator('#storage-grid [data-id="wood"]').click();await expect(page.locator('.item-details [data-from="storage"][data-count="all"]')).toBeVisible();
+ await page.locator('.item-details [data-count="1"]').click();expect((await saved(page)).bag.wood).toBe(5);expect((await saved(page)).stash.wood).toBe(8);
+ await drag(page,page.locator('#inventory-grid [data-id="wood"]'),page.locator('#storage-grid .empty').first());expect((await saved(page)).bag.wood).toBe(0);expect((await saved(page)).stash.wood).toBe(13);
+ await page.locator('#storage-grid [data-id="metal"]').click({modifiers:['Shift']});expect((await saved(page)).bag.metal).toBe(8);expect((await saved(page)).stash.metal).toBe(0);
+ await page.locator('#inventory-grid [data-id="armchair"]').click();await page.locator('.item-details [data-action="inventory-transfer"][data-count="all"]').click();expect((await saved(page)).storedFinds.armchair).toBe(1);expect((await saved(page)).finds.armchair).toBe(0);
+ await drag(page,page.locator('#inventory-grid [data-id="axe"]'),page.locator('#panel [data-drop-slot="1"]'));expect((await saved(page)).hotbar[1]).toBe('axe');
+ await page.screenshot({path:'/tmp/v42-workspace-desktop.png'});const before=await saved(page);await page.close();
+ const p=await context.newPage();errors(p,e);try{await p.goto('/');await expect(p.locator('[data-action="start"]')).toBeEnabled({timeout:90000});await p.locator('[data-action="start"]').click();await p.evaluate(()=>window.__quietDistrict.visibilityPaused=true);const after=await saved(p);expect(after.bag).toEqual(before.bag);expect(after.stash).toEqual(before.stash);expect(after.storedFinds).toEqual(before.storedFinds);expect(after.hotbar).toEqual(before.hotbar);expect(e).toEqual([]);}finally{await p.close();}
+});
+test('Search spans categories, buildings share a catalog and Back restores item context',async({page})=>{
+ test.setTimeout(180000);const e=[];errors(page,e);await start(page,{placed:[{id:'lamp',x:-17,z:17,rotation:0,harvested:0,enabled:true}]});await page.keyboard.press('KeyI');await page.locator('#storage-grid [data-id="wood"]').click();
+ await page.locator('.resource-uses summary').click();await page.locator('.resource-uses [data-action="inspect-recipe"][data-id="bed"]').click();await expect(page.locator('#recipe-search')).toHaveValue('Удобная кровать');await page.locator('[data-action="panel-back"]').click();
+ await expect(page.locator('#storage-grid [data-id="wood"]')).toHaveAttribute('aria-pressed','true');await expect(page.locator('.item-details [data-from="storage"][data-count="all"]')).toBeVisible();
+ await page.keyboard.press('Escape');await page.keyboard.press('KeyC');await page.locator('#recipe-category').selectOption('weapons');await page.locator('#recipe-search').fill('Набор ключей');await expect(page.locator('[data-action="make"][data-id="wrench"]')).toBeVisible();await expect(page.locator('#recipe-category')).toHaveValue('all');
+ await page.keyboard.press('Escape');await page.keyboard.press('KeyB');await expect(page.locator('[data-action="structure-select"]')).not.toHaveCount(0);await expect(page.locator('[data-action="make"][data-id="yardfence"]')).toHaveCount(1);await expect(page.locator('[data-action="architecture"]')).toHaveCount(0);await page.locator('[data-section="placed"] > summary').click();await page.locator('[data-action="toggle-furniture"]').click();await expect(page.locator('[data-section="placed"]')).toHaveAttribute('open','');expect((await saved(page)).placed[0].enabled).toBe(false);await page.locator('[data-action="toggle-furniture"]').click();expect((await saved(page)).placed[0].enabled).toBe(true);await page.screenshot({path:'/tmp/v42-build-catalog.png'});expect(e).toEqual([]);
+});
+test('Touch workspace shows both containers and transfers without hiding its grids or actions',async({browser})=>{
+ test.setTimeout(180000);const ctx=await browser.newContext({viewport:{width:390,height:844},hasTouch:true,isMobile:true}),p=await ctx.newPage(),e=[];errors(p,e);
+ try{await start(p);await p.locator('#hotbar [data-action="inventory"]').tap();await expect(p.locator('#inventory-grid')).toBeInViewport();await expect(p.locator('#storage-grid')).toBeInViewport();
+ await p.locator('#storage-grid [data-id="wood"]').tap();await expect(p.locator('.item-details [data-count="1"]')).toBeInViewport();await p.locator('.item-details [data-count="1"]').tap();expect((await saved(p)).bag.wood).toBe(5);
+ const cdp=await ctx.newCDPSession(p),source=await p.locator('#storage-grid [data-id="herbs"]').boundingBox(),target=await p.locator('[data-drop-inventory="bag"] > header').boundingBox();
+ const x=source.x+source.width/2,y=source.y+source.height/2,tx=target.x+target.width/2,ty=target.y+target.height/2;
+ await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x,y}]});await p.waitForTimeout(330);
+ for(let i=1;i<=8;i++)await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x+(tx-x)*i/8,y:y+(ty-y)*i/8}]});
+ await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});expect((await saved(p)).bag.herbs).toBe(3);expect((await saved(p)).stash.herbs).toBe(0);
+ await p.screenshot({path:'/tmp/v42-workspace-mobile.png'});
+ const boxes=await p.evaluate(()=>{const rect=q=>{const r=document.querySelector(q).getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height,bottom:r.bottom};};return {bag:rect('[data-drop-inventory="bag"]'),store:rect('[data-drop-inventory="storage"]'),inspector:rect('.panel-inspector'),bar:rect('.panel-quickbar'),cell:rect('#inventory-grid .item-cell'),scroll:document.documentElement.scrollWidth,viewport:innerWidth};});expect(boxes.store.bottom).toBeLessThanOrEqual(boxes.inspector.y+1);expect(boxes.inspector.bottom).toBeLessThanOrEqual(boxes.bar.y+1);expect(boxes.cell.w).toBeGreaterThanOrEqual(44);expect(boxes.scroll).toBeLessThanOrEqual(boxes.viewport);
+ await p.locator('[data-action="deposit"]').tap();expect((await saved(p)).stash.wood).toBe(13);expect((await saved(p)).bag.wood||0).toBe(0);await p.setViewportSize({width:844,height:390});expect(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await expect(p.locator('.panel-quickbar')).toBeInViewport();expect(e).toEqual([]);
+ }finally{await ctx.close();}
+});
+test('Cargo keeps its identity across containers and processes directly with a return to the workspace',async({page})=>{
+ test.setTimeout(180000);const e=[];errors(page,e);await start(page,{cargo:[{machine:'appliance',node:'node-1',loot:{metal:2}}],storedCargo:[{machine:'motor',node:'node-2',loot:{metal:4}}],placed:[{id:'salvagejig',x:-18,z:15,rotation:0,harvested:0}]});await page.keyboard.press('KeyI');
+ await page.locator('#inventory-grid [data-id="cargo-0"]').click();await expect(page.locator('.item-details')).toContainText('Бытовая техника');await page.locator('.item-details [data-action="inventory-transfer"]').click();expect((await saved(page)).cargo).toEqual([]);expect((await saved(page)).storedCargo.map(c=>c.node)).toEqual(['node-2','node-1']);
+ await page.locator('#storage-grid [data-id="cargo-1"]').click();await page.locator('.item-details [data-action="process-salvage"]').click();expect(await page.evaluate(()=>window.__quietDistrict.job.cargo.node)).toBe('node-1');
+ await page.evaluate(()=>{const g=window.__quietDistrict;g.visibilityPaused=false;for(let i=0;i<200&&g.job;i++)g.tick(1/60);g.visibilityPaused=true;});await expect(page.locator('#inventory-grid')).toBeVisible();expect((await saved(page)).storedCargo.map(c=>c.node)).toEqual(['node-2']);
+ await page.locator('#storage-grid [data-id="cargo-0"]').click();await page.locator('.item-details [data-action="process-salvage-all"]').click();await page.evaluate(()=>{const g=window.__quietDistrict;g.visibilityPaused=false;for(let i=0;i<200&&g.job;i++)g.tick(1/60);g.visibilityPaused=true;});await expect(page.locator('#storage-grid')).toBeVisible();expect((await saved(page)).storedCargo).toEqual([]);expect((await saved(page)).stash.parts).toBe(5);expect(e).toEqual([]);
+});

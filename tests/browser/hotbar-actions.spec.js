@@ -9,7 +9,7 @@ test('Equipment shortcuts respect bag capacity, materials inspect or report abse
  await page.keyboard.press('Escape');await page.keyboard.press('Digit2');expect(await page.evaluate(()=>window.__quietDistrict.state.equipment.armor)).toBe('armor');
  await page.keyboard.press('Digit3');expect(await page.evaluate(()=>window.__quietDistrict.state.equipment.bag)).toBe('bag2');await expect(page.locator('#toasts')).toContainText('Сначала разгрузи');
  await page.keyboard.press('Digit5');await expect(page.locator('.item-details')).toContainText('Дерево');await expect(page.locator('.item-details')).toBeInViewport();
- await page.locator('[data-action="storage"]').click();await page.locator('[data-action="deposit"]').click();await page.keyboard.press('Escape');await page.keyboard.press('Digit5');await expect(page.locator('#panel')).toBeHidden();await expect(page.locator('#toasts')).toContainText('Дерево: в рюкзаке нет');
+ await expect(page.locator('#storage-grid')).toBeVisible();await page.locator('[data-action="deposit"]').click();await page.keyboard.press('Escape');await page.keyboard.press('Digit5');await expect(page.locator('#panel')).toBeHidden();await expect(page.locator('#toasts')).toContainText('Дерево: в рюкзаке нет');
  await page.keyboard.press('Digit6');await expect(page.locator('#panel')).toBeVisible();expect(await page.evaluate(()=>window.__quietDistrict.state.bag.wood||0)).toBe(0);expect(await page.evaluate(()=>window.__quietDistrict.state.stash.wood)).toBe(45);
  expect(errors).toEqual([]);
 });
